@@ -12,6 +12,7 @@ if(NOT Catch2_FOUND)
 endif()
 
 add_executable(CodeDupTest
+    AnalysisScopeTest.cpp
     DiffRangeTest.cpp
     DiffFilterTest.cpp
     GitDiffParserTest.cpp
@@ -24,6 +25,7 @@ add_executable(CodeDupTest
     IntraFunctionDetectorTest.cpp
     FileScannerTest.cpp
     ReporterTest.cpp
+    ScopeFilterTest.cpp
     IntegrationTest.cpp
 )
 

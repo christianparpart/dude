@@ -1,6 +1,7 @@
 find_package(Threads REQUIRED)
 
 add_library(codedup STATIC
+    AnalysisScope.cpp
     DiffFilter.cpp
     Encoding.cpp
     Token.cpp
@@ -11,6 +12,7 @@ add_library(codedup STATIC
     IntraFunctionDetector.cpp
     FileScanner.cpp
     Reporter.cpp
+    ScopeFilter.cpp
 )
 
 target_include_directories(codedup PUBLIC

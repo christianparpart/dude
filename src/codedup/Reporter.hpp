@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
+#include <codedup/AnalysisScope.hpp>
 #include <codedup/Api.hpp>
 #include <codedup/CloneDetector.hpp>
 #include <codedup/CodeBlock.hpp>
@@ -46,7 +47,8 @@ struct SummaryData
     size_t totalDuplicatedLines = 0; ///< Total source lines involved in inter-function clone groups.
     size_t totalFunctions = 0;       ///< Number of functions involved in inter-function clone groups.
     size_t totalIntraFunctions = 0;  ///< Number of functions containing intra-function clones.
-    std::optional<PerformanceTiming> timing = std::nullopt; ///< Optional performance timing data.
+    std::optional<PerformanceTiming> timing = std::nullopt;  ///< Optional performance timing data.
+    std::optional<AnalysisScope> activeScope = std::nullopt; ///< Active scope (displayed when not All).
 };
 
 /// @brief Configuration for report output.

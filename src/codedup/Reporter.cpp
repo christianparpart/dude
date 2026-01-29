@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <codedup/AnalysisScope.hpp>
 #include <codedup/CloneDetector.hpp>
 #include <codedup/Reporter.hpp>
 
@@ -404,6 +405,16 @@ void Reporter::ReportSummary(std::string& out, SummaryData const& summary) const
     if (_config.useColor)
         out += ansiReset;
     out += '\n';
+
+    if (summary.activeScope && *summary.activeScope != AnalysisScope::All)
+    {
+        if (_config.useColor)
+            out += "\033[1m"; // Bold
+        out += "Scope:";
+        if (_config.useColor)
+            out += ansiReset;
+        std::format_to(inserter, " {}\n", FormatAnalysisScope(*summary.activeScope));
+    }
 
     if (summary.totalDuplicatedLines > 0 || summary.totalFunctions > 0 || summary.totalIntraFunctions > 0)
     {

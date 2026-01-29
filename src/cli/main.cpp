@@ -4,6 +4,7 @@
 #include "GitFileFilter.hpp"
 #include <fnmatch.h>
 
+#include <codedup/AnalysisScope.hpp>
 #include <codedup/CloneDetector.hpp>
 #include <codedup/CodeBlock.hpp>
 #include <codedup/DiffFilter.hpp>
@@ -11,6 +12,7 @@
 #include <codedup/FileScanner.hpp>
 #include <codedup/IntraFunctionDetector.hpp>
 #include <codedup/Reporter.hpp>
+#include <codedup/ScopeFilter.hpp>
 #include <codedup/Token.hpp>
 #include <codedup/TokenNormalizer.hpp>
 #include <codedup/Tokenizer.hpp>
@@ -48,7 +50,7 @@ struct CliOptions
     std::vector<std::string> globPatterns;                          ///< Filename glob patterns to include.
     codedup::InputEncoding encoding = codedup::InputEncoding::Auto; ///< Input file encoding.
     bool verbose = false;                                           ///< Show progress.
-    bool detectIntraClones = true;                                  ///< Detect intra-function clones.
+    codedup::AnalysisScope scope = codedup::AnalysisScope::All;     ///< Analysis scope bitmask.
     bool respectGitignore = true;                                   ///< Respect .gitignore when scanning files.
     bool showHelp = false;                                          ///< Show help text.
     bool showVersion = false;                                       ///< Show version.
@@ -71,10 +73,11 @@ void PrintUsage(FILE* out)
                  "  -e, --extensions <list>     Comma-separated extensions (default: .cpp,.cxx,.cc,.c,.h,.hpp,.hxx)\n"
                  "  -g, --glob <pattern>        Filename glob filter (may be repeated, e.g., -g '*Fnord*')\n"
                  "  --encoding <enc>            Input encoding: auto, utf8, windows-1252 (default: auto)\n"
+                 "  -s, --scope <scopes>        Comma-separated analysis scopes (default: all)\n"
+                 "                              Valid: inter-file, intra-file, inter-function,\n"
+                 "                                     intra-function, all\n"
                  "  --gitignore                 Respect .gitignore when scanning (default)\n"
                  "  --no-gitignore              Include gitignored files in analysis\n"
-                 "  --intra                     Enable intra-function clone detection (default)\n"
-                 "  --no-intra                  Disable intra-function clone detection\n"
                  "  -v, --verbose               Show progress during scanning\n"
                  "  -h, --help                  Show help\n"
                  "  --version                   Show version");
@@ -298,16 +301,17 @@ auto ProcessArg(int argc, char* argv[], int& i, CliOptions& opts)
         opts.respectGitignore = false;
         return std::nullopt;
     }
-    if (arg == "--intra")
-    {
-        opts.detectIntraClones = true;
-        return std::nullopt;
-    }
-    if (arg == "--no-intra")
-    {
-        opts.detectIntraClones = false;
-        return std::nullopt;
-    }
+    if (arg == "-s" || arg == "--scope")
+        return ParseStringOption(argc, argv, i, "--scope")
+            .and_then(
+                [&](std::string const& v) -> std::expected<CliOptions, std::string>
+                {
+                    auto const scopeResult = codedup::ParseAnalysisScope(v);
+                    if (!scopeResult)
+                        return std::unexpected(scopeResult.error().message);
+                    opts.scope = *scopeResult;
+                    return opts;
+                });
     if (arg == "-v" || arg == "--verbose")
     {
         opts.verbose = true;
@@ -602,29 +606,36 @@ int main(int argc, char* argv[])
     // Step 4: Detect clones
     using Clock = std::chrono::steady_clock;
 
-    auto const detectStart = Clock::now();
-    codedup::CloneDetector detector({
-        .similarityThreshold = opts.threshold,
-        .minTokens = opts.minTokens,
-        .textSensitivity = opts.textSensitivity,
-    });
+    std::vector<codedup::CloneGroup> groups;
+    if (codedup::HasInterFunctionScope(opts.scope))
+    {
+        auto const detectStart = Clock::now();
+        codedup::CloneDetector detector({
+            .similarityThreshold = opts.threshold,
+            .minTokens = opts.minTokens,
+            .textSensitivity = opts.textSensitivity,
+        });
 
-    auto groups = detector.Detect(allBlocks);
-    timing.cloneDetection = Clock::now() - detectStart;
+        groups = detector.Detect(allBlocks);
+        timing.cloneDetection = Clock::now() - detectStart;
 
-    std::ranges::sort(groups,
-                      [&allBlocks](auto const& a, auto const& b)
-                      {
-                          auto const tokensA =
-                              allBlocks[a.blockIndices.front()].tokenEnd - allBlocks[a.blockIndices.front()].tokenStart;
-                          auto const tokensB =
-                              allBlocks[b.blockIndices.front()].tokenEnd - allBlocks[b.blockIndices.front()].tokenStart;
-                          return tokensA > tokensB;
-                      });
+        // Apply scope-based filtering (inter-file vs intra-file).
+        groups = codedup::ScopeFilter::FilterCloneGroups(groups, blockToFileIndex, opts.scope);
+
+        std::ranges::sort(groups,
+                          [&allBlocks](auto const& a, auto const& b)
+                          {
+                              auto const tokensA = allBlocks[a.blockIndices.front()].tokenEnd -
+                                                   allBlocks[a.blockIndices.front()].tokenStart;
+                              auto const tokensB = allBlocks[b.blockIndices.front()].tokenEnd -
+                                                   allBlocks[b.blockIndices.front()].tokenStart;
+                              return tokensA > tokensB;
+                          });
+    }
 
     // Step 4b: Detect intra-function clones
     std::vector<codedup::IntraCloneResult> intraResults;
-    if (opts.detectIntraClones)
+    if (codedup::HasScope(opts.scope, codedup::AnalysisScope::IntraFunction))
     {
         if (opts.verbose)
             std::println(stderr, "Detecting intra-function clones...");
@@ -713,6 +724,7 @@ int main(int argc, char* argv[])
                                        .totalFunctions = totalFunctions,
                                        .totalIntraFunctions = totalIntraFunctions,
                                        .timing = timing,
+                                       .activeScope = opts.scope,
                                    });
 
     std::cout << output;
