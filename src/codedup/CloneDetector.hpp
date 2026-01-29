@@ -65,10 +65,13 @@ public:
 
     /// @brief Detects clone groups among the given code blocks.
     /// @param blocks The code blocks to analyze.
-    /// @param progressCallback Optional callback for reporting progress.
+    /// @param progressCallback Optional callback for reporting Phase 2 (similarity) progress.
+    /// @param fingerprintCallback Optional callback for reporting Phase 1 (fingerprinting) progress.
+    /// @param candidateCallback Optional callback for reporting candidate pair collection progress.
     /// @return A vector of clone groups, each containing block indices and similarity.
-    [[nodiscard]] auto Detect(std::vector<CodeBlock> const& blocks, ProgressCallback const& progressCallback = {})
-        -> std::vector<CloneGroup>;
+    [[nodiscard]] auto Detect(std::vector<CodeBlock> const& blocks, ProgressCallback const& progressCallback = {},
+                              ProgressCallback const& fingerprintCallback = {},
+                              ProgressCallback const& candidateCallback = {}) -> std::vector<CloneGroup>;
 
     /// @brief Computes LCS-based Dice coefficient similarity between two ID sequences.
     ///

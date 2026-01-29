@@ -8,6 +8,7 @@
 
 #ifdef _WIN32
 #include <io.h>
+#include <windows.h>
 #define CODEDUP_ISATTY(fd) _isatty(fd)
 #define CODEDUP_FILENO(f) _fileno(f)
 #else
@@ -19,9 +20,35 @@
 namespace codedup
 {
 
+namespace
+{
+
+#ifdef _WIN32
+/// @brief Enables VT100 escape sequence processing on Windows consoles.
+///
+/// Windows consoles do not process VT100 escape sequences by default.
+/// This function enables the ENABLE_VIRTUAL_TERMINAL_PROCESSING flag
+/// so that sequences like \033[K (erase to end of line) work correctly.
+void EnableVTProcessing(FILE* output)
+{
+    auto const handle = reinterpret_cast<HANDLE>(_get_osfhandle(CODEDUP_FILENO(output)));
+    if (handle == INVALID_HANDLE_VALUE)
+        return;
+    DWORD mode = 0;
+    if (GetConsoleMode(handle, &mode))
+        SetConsoleMode(handle, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+}
+#endif
+
+} // namespace
+
 ProgressBar::ProgressBar(std::string_view stageName, size_t totalItems, FILE* output)
     : _stageName(stageName), _totalItems(totalItems), _output(output), _isTTY(CODEDUP_ISATTY(CODEDUP_FILENO(output)))
 {
+#ifdef _WIN32
+    if (_isTTY)
+        EnableVTProcessing(_output);
+#endif
 }
 
 void ProgressBar::Start()
@@ -124,11 +151,7 @@ auto ProgressBar::FormatDuration(double seconds) -> std::string
 
 void ProgressBar::ClearLine()
 {
-    // Overwrite with spaces and return to line start (ASCII-only, no ANSI escapes)
-    std::string const blank(120, ' ');
-    std::fputc('\r', _output);
-    std::fputs(blank.c_str(), _output);
-    std::fputc('\r', _output);
+    std::fputs("\r\033[K", _output);
     std::fflush(_output);
 }
 
@@ -185,7 +208,7 @@ void ProgressBar::Render()
     // Pad stage name to 14 chars for alignment
     auto const paddedName = std::format("{:<14}", _stageName);
 
-    auto const line = std::format("\r{} [{}] {:3}%  elapsed: {}  ETA: {}", paddedName, bar, percentage,
+    auto const line = std::format("\r\033[K{} [{}] {:3}%  elapsed: {}  ETA: {}", paddedName, bar, percentage,
                                   FormatDuration(elapsed), etaStr);
 
     std::fputs(line.c_str(), _output);

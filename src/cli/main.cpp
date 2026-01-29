@@ -927,12 +927,55 @@ int main(int argc, char* argv[])
             .textSensitivity = opts.textSensitivity,
         });
 
+        auto fingerprintBar = opts.showProgress
+                                  ? std::make_optional<codedup::ProgressBar>("Fingerprinting", allBlocks.size())
+                                  : std::nullopt;
+        if (fingerprintBar)
+            fingerprintBar->Start();
+
+        auto candidateBar =
+            opts.showProgress ? std::make_optional<codedup::ProgressBar>("Gather Candidates", size_t{0}) : std::nullopt;
+
         auto detectBar =
             opts.showProgress ? std::make_optional<codedup::ProgressBar>("Detecting", size_t{0}) : std::nullopt;
-        if (detectBar)
-            detectBar->Start();
-        groups =
-            detector.Detect(allBlocks, detectBar ? detectBar->MakeAbsoluteCallback() : codedup::ProgressCallback{});
+
+        groups = detector.Detect(
+            allBlocks, detectBar ? detectBar->MakeAbsoluteCallback() : codedup::ProgressCallback{},
+            [&](size_t current, size_t total)
+            {
+                if (fingerprintBar)
+                    fingerprintBar->Update(current, total);
+                if (current >= total)
+                {
+                    if (fingerprintBar)
+                    {
+                        fingerprintBar->Finish();
+                        fingerprintBar.reset();
+                    }
+                    if (candidateBar)
+                        candidateBar->Start();
+                }
+            },
+            [&](size_t current, size_t total)
+            {
+                if (candidateBar)
+                    candidateBar->Update(current, total);
+                if (current >= total)
+                {
+                    if (candidateBar)
+                    {
+                        candidateBar->Finish();
+                        candidateBar.reset();
+                    }
+                    if (detectBar)
+                        detectBar->Start();
+                }
+            });
+
+        if (fingerprintBar)
+            fingerprintBar->Finish(); // safety: edge case with < 2 blocks
+        if (candidateBar)
+            candidateBar->Finish(); // safety: no fingerprints edge case
         if (detectBar)
             detectBar->Finish();
         timing.cloneDetection = Clock::now() - detectStart;

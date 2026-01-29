@@ -87,7 +87,8 @@ struct CandidatePair
 } // namespace
 
 // NOLINTNEXTLINE(readability-function-cognitive-complexity)
-auto CloneDetector::Detect(std::vector<CodeBlock> const& blocks, ProgressCallback const& progressCallback)
+auto CloneDetector::Detect(std::vector<CodeBlock> const& blocks, ProgressCallback const& progressCallback,
+                           ProgressCallback const& fingerprintCallback, ProgressCallback const& candidateCallback)
     -> std::vector<CloneGroup>
 {
     if (blocks.size() < 2)
@@ -105,6 +106,8 @@ auto CloneDetector::Detect(std::vector<CodeBlock> const& blocks, ProgressCallbac
             if (seen.insert(fp).second)
                 fingerprintIndex[fp].push_back(bi);
         }
+        if (fingerprintCallback)
+            fingerprintCallback(bi + 1, blocks.size());
     }
 
     // Find candidate pairs: blocks sharing >= minHashMatches fingerprints
@@ -112,19 +115,26 @@ auto CloneDetector::Detect(std::vector<CodeBlock> const& blocks, ProgressCallbac
     auto const maxBlocksPerFingerprint = std::max(size_t{50}, blocks.size() / 2);
 
     // Count shared fingerprints per pair
+    auto const fingerprintCount = fingerprintIndex.size();
+    size_t fingerprintProcessed = 0;
     ankerl::unordered_dense::map<std::pair<size_t, size_t>, size_t, PairHash> pairCounts;
     for (auto const& [fp, blockList] : fingerprintIndex)
     {
-        if (blockList.size() > maxBlocksPerFingerprint)
-            continue;
-        for (auto const i : std::views::iota(size_t{0}, blockList.size()))
+        if (blockList.size() <= maxBlocksPerFingerprint)
         {
-            for (auto const j : std::views::iota(i + 1, blockList.size()))
+            for (auto const i : std::views::iota(size_t{0}, blockList.size()))
             {
-                auto const key = std::pair{std::min(blockList[i], blockList[j]), std::max(blockList[i], blockList[j])};
-                ++pairCounts[key];
+                for (auto const j : std::views::iota(i + 1, blockList.size()))
+                {
+                    auto const key =
+                        std::pair{std::min(blockList[i], blockList[j]), std::max(blockList[i], blockList[j])};
+                    ++pairCounts[key];
+                }
             }
         }
+        ++fingerprintProcessed;
+        if (candidateCallback)
+            candidateCallback(fingerprintProcessed, fingerprintCount);
     }
 
     // Phase 2: Collect candidate pairs, applying length pre-filter and hash match threshold
