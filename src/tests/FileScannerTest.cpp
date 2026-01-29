@@ -60,7 +60,7 @@ TEST_CASE("FileScanner.ExtensionFiltering", "[scanner]")
     auto result = FileScanner::Scan(dir.Path());
     REQUIRE(result.has_value());
 
-    CHECK(result->size() == 2); // Only .cpp and .hpp
+    CHECK(result->size() == 3); // .cpp, .hpp, and .py
 }
 
 TEST_CASE("FileScanner.RecursiveScanning", "[scanner]")

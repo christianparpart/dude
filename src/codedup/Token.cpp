@@ -399,6 +399,76 @@ auto TokenTypeName(TokenType type) -> std::string_view
             return "\?\?="; // ??=
         case TokenType::CSharp_Lambda:
             return "=>";
+        // Python-specific keywords
+        case TokenType::Python_And:
+            return "and";
+        case TokenType::Python_As:
+            return "as";
+        case TokenType::Python_Assert:
+            return "assert";
+        case TokenType::Python_Async:
+            return "async";
+        case TokenType::Python_Await:
+            return "await";
+        case TokenType::Python_Def:
+            return "def";
+        case TokenType::Python_Del:
+            return "del";
+        case TokenType::Python_Elif:
+            return "elif";
+        case TokenType::Python_Except:
+            return "except";
+        case TokenType::Python_Finally:
+            return "finally";
+        case TokenType::Python_From:
+            return "from";
+        case TokenType::Python_Global:
+            return "global";
+        case TokenType::Python_Import:
+            return "import";
+        case TokenType::Python_In:
+            return "in";
+        case TokenType::Python_Is:
+            return "is";
+        case TokenType::Python_Lambda:
+            return "lambda";
+        case TokenType::Python_None:
+            return "None";
+        case TokenType::Python_Nonlocal:
+            return "nonlocal";
+        case TokenType::Python_Not:
+            return "not";
+        case TokenType::Python_Or:
+            return "or";
+        case TokenType::Python_Pass:
+            return "pass";
+        case TokenType::Python_Raise:
+            return "raise";
+        case TokenType::Python_With:
+            return "with";
+        case TokenType::Python_Yield:
+            return "yield";
+        case TokenType::Python_Match:
+            return "match";
+        case TokenType::Python_Case:
+            return "case";
+        case TokenType::Python_Type:
+            return "type";
+        // Python-specific operators
+        case TokenType::Python_At:
+            return "@";
+        case TokenType::Python_AtEqual:
+            return "@=";
+        case TokenType::Python_StarStar:
+            return "**";
+        case TokenType::Python_StarStarEqual:
+            return "**=";
+        case TokenType::Python_FloorDiv:
+            return "//";
+        case TokenType::Python_FloorDivEqual:
+            return "//=";
+        case TokenType::Python_Walrus:
+            return ":=";
     }
     return "Unknown";
 }
@@ -407,7 +477,7 @@ auto IsKeyword(TokenType type) -> bool
 {
     auto const val = static_cast<uint16_t>(type);
     return (val >= static_cast<uint16_t>(TokenType::Alignas) && val <= static_cast<uint16_t>(TokenType::While)) ||
-           IsCSharpKeyword(type);
+           IsCSharpKeyword(type) || IsPythonKeyword(type);
 }
 
 auto IsCSharpKeyword(TokenType type) -> bool
@@ -415,6 +485,12 @@ auto IsCSharpKeyword(TokenType type) -> bool
     auto const val = static_cast<uint16_t>(type);
     return val >= static_cast<uint16_t>(TokenType::CSharp_Abstract) &&
            val <= static_cast<uint16_t>(TokenType::CSharp_Not);
+}
+
+auto IsPythonKeyword(TokenType type) -> bool
+{
+    auto const val = static_cast<uint16_t>(type);
+    return val >= static_cast<uint16_t>(TokenType::Python_And) && val <= static_cast<uint16_t>(TokenType::Python_Type);
 }
 
 auto IsComment(TokenType type) -> bool
@@ -432,7 +508,9 @@ auto IsOperatorOrPunctuation(TokenType type) -> bool
     auto const val = static_cast<uint16_t>(type);
     return (val >= static_cast<uint16_t>(TokenType::LeftParen) && val <= static_cast<uint16_t>(TokenType::HashHash)) ||
            (val >= static_cast<uint16_t>(TokenType::CSharp_NullConditional) &&
-            val <= static_cast<uint16_t>(TokenType::CSharp_Lambda));
+            val <= static_cast<uint16_t>(TokenType::CSharp_Lambda)) ||
+           (val >= static_cast<uint16_t>(TokenType::Python_At) &&
+            val <= static_cast<uint16_t>(TokenType::Python_Walrus));
 }
 
 } // namespace codedup

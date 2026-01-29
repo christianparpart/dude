@@ -9,6 +9,7 @@ add_library(codedup STATIC
     LanguageRegistry.cpp
     Languages/CppLanguage.cpp
     Languages/CSharpLanguage.cpp
+    Languages/PythonLanguage.cpp
     CloneDetector.cpp
     IntraFunctionDetector.cpp
     FileScanner.cpp

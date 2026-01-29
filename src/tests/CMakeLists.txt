@@ -32,6 +32,8 @@ add_executable(CodeDupTest
     LanguageRegistryTest.cpp
     CSharpTokenizerTest.cpp
     CSharpCodeBlockTest.cpp
+    PythonTokenizerTest.cpp
+    PythonCodeBlockTest.cpp
     McpJsonRpcTest.cpp
     McpProtocolTest.cpp
     McpServerTest.cpp

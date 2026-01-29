@@ -8,6 +8,7 @@ namespace codedup
 {
 auto CreateCppLanguage() -> std::shared_ptr<Language>;
 auto CreateCSharpLanguage() -> std::shared_ptr<Language>;
+auto CreatePythonLanguage() -> std::shared_ptr<Language>;
 } // namespace codedup
 
 namespace codedup
@@ -20,6 +21,7 @@ auto LanguageRegistry::Instance() -> LanguageRegistry&
         LanguageRegistry r;
         r.Register(CreateCppLanguage());
         r.Register(CreateCSharpLanguage());
+        r.Register(CreatePythonLanguage());
         return r;
     }();
     return registry;

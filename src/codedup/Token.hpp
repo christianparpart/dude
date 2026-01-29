@@ -234,6 +234,46 @@ enum class TokenType : uint16_t
     CSharp_NullCoalescing,       // ??
     CSharp_NullCoalescingAssign, // ??=
     CSharp_Lambda,               // =>
+
+    // =====================================================================
+    // Python-specific keywords
+    // =====================================================================
+    Python_And,
+    Python_As,
+    Python_Assert,
+    Python_Async,
+    Python_Await,
+    Python_Def,
+    Python_Del,
+    Python_Elif,
+    Python_Except,
+    Python_Finally,
+    Python_From,
+    Python_Global,
+    Python_Import,
+    Python_In,
+    Python_Is,
+    Python_Lambda,
+    Python_None,
+    Python_Nonlocal,
+    Python_Not,
+    Python_Or,
+    Python_Pass,
+    Python_Raise,
+    Python_With,
+    Python_Yield,
+    Python_Match,
+    Python_Case,
+    Python_Type,
+
+    // Python-specific operators
+    Python_At,            // @
+    Python_AtEqual,       // @=
+    Python_StarStar,      // **
+    Python_StarStarEqual, // **=
+    Python_FloorDiv,      // //
+    Python_FloorDivEqual, // //=
+    Python_Walrus,        // :=
 };
 // NOLINTEND(performance-enum-size)
 
@@ -260,6 +300,9 @@ struct TokenizerError
 
 /// @brief Returns true if the token type is a C#-specific keyword.
 [[nodiscard]] CODEDUP_API auto IsCSharpKeyword(TokenType type) -> bool;
+
+/// @brief Returns true if the token type is a Python-specific keyword.
+[[nodiscard]] CODEDUP_API auto IsPythonKeyword(TokenType type) -> bool;
 
 /// @brief Returns true if the token type is a comment (line or block).
 [[nodiscard]] CODEDUP_API auto IsComment(TokenType type) -> bool;
