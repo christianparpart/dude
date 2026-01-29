@@ -30,6 +30,11 @@ add_executable(CodeDupTest
     LanguageRegistryTest.cpp
     CSharpTokenizerTest.cpp
     CSharpCodeBlockTest.cpp
+    McpJsonRpcTest.cpp
+    McpProtocolTest.cpp
+    McpServerTest.cpp
+    McpAnalysisSessionTest.cpp
+    McpToolsTest.cpp
 )
 
 # GitDiffParser and GitFileFilter live in src/cli/ — compile their sources and expose headers to the test.
@@ -41,6 +46,7 @@ target_include_directories(CodeDupTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
 target_link_libraries(CodeDupTest PRIVATE
     codedup
+    mcp
     Catch2::Catch2WithMain
 )
 

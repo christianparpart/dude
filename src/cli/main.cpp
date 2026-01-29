@@ -3,6 +3,9 @@
 #include "GitDiffParser.hpp"
 #include "GitFileFilter.hpp"
 #include <fnmatch.h>
+#include <mcp/AnalysisSession.hpp>
+#include <mcp/McpTooling.hpp>
+#include <mcpprotocol/McpServer.hpp>
 
 #include <codedup/AnalysisScope.hpp>
 #include <codedup/CloneDetector.hpp>
@@ -56,6 +59,7 @@ struct CliOptions
     bool showHelp = false;                                          ///< Show help text.
     bool showVersion = false;                                       ///< Show version.
     bool showExamples = false;                                      ///< Show usage examples.
+    bool mcpMode = false;                                           ///< Run as MCP server.
     std::string diffBase;                                           ///< Git ref to diff against (enables diff mode).
 };
 
@@ -80,6 +84,7 @@ void PrintUsage(FILE* out)
                       "  --gitignore                 Respect .gitignore when scanning (default)\n"
                       "  --no-gitignore              Include gitignored files in analysis\n"
                       "  -v, --verbose               Show progress during scanning\n"
+                      "  --mcp                       Run as MCP server (JSON-RPC over stdio)\n"
                       "  -h, --help                  Show help\n"
                       "  --version                   Show version\n"
                       "  --show-examples             Show usage examples");
@@ -168,7 +173,33 @@ void PrintExamples()
                  "  # Full CI pipeline: diff mode, strict threshold, machine-readable,\n"
                  "  # inter-file scope only\n"
                  "  codedupdetector --diff-base origin/main -t 0.90 --no-color \\\n"
-                 "      --no-source -s inter-file /path/to/project");
+                 "      --no-source -s inter-file /path/to/project\n"
+                 "\n"
+                 "MCP Server Mode\n"
+                 "---------------\n"
+                 "  # Start the MCP server for use with AI coding assistants\n"
+                 "  codedupdetector --mcp\n"
+                 "\n"
+                 "  # Claude Code: add to .mcp.json in project root\n"
+                 "  {{\n"
+                 "    \"mcpServers\": {{\n"
+                 "      \"codedupdetector\": {{\n"
+                 "        \"type\": \"stdio\",\n"
+                 "        \"command\": \"/path/to/codedupdetector\",\n"
+                 "        \"args\": [\"--mcp\"]\n"
+                 "      }}\n"
+                 "    }}\n"
+                 "  }}\n"
+                 "\n"
+                 "  # Gemini CLI / Antigravity IDE: add to mcp_config.json\n"
+                 "  {{\n"
+                 "    \"mcpServers\": {{\n"
+                 "      \"codedupdetector\": {{\n"
+                 "        \"command\": \"/path/to/codedupdetector\",\n"
+                 "        \"args\": [\"--mcp\"]\n"
+                 "      }}\n"
+                 "    }}\n"
+                 "  }}");
 }
 
 // ---------------------------------------------------------------------------
@@ -405,6 +436,11 @@ auto ProcessArg(int argc, char* argv[], int& i, CliOptions& opts)
                     opts.scope = *scopeResult;
                     return opts;
                 });
+    if (arg == "--mcp")
+    {
+        opts.mcpMode = true;
+        return opts;
+    }
     if (arg == "-v" || arg == "--verbose")
     {
         opts.verbose = true;
@@ -437,12 +473,12 @@ auto ParseArgs(int argc, char* argv[]) -> std::expected<CliOptions, std::string>
             // Only return early for errors, --help, or --version.
             if (!result->has_value())
                 return std::unexpected(std::move(result->error()));
-            if (opts.showHelp || opts.showVersion || opts.showExamples)
+            if (opts.showHelp || opts.showVersion || opts.showExamples || opts.mcpMode)
                 return opts;
         }
     }
 
-    if (!opts.showHelp && !opts.showVersion && !opts.showExamples && opts.directory.empty())
+    if (!opts.showHelp && !opts.showVersion && !opts.showExamples && !opts.mcpMode && opts.directory.empty())
         return std::unexpected("No directory specified");
 
     return opts;
@@ -703,6 +739,20 @@ int main(int argc, char* argv[])
     {
         PrintExamples();
         return 0;
+    }
+
+    if (opts.mcpMode)
+    {
+        mcp::AnalysisSession session;
+        mcpprotocol::McpServer server({
+            .name = "codedupdetector",
+            .version = versionString,
+            .title = "CodeDupDetector",
+            .description = "Code duplication detection and analysis tool",
+            .websiteUrl = {},
+        });
+        mcp::RegisterCodeDupTools(server, session);
+        return server.Run();
     }
 
     auto const diffMode = !opts.diffBase.empty();

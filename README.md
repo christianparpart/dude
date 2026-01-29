@@ -75,6 +75,72 @@ codedupdetector -v -e .cpp,.hpp /path/to/project/
 - `1`: Clones detected.
 - `2`: Error (invalid arguments, directory not found, etc.).
 
+## MCP Server Mode
+
+CodeDupDetector can run as a [Model Context Protocol](https://modelcontextprotocol.io/) (MCP)
+server, enabling AI coding assistants to analyze code duplication interactively.
+
+### Starting the MCP Server
+
+```bash
+codedupdetector --mcp
+```
+
+This starts a JSON-RPC 2.0 server on stdio. The server exposes tools for
+analyzing directories, querying clone groups, reading source code of duplicated
+blocks, and generating reports.
+
+### Available MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `analyze_directory` | Scan a directory and detect code duplicates |
+| `get_clone_groups` | Retrieve detected clone groups with pagination |
+| `get_code_block` | Read source code of a specific code block |
+| `query_file_duplicates` | Find all duplicates involving a specific file |
+| `get_summary` | Get a summary report (text or JSON) |
+| `configure_analysis` | Update detection parameters and re-analyze |
+
+### Claude Code Integration
+
+Add the server to your project configuration (`.mcp.json` in project root):
+
+```json
+{
+  "mcpServers": {
+    "codedupdetector": {
+      "type": "stdio",
+      "command": "/path/to/codedupdetector",
+      "args": ["--mcp"]
+    }
+  }
+}
+```
+
+Or add it via the CLI:
+
+```bash
+claude mcp add codedupdetector -- /path/to/codedupdetector --mcp
+```
+
+### Gemini CLI / Antigravity IDE Integration
+
+Edit `~/.gemini/settings.json` or the MCP config (open via **Manage MCP Servers** →
+**View raw config**):
+
+```json
+{
+  "mcpServers": {
+    "codedupdetector": {
+      "command": "/path/to/codedupdetector",
+      "args": ["--mcp"]
+    }
+  }
+}
+```
+
+Restart the IDE for changes to take effect.
+
 ## Algorithm
 
 ### Pipeline
@@ -108,7 +174,7 @@ CodeDupDetector/
 ├── CMakePresets.json        # Build presets
 ├── cmake/                   # CMake modules
 ├── src/
-│   ├── codedup/             # Static library (libcodedup)
+│   ├── codedup/             # Static library (libcodedup) — analysis engine
 │   │   ├── Api.hpp                        # DLL export macro
 │   │   ├── SourceLocation.hpp             # Source location and range types
 │   │   ├── Token.hpp/cpp                  # Token types and helpers
@@ -121,9 +187,16 @@ CodeDupDetector/
 │   │   ├── FileScanner.hpp/cpp            # Directory scanning
 │   │   ├── SyntaxHighlighter.hpp          # ANSI color output
 │   │   └── Reporter.hpp/cpp              # Result formatting
+│   ├── mcpprotocol/         # Static library (libmcpprotocol) — JSON-RPC 2.0 + MCP spec
+│   │   ├── JsonRpc.hpp/cpp                # JSON-RPC 2.0 parsing/serialization
+│   │   ├── McpProtocol.hpp/cpp            # MCP protocol helpers and constants
+│   │   └── McpServer.hpp/cpp              # MCP server state machine and stdio loop
+│   ├── mcp/                 # Static library (libmcp) — MCP tools and analysis session
+│   │   ├── AnalysisSession.hpp/cpp        # Cached analysis pipeline for MCP access
+│   │   └── McpTooling.hpp/cpp             # Tool and prompt registration
 │   ├── cli/                 # CLI executable
 │   │   └── main.cpp
-│   └── tests/               # Catch2 unit tests (63 tests)
+│   └── tests/               # Catch2 unit tests
 └── .clang-format
 ```
 

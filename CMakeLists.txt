@@ -36,7 +36,16 @@ if(NOT EXISTS ${CPM_DOWNLOAD_LOCATION})
 endif()
 include(${CPM_DOWNLOAD_LOCATION})
 
+CPMAddPackage(
+    NAME nlohmann_json
+    GITHUB_REPOSITORY nlohmann/json
+    VERSION 3.11.3
+    OPTIONS "JSON_BuildTests OFF" "JSON_Install OFF"
+)
+
 add_subdirectory(src/codedup)
+add_subdirectory(src/mcpprotocol)
+add_subdirectory(src/mcp)
 add_subdirectory(src/cli)
 
 enable_testing()

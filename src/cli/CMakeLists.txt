@@ -3,7 +3,7 @@ add_executable(codedupdetector
     GitFileFilter.cpp
     main.cpp
 )
-target_link_libraries(codedupdetector PRIVATE codedup)
+target_link_libraries(codedupdetector PRIVATE codedup mcp)
 
 set_pedantic_compiler_warnings(codedupdetector)
 enable_sanitizers(codedupdetector)
