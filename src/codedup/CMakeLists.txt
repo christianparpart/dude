@@ -16,6 +16,7 @@ add_library(codedup STATIC
     JsonReporter.cpp
     ReporterFactory.cpp
     ScopeFilter.cpp
+    HelpFormatter.cpp
 )
 
 target_include_directories(codedup PUBLIC
