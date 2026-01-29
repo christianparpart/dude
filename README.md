@@ -34,7 +34,11 @@ and supports interactive use via the [Model Context Protocol](https://modelconte
 
 - C++23 compatible compiler (Clang 17+ or GCC 13+)
 - CMake 3.25+
-- Catch2 v3 (fetched automatically via CPM if not installed)
+- Catch2 v3 (fetched automatically via CPM)
+- `nlohman-json` (fetched automatically via CPM)
+- `unordered_dense` (fetched automatically via CPM)
+- `NVIDIA/stdexec` (fetched automatically via CPM)
+- Git (for gitignore support)
 
 ### Build Commands
 
