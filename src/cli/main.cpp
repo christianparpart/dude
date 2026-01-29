@@ -17,6 +17,7 @@
 #include <codedup/Language.hpp>
 #include <codedup/LanguageRegistry.hpp>
 #include <codedup/Reporter.hpp>
+#include <codedup/ReporterFactory.hpp>
 #include <codedup/ScopeFilter.hpp>
 #include <codedup/Token.hpp>
 #include <codedup/TokenNormalizer.hpp>
@@ -26,6 +27,7 @@
 #include <cstdlib>
 #include <expected>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <optional>
 #include <print>
@@ -61,6 +63,7 @@ struct CliOptions
     bool showExamples = false;                                      ///< Show usage examples.
     bool mcpMode = false;                                           ///< Run as MCP server.
     std::string diffBase;                                           ///< Git ref to diff against (enables diff mode).
+    std::string reporterSpec; ///< Reporter spec (e.g. "console", "json", "json:file=out.json").
 };
 
 void PrintUsage(FILE* out)
@@ -81,6 +84,7 @@ void PrintUsage(FILE* out)
                       "  -s, --scope <scopes>        Comma-separated analysis scopes (default: all)\n"
                       "                              Valid: inter-file, intra-file, inter-function,\n"
                       "                                     intra-function, all\n"
+                      "  --reporter <spec>           Output reporter: console (default), json, json:file=<path>\n"
                       "  --gitignore                 Respect .gitignore when scanning (default)\n"
                       "  --no-gitignore              Include gitignored files in analysis\n"
                       "  -v, --verbose               Show progress during scanning\n"
@@ -413,6 +417,14 @@ auto ProcessArg(int argc, char* argv[], int& i, CliOptions& opts)
                 [&](codedup::InputEncoding v) -> CliOptions
                 {
                     opts.encoding = v;
+                    return opts;
+                });
+    if (arg == "--reporter")
+        return ParseStringOption(argc, argv, i, "--reporter")
+            .transform(
+                [&](std::string v) -> CliOptions
+                {
+                    opts.reporterSpec = std::move(v);
                     return opts;
                 });
     if (arg == "--gitignore")
@@ -859,17 +871,26 @@ int main(int argc, char* argv[])
     }
 
     // Step 5: Report results
-    codedup::Reporter reporter({
+    codedup::ReporterConfig const consoleConfig{
         .useColor = opts.useColor,
         .showSourceCode = opts.showSource,
         .theme = opts.theme,
-    });
+    };
 
-    std::string output;
-    reporter.Report(output, groups, allBlocks, allTokens, blockToFileIndex);
+    auto reporterResult = codedup::CreateReporter(opts.reporterSpec, consoleConfig);
+    if (!reporterResult)
+    {
+        std::println(stderr, "Error: {}", reporterResult.error().message);
+        return 2;
+    }
+    auto const& reporter = *reporterResult;
+
+    auto const specResult = codedup::ParseReporterSpec(opts.reporterSpec);
+
+    reporter->Report(groups, allBlocks, allTokens, blockToFileIndex);
 
     if (!intraResults.empty())
-        reporter.ReportIntraClones(output, intraResults, allBlocks, allTokens, blockToFileIndex);
+        reporter->ReportIntraClones(intraResults, allBlocks, allTokens, blockToFileIndex);
 
     size_t totalIntraPairs = 0;
     for (auto const& r : intraResults)
@@ -889,19 +910,33 @@ int main(int argc, char* argv[])
 
     auto const totalIntraFunctions = intraResults.size();
 
-    reporter.ReportSummary(output, {
-                                       .totalFiles = files.size(),
-                                       .totalBlocks = allBlocks.size(),
-                                       .totalGroups = groups.size(),
-                                       .totalIntraPairs = totalIntraPairs,
-                                       .totalDuplicatedLines = totalDuplicatedLines,
-                                       .totalFunctions = totalFunctions,
-                                       .totalIntraFunctions = totalIntraFunctions,
-                                       .timing = timing,
-                                       .activeScope = opts.scope,
-                                   });
+    reporter->ReportSummary({
+        .totalFiles = files.size(),
+        .totalBlocks = allBlocks.size(),
+        .totalGroups = groups.size(),
+        .totalIntraPairs = totalIntraPairs,
+        .totalDuplicatedLines = totalDuplicatedLines,
+        .totalFunctions = totalFunctions,
+        .totalIntraFunctions = totalIntraFunctions,
+        .timing = timing,
+        .activeScope = opts.scope,
+    });
 
-    std::cout << output;
+    // Write output to file or stdout
+    if (specResult && specResult->outputPath)
+    {
+        std::ofstream file(*specResult->outputPath);
+        if (!file)
+        {
+            std::println(stderr, "Error: Cannot open output file: {}", *specResult->outputPath);
+            return 2;
+        }
+        reporter->WriteTo(file);
+    }
+    else
+    {
+        reporter->WriteTo(std::cout);
+    }
 
     // Exit code: 0 if no clones, 1 if clones found
     return (groups.empty() && intraResults.empty()) ? 0 : 1;

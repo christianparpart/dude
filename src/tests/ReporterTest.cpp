@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <codedup/ConsoleReporter.hpp>
 #include <codedup/IntraFunctionDetector.hpp>
-#include <codedup/Reporter.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -10,10 +10,10 @@ using namespace codedup;
 
 TEST_CASE("Reporter.SummaryNoColor", "[reporter]")
 {
-    Reporter reporter({.useColor = false});
-    std::string out;
-    reporter.ReportSummary(out, {.totalFiles = 10, .totalBlocks = 50, .totalGroups = 3});
+    ConsoleReporter reporter({.useColor = false});
+    reporter.ReportSummary({.totalFiles = 10, .totalBlocks = 50, .totalGroups = 3});
 
+    auto const out = reporter.Render();
     CHECK(out.contains("10 files"));
     CHECK(out.contains("50 blocks"));
     CHECK(out.contains("3 clone groups"));
@@ -21,25 +21,25 @@ TEST_CASE("Reporter.SummaryNoColor", "[reporter]")
 
 TEST_CASE("Reporter.SummaryWithColor", "[reporter]")
 {
-    Reporter reporter({.useColor = true});
-    std::string out;
-    reporter.ReportSummary(out, {.totalFiles = 5, .totalBlocks = 20, .totalGroups = 1});
+    ConsoleReporter reporter({.useColor = true});
+    reporter.ReportSummary({.totalFiles = 5, .totalBlocks = 20, .totalGroups = 1});
 
+    auto const out = reporter.Render();
     CHECK(out.contains("\033[")); // Contains ANSI escape
     CHECK(out.contains("5 files"));
 }
 
 TEST_CASE("Reporter.EmptyGroups", "[reporter]")
 {
-    Reporter reporter({.useColor = false});
-    std::string out;
+    ConsoleReporter reporter({.useColor = false});
 
     std::vector<CloneGroup> groups;
     std::vector<CodeBlock> blocks;
     std::vector<std::vector<Token>> allTokens;
     std::vector<size_t> blockToFile;
 
-    reporter.Report(out, groups, blocks, allTokens, blockToFile);
+    reporter.Report(groups, blocks, allTokens, blockToFile);
+    auto const out = reporter.Render();
     CHECK(out.empty());
 }
 
@@ -49,7 +49,7 @@ TEST_CASE("Reporter.IndentationPreservation", "[reporter]")
     //     if (x > 0) {
     //         return;
     //     }
-    Reporter reporter({.useColor = false, .showSourceCode = true});
+    ConsoleReporter reporter({.useColor = false, .showSourceCode = true});
 
     std::vector<Token> tokens = {
         {TokenType::If, "if", {.filePath = "test.cpp", .line = 1, .column = 5}},
@@ -82,8 +82,8 @@ TEST_CASE("Reporter.IndentationPreservation", "[reporter]")
     std::vector<std::vector<Token>> allTokens = {tokens};
     std::vector<size_t> blockToFile = {0, 0};
 
-    std::string out;
-    reporter.Report(out, {group}, {block, block2}, allTokens, blockToFile);
+    reporter.Report({group}, {block, block2}, allTokens, blockToFile);
+    auto const out = reporter.Render();
 
     // Line 1 should have 4 leading spaces for indentation (column 5 means 4 spaces before "if")
     CHECK(out.contains("| " + std::string(4, ' ') + "if"));
@@ -97,7 +97,7 @@ TEST_CASE("Reporter.InterTokenSpacingPreservation", "[reporter]")
 {
     // Simulate tokens for: a  +  b  (extra spaces around +)
     // a at column 1, + at column 4, b at column 7
-    Reporter reporter({.useColor = false, .showSourceCode = true});
+    ConsoleReporter reporter({.useColor = false, .showSourceCode = true});
 
     std::vector<Token> tokens = {
         {TokenType::Identifier, "a", {.filePath = "test.cpp", .line = 1, .column = 1}},
@@ -123,8 +123,8 @@ TEST_CASE("Reporter.InterTokenSpacingPreservation", "[reporter]")
     std::vector<std::vector<Token>> allTokens = {tokens};
     std::vector<size_t> blockToFile = {0, 0};
 
-    std::string out;
-    reporter.Report(out, {group}, {block, block2}, allTokens, blockToFile);
+    reporter.Report({group}, {block, block2}, allTokens, blockToFile);
+    auto const out = reporter.Render();
 
     // Should preserve "a  +  b" spacing (2 spaces before +, 2 spaces before b), not "a + b"
     CHECK(out.contains("a  +  b"));
@@ -132,8 +132,7 @@ TEST_CASE("Reporter.InterTokenSpacingPreservation", "[reporter]")
 
 TEST_CASE("Reporter.NoSourceOutput", "[reporter]")
 {
-    Reporter reporter({.useColor = false, .showSourceCode = false});
-    std::string out;
+    ConsoleReporter reporter({.useColor = false, .showSourceCode = false});
 
     CodeBlock block;
     block.name = "testFunc";
@@ -154,7 +153,8 @@ TEST_CASE("Reporter.NoSourceOutput", "[reporter]")
     std::vector<std::vector<Token>> allTokens;
     std::vector<size_t> blockToFile;
 
-    reporter.Report(out, {group}, {block, block2}, allTokens, blockToFile);
+    reporter.Report({group}, {block, block2}, allTokens, blockToFile);
+    auto const out = reporter.Render();
 
     CHECK(out.contains("Clone Group #1"));
     CHECK(out.contains("testFunc"));
@@ -163,8 +163,7 @@ TEST_CASE("Reporter.NoSourceOutput", "[reporter]")
 
 TEST_CASE("Reporter.SummaryWithTiming", "[reporter]")
 {
-    Reporter reporter({.useColor = false});
-    std::string out;
+    ConsoleReporter reporter({.useColor = false});
 
     PerformanceTiming timing;
     timing.scanning = std::chrono::milliseconds(15);
@@ -174,8 +173,9 @@ TEST_CASE("Reporter.SummaryWithTiming", "[reporter]")
     timing.intraDetection = std::chrono::milliseconds(230);
 
     reporter.ReportSummary(
-        out, {.totalFiles = 100, .totalBlocks = 500, .totalGroups = 12, .totalIntraPairs = 5, .timing = timing});
+        {.totalFiles = 100, .totalBlocks = 500, .totalGroups = 12, .totalIntraPairs = 5, .timing = timing});
 
+    auto const out = reporter.Render();
     CHECK(out.contains("100 files"));
     CHECK(out.contains("500 blocks"));
     CHECK(out.contains("12 clone groups"));
@@ -190,10 +190,10 @@ TEST_CASE("Reporter.SummaryWithTiming", "[reporter]")
 
 TEST_CASE("Reporter.SummaryWithoutTiming", "[reporter]")
 {
-    Reporter reporter({.useColor = false});
-    std::string out;
-    reporter.ReportSummary(out, {.totalFiles = 10, .totalBlocks = 50, .totalGroups = 3});
+    ConsoleReporter reporter({.useColor = false});
+    reporter.ReportSummary({.totalFiles = 10, .totalBlocks = 50, .totalGroups = 3});
 
+    auto const out = reporter.Render();
     CHECK(out.contains("10 files"));
     // No timing line should appear
     CHECK(!out.contains("Timing:"));
@@ -203,16 +203,16 @@ TEST_CASE("Reporter.SummaryWithoutTiming", "[reporter]")
 
 TEST_CASE("Reporter.SummaryDuplications", "[reporter]")
 {
-    Reporter reporter({.useColor = false});
-    std::string out;
-    reporter.ReportSummary(out, {.totalFiles = 10,
-                                 .totalBlocks = 50,
-                                 .totalGroups = 3,
-                                 .totalIntraPairs = 2,
-                                 .totalDuplicatedLines = 120,
-                                 .totalFunctions = 6,
-                                 .totalIntraFunctions = 2});
+    ConsoleReporter reporter({.useColor = false});
+    reporter.ReportSummary({.totalFiles = 10,
+                            .totalBlocks = 50,
+                            .totalGroups = 3,
+                            .totalIntraPairs = 2,
+                            .totalDuplicatedLines = 120,
+                            .totalFunctions = 6,
+                            .totalIntraFunctions = 2});
 
+    auto const out = reporter.Render();
     CHECK(out.contains("Duplications:"));
     CHECK(out.contains("120 duplicated lines"));
     CHECK(out.contains("6 functions in clone groups"));
@@ -221,11 +221,11 @@ TEST_CASE("Reporter.SummaryDuplications", "[reporter]")
 
 TEST_CASE("Reporter.SummaryDuplicationsNoIntra", "[reporter]")
 {
-    Reporter reporter({.useColor = false});
-    std::string out;
+    ConsoleReporter reporter({.useColor = false});
     reporter.ReportSummary(
-        out, {.totalFiles = 10, .totalBlocks = 50, .totalGroups = 3, .totalDuplicatedLines = 80, .totalFunctions = 4});
+        {.totalFiles = 10, .totalBlocks = 50, .totalGroups = 3, .totalDuplicatedLines = 80, .totalFunctions = 4});
 
+    auto const out = reporter.Render();
     CHECK(out.contains("Duplications:"));
     CHECK(out.contains("80 duplicated lines"));
     CHECK(out.contains("4 functions in clone groups"));
@@ -240,7 +240,7 @@ TEST_CASE("Reporter.SummaryDuplicationsNoIntra", "[reporter]")
 TEST_CASE("Reporter.DiffHighlighting.ColoredOutput", "[reporter][highlight]")
 {
     // Two blocks with one differing token: different identifiers at position 2
-    Reporter reporter(
+    ConsoleReporter reporter(
         {.useColor = true, .showSourceCode = true, .highlightDifferences = true, .theme = ColorTheme::Dark});
 
     // Block A: "int foo = 0;"  -> tokens: int, foo, =, 0, ;
@@ -287,8 +287,8 @@ TEST_CASE("Reporter.DiffHighlighting.ColoredOutput", "[reporter][highlight]")
     std::vector<std::vector<Token>> allTokens = {tokensA, tokensB};
     std::vector<size_t> blockToFile = {0, 1};
 
-    std::string out;
-    reporter.Report(out, {group}, {blockA, blockB}, allTokens, blockToFile);
+    reporter.Report({group}, {blockA, blockB}, allTokens, blockToFile);
+    auto const out = reporter.Render();
 
     // Background highlight ANSI code should appear (48;2; is background truecolor)
     CHECK(out.contains("\033[48;2;"));
@@ -297,7 +297,7 @@ TEST_CASE("Reporter.DiffHighlighting.ColoredOutput", "[reporter][highlight]")
 TEST_CASE("Reporter.DiffHighlighting.NoColorDisablesHighlight", "[reporter][highlight]")
 {
     // With useColor = false, no ANSI codes at all
-    Reporter reporter({.useColor = false, .showSourceCode = true, .highlightDifferences = true});
+    ConsoleReporter reporter({.useColor = false, .showSourceCode = true, .highlightDifferences = true});
 
     std::vector<Token> tokensA = {
         {TokenType::Int, "int", {.filePath = "a.cpp", .line = 1, .column = 1}},
@@ -334,8 +334,8 @@ TEST_CASE("Reporter.DiffHighlighting.NoColorDisablesHighlight", "[reporter][high
     std::vector<std::vector<Token>> allTokens = {tokensA, tokensB};
     std::vector<size_t> blockToFile = {0, 1};
 
-    std::string out;
-    reporter.Report(out, {group}, {blockA, blockB}, allTokens, blockToFile);
+    reporter.Report({group}, {blockA, blockB}, allTokens, blockToFile);
+    auto const out = reporter.Render();
 
     // No ANSI codes at all
     CHECK(!out.contains("\033["));
@@ -344,7 +344,7 @@ TEST_CASE("Reporter.DiffHighlighting.NoColorDisablesHighlight", "[reporter][high
 TEST_CASE("Reporter.DiffHighlighting.DisabledHighlightDifferences", "[reporter][highlight]")
 {
     // With highlightDifferences = false and useColor = true, no background highlighting
-    Reporter reporter(
+    ConsoleReporter reporter(
         {.useColor = true, .showSourceCode = true, .highlightDifferences = false, .theme = ColorTheme::Dark});
 
     std::vector<Token> tokensA = {
@@ -382,8 +382,8 @@ TEST_CASE("Reporter.DiffHighlighting.DisabledHighlightDifferences", "[reporter][
     std::vector<std::vector<Token>> allTokens = {tokensA, tokensB};
     std::vector<size_t> blockToFile = {0, 1};
 
-    std::string out;
-    reporter.Report(out, {group}, {blockA, blockB}, allTokens, blockToFile);
+    reporter.Report({group}, {blockA, blockB}, allTokens, blockToFile);
+    auto const out = reporter.Render();
 
     // Should have foreground ANSI codes (38;2;) but no background codes (48;2;)
     CHECK(out.contains("\033[38;2;"));
@@ -419,7 +419,7 @@ TEST_CASE("Reporter.IntraCloneRegionLines.WithComments", "[reporter][intra]")
     //
     // Without the fix, block.tokenStart + region.start would use wrong original indices.
 
-    Reporter reporter({.useColor = false, .showSourceCode = false});
+    ConsoleReporter reporter({.useColor = false, .showSourceCode = false});
 
     std::vector<Token> tokens = {
         {TokenType::Int, "int", {.filePath = "test.cpp", .line = 1, .column = 1}},
@@ -460,8 +460,8 @@ TEST_CASE("Reporter.IntraCloneRegionLines.WithComments", "[reporter][intra]")
     std::vector<std::vector<Token>> allTokens = {tokens};
     std::vector<size_t> blockToFile = {0};
 
-    std::string out;
-    reporter.ReportIntraClones(out, {result}, {block}, allTokens, blockToFile);
+    reporter.ReportIntraClones({result}, {block}, allTokens, blockToFile);
+    auto const out = reporter.Render();
 
     // Region A should span lines 1-2 (original tokens 0 and 5)
     CHECK(out.contains("Region A: lines 1-2"));
@@ -485,7 +485,7 @@ TEST_CASE("Reporter.IntraCloneHighlighting.WithComments", "[reporter][intra][hig
     // Without the fix, the highlights would use wrong original token indices because
     // the old code added block.tokenStart + region.start (mixing coordinate spaces).
 
-    Reporter reporter(
+    ConsoleReporter reporter(
         {.useColor = true, .showSourceCode = true, .highlightDifferences = true, .theme = ColorTheme::Dark});
 
     std::vector<Token> tokens = {
@@ -528,8 +528,8 @@ TEST_CASE("Reporter.IntraCloneHighlighting.WithComments", "[reporter][intra][hig
     std::vector<std::vector<Token>> allTokens = {tokens};
     std::vector<size_t> blockToFile = {0};
 
-    std::string out;
-    reporter.ReportIntraClones(out, {result}, {block}, allTokens, blockToFile);
+    reporter.ReportIntraClones({result}, {block}, allTokens, blockToFile);
+    auto const out = reporter.Render();
 
     // With highlighting enabled, background highlight ANSI code should appear for differing tokens.
     // The differing tokens are "a" (original idx 2), "1" (original idx 4),

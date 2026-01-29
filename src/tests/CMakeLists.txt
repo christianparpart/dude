@@ -25,6 +25,8 @@ add_executable(CodeDupTest
     IntraFunctionDetectorTest.cpp
     FileScannerTest.cpp
     ReporterTest.cpp
+    JsonReporterTest.cpp
+    ReporterFactoryTest.cpp
     ScopeFilterTest.cpp
     IntegrationTest.cpp
     LanguageRegistryTest.cpp

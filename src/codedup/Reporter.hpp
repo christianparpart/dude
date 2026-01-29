@@ -12,8 +12,8 @@
 #include <chrono>
 #include <cstddef>
 #include <optional>
+#include <ostream>
 #include <string>
-#include <unordered_set>
 #include <vector>
 
 namespace codedup
@@ -60,47 +60,50 @@ struct ReporterConfig
     ColorTheme theme = ColorTheme::Auto; ///< Color theme to use.
 };
 
-/// @brief Formats and outputs clone detection results.
+/// @brief Abstract interface for formatting and outputting clone detection results.
 ///
-/// For each clone group, prints a header with group number, block count, and
-/// average similarity, followed by details for each block including file path,
-/// line range, function name, and optionally syntax-highlighted source code.
+/// Each reporter implementation accumulates output internally and provides
+/// Render() and WriteTo() for retrieving the final result.
+/// Concrete implementations include ConsoleReporter (human-readable text)
+/// and JsonReporter (structured JSON output).
 class CODEDUP_API Reporter
 {
 public:
-    explicit Reporter(ReporterConfig config = {}) : _config(config) {}
+    virtual ~Reporter() = default;
+    Reporter() = default;
+    Reporter(Reporter const&) = delete;
+    Reporter(Reporter&&) = delete;
+    auto operator=(Reporter const&) -> Reporter& = delete;
+    auto operator=(Reporter&&) -> Reporter& = delete;
 
     /// @brief Reports clone groups with details for each block.
-    /// @param out Output string to append to.
     /// @param groups The clone groups to report.
     /// @param blocks The code blocks referenced by the groups.
     /// @param allTokens All tokens from all files (indexed by block's token range).
     /// @param blockToFileIndex Mapping from block index to file index in allTokens.
-    void Report(std::string& out, std::vector<CloneGroup> const& groups, std::vector<CodeBlock> const& blocks,
-                std::vector<std::vector<Token>> const& allTokens, std::vector<size_t> const& blockToFileIndex) const;
+    virtual void Report(std::vector<CloneGroup> const& groups, std::vector<CodeBlock> const& blocks,
+                        std::vector<std::vector<Token>> const& allTokens,
+                        std::vector<size_t> const& blockToFileIndex) = 0;
 
     /// @brief Reports intra-function clone results.
-    /// @param out Output string to append to.
     /// @param results The intra-function clone results to report.
     /// @param blocks The code blocks referenced by the results.
     /// @param allTokens All tokens from all files (indexed by block's token range).
     /// @param blockToFileIndex Mapping from block index to file index in allTokens.
-    void ReportIntraClones(std::string& out, std::vector<IntraCloneResult> const& results,
-                           std::vector<CodeBlock> const& blocks, std::vector<std::vector<Token>> const& allTokens,
-                           std::vector<size_t> const& blockToFileIndex) const;
+    virtual void ReportIntraClones(std::vector<IntraCloneResult> const& results, std::vector<CodeBlock> const& blocks,
+                                   std::vector<std::vector<Token>> const& allTokens,
+                                   std::vector<size_t> const& blockToFileIndex) = 0;
 
     /// @brief Appends a summary of the scan results, optionally including performance timing.
-    /// @param out Output string to append to.
     /// @param summary The summary data to report.
-    void ReportSummary(std::string& out, SummaryData const& summary) const;
+    virtual void ReportSummary(SummaryData const& summary) = 0;
 
-private:
-    ReporterConfig _config;
+    /// @brief Returns the accumulated output as a string.
+    [[nodiscard]] virtual auto Render() const -> std::string = 0;
 
-    /// @brief Appends a syntax-highlighted source snippet for a code block.
-    /// @param highlightTokens Optional set of original token indices to background-highlight as differing.
-    void PrintSourceSnippet(std::string& out, std::vector<Token> const& tokens, size_t tokenStart, size_t tokenEnd,
-                            std::unordered_set<size_t> const& highlightTokens = {}) const;
+    /// @brief Writes the accumulated output to the given stream.
+    /// @param out The output stream to write to.
+    virtual void WriteTo(std::ostream& out) const = 0;
 };
 
 } // namespace codedup

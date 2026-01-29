@@ -12,7 +12,9 @@ add_library(codedup STATIC
     CloneDetector.cpp
     IntraFunctionDetector.cpp
     FileScanner.cpp
-    Reporter.cpp
+    ConsoleReporter.cpp
+    JsonReporter.cpp
+    ReporterFactory.cpp
     ScopeFilter.cpp
 )
 
@@ -21,7 +23,7 @@ target_include_directories(codedup PUBLIC
     $<INSTALL_INTERFACE:include>
 )
 
-target_link_libraries(codedup PUBLIC Threads::Threads)
+target_link_libraries(codedup PUBLIC Threads::Threads nlohmann_json::nlohmann_json)
 
 set_target_properties(codedup PROPERTIES
     CXX_VISIBILITY_PRESET hidden

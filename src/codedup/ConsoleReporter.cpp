@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <codedup/AnalysisScope.hpp>
 #include <codedup/CloneDetector.hpp>
-#include <codedup/Reporter.hpp>
+#include <codedup/ConsoleReporter.hpp>
 
 #include <format>
 #include <iterator>
@@ -224,7 +224,7 @@ auto ComputeIntraHighlights(IntraClonePair const& pair, CodeBlock const& block, 
 /// @param normToOrig Mapping from normalized-ID position to original token index for the full block.
 /// @param highlights Set of original token indices to background-highlight.
 /// @param config Reporter configuration for color and source display settings.
-/// @param printSnippet Callback to print a source snippet (the Reporter's PrintSourceSnippet member).
+/// @param printSnippet Callback to print a source snippet (the ConsoleReporter's PrintSourceSnippet member).
 void ReportIntraRegion(std::string& out, std::string_view label, IntraCloneRegion const& region,
                        std::vector<Token> const& tokens, std::vector<size_t> const& normToOrig,
                        std::unordered_set<size_t> const& highlights, ReporterConfig const& config,
@@ -268,22 +268,22 @@ void ReportIntraRegion(std::string& out, std::string_view label, IntraCloneRegio
 
 } // namespace
 
-void Reporter::Report(std::string& out, std::vector<CloneGroup> const& groups, std::vector<CodeBlock> const& blocks,
-                      std::vector<std::vector<Token>> const& allTokens,
-                      std::vector<size_t> const& blockToFileIndex) const
+void ConsoleReporter::Report(std::vector<CloneGroup> const& groups, std::vector<CodeBlock> const& blocks,
+                             std::vector<std::vector<Token>> const& allTokens,
+                             std::vector<size_t> const& blockToFileIndex)
 {
     for (auto const gi : std::views::iota(size_t{0}, groups.size()))
     {
         auto const& group = groups[gi];
 
-        ReportGroupHeader(out, gi, group, _config);
+        ReportGroupHeader(_output, gi, group, _config);
 
         for (auto const bi : std::views::iota(size_t{0}, group.blockIndices.size()))
         {
             auto const blockIdx = group.blockIndices[bi];
             auto const& block = blocks[blockIdx];
 
-            ReportBlockEntry(out, block, block.sourceRange, _config);
+            ReportBlockEntry(_output, block, block.sourceRange, _config);
 
             if (_config.showSourceCode && blockIdx < blockToFileIndex.size())
             {
@@ -292,21 +292,22 @@ void Reporter::Report(std::string& out, std::vector<CloneGroup> const& groups, s
                 {
                     auto const highlightTokens =
                         ComputeBlockHighlights(group, bi, blocks, allTokens, blockToFileIndex, _config);
-                    PrintSourceSnippet(out, allTokens[fileIdx], block.tokenStart, block.tokenEnd, highlightTokens);
-                    out += '\n';
+                    PrintSourceSnippet(_output, allTokens[fileIdx], block.tokenStart, block.tokenEnd, highlightTokens);
+                    _output += '\n';
                 }
             }
         }
 
-        out += '\n';
+        _output += '\n';
     }
 }
 
-void Reporter::ReportIntraClones(std::string& out, std::vector<IntraCloneResult> const& results,
-                                 std::vector<CodeBlock> const& blocks, std::vector<std::vector<Token>> const& allTokens,
-                                 std::vector<size_t> const& blockToFileIndex) const
+void ConsoleReporter::ReportIntraClones(std::vector<IntraCloneResult> const& results,
+                                        std::vector<CodeBlock> const& blocks,
+                                        std::vector<std::vector<Token>> const& allTokens,
+                                        std::vector<size_t> const& blockToFileIndex)
 {
-    auto inserter = std::back_inserter(out);
+    auto inserter = std::back_inserter(_output);
 
     auto const printSnippet = [this](std::string& snippetOut, std::vector<Token> const& tokens, size_t tokenStart,
                                      size_t tokenEnd, std::unordered_set<size_t> const& highlights)
@@ -319,13 +320,13 @@ void Reporter::ReportIntraClones(std::string& out, std::vector<IntraCloneResult>
 
         // Block header
         if (_config.useColor)
-            out += "\033[1;35m"; // Bold magenta
+            _output += "\033[1;35m"; // Bold magenta
         std::format_to(inserter, "Intra-function clones in {} [{}:{}-{}:{}] {} ({} pairs)",
                        range.start.filePath.string(), range.start.line, range.start.column, range.end.line,
                        range.end.column, block.name, result.pairs.size());
         if (_config.useColor)
-            out += ansiReset;
-        out += '\n';
+            _output += ansiReset;
+        _output += '\n';
 
         auto const fileIdx =
             result.blockIndex < blockToFileIndex.size() ? blockToFileIndex[result.blockIndex] : size_t{0};
@@ -338,11 +339,11 @@ void Reporter::ReportIntraClones(std::string& out, std::vector<IntraCloneResult>
             auto const& pair = result.pairs[pi];
 
             if (_config.useColor)
-                out += "\033[1;33m"; // Bold yellow
+                _output += "\033[1;33m"; // Bold yellow
             std::format_to(inserter, "  Pair #{} (similarity {:.0f}%):", pi + 1, pair.similarity * 100.0);
             if (_config.useColor)
-                out += ansiReset;
-            out += '\n';
+                _output += ansiReset;
+            _output += '\n';
 
             // Compute highlight sets for both intra-clone regions
             auto [highlightA, highlightB] = (_config.highlightDifferences && _config.useColor && hasTokens)
@@ -351,9 +352,9 @@ void Reporter::ReportIntraClones(std::string& out, std::vector<IntraCloneResult>
 
             if (hasTokens)
             {
-                ReportIntraRegion(out, "A", pair.regionA, allTokens[fileIdx], normToOrig, highlightA, _config,
+                ReportIntraRegion(_output, "A", pair.regionA, allTokens[fileIdx], normToOrig, highlightA, _config,
                                   printSnippet);
-                ReportIntraRegion(out, "B", pair.regionB, allTokens[fileIdx], normToOrig, highlightB, _config,
+                ReportIntraRegion(_output, "B", pair.regionB, allTokens[fileIdx], normToOrig, highlightB, _config,
                                   printSnippet);
             }
             else
@@ -365,7 +366,7 @@ void Reporter::ReportIntraClones(std::string& out, std::vector<IntraCloneResult>
             }
         }
 
-        out += '\n';
+        _output += '\n';
     }
 }
 
@@ -388,12 +389,12 @@ namespace
 
 } // namespace
 
-void Reporter::ReportSummary(std::string& out, SummaryData const& summary) const
+void ConsoleReporter::ReportSummary(SummaryData const& summary)
 {
-    auto inserter = std::back_inserter(out);
+    auto inserter = std::back_inserter(_output);
 
     if (_config.useColor)
-        out += "\033[1m"; // Bold
+        _output += "\033[1m"; // Bold
     if (summary.totalIntraPairs > 0)
         std::format_to(inserter,
                        "Summary: {} files scanned, {} blocks extracted, {} clone groups found, {} intra-function "
@@ -403,52 +404,52 @@ void Reporter::ReportSummary(std::string& out, SummaryData const& summary) const
         std::format_to(inserter, "Summary: {} files scanned, {} blocks extracted, {} clone groups found",
                        summary.totalFiles, summary.totalBlocks, summary.totalGroups);
     if (_config.useColor)
-        out += ansiReset;
-    out += '\n';
+        _output += ansiReset;
+    _output += '\n';
 
     if (summary.activeScope && *summary.activeScope != AnalysisScope::All)
     {
         if (_config.useColor)
-            out += "\033[1m"; // Bold
-        out += "Scope:";
+            _output += "\033[1m"; // Bold
+        _output += "Scope:";
         if (_config.useColor)
-            out += ansiReset;
+            _output += ansiReset;
         std::format_to(inserter, " {}\n", FormatAnalysisScope(*summary.activeScope));
     }
 
     if (summary.totalDuplicatedLines > 0 || summary.totalFunctions > 0 || summary.totalIntraFunctions > 0)
     {
         if (_config.useColor)
-            out += "\033[1m"; // Bold
-        out += "Duplications:";
+            _output += "\033[1m"; // Bold
+        _output += "Duplications:";
         if (_config.useColor)
-            out += ansiReset;
+            _output += ansiReset;
         std::format_to(inserter, " {} duplicated lines, {} functions in clone groups", summary.totalDuplicatedLines,
                        summary.totalFunctions);
         if (summary.totalIntraFunctions > 0)
             std::format_to(inserter, ", {} functions with internal clones", summary.totalIntraFunctions);
-        out += '\n';
+        _output += '\n';
     }
 
     if (summary.timing)
     {
         if (_config.useColor)
-            out += "\033[1m"; // Bold
-        out += "Timing:";
+            _output += "\033[1m"; // Bold
+        _output += "Timing:";
         if (_config.useColor)
-            out += ansiReset;
+            _output += ansiReset;
         std::format_to(inserter, " scanning {}, tokenizing {}, normalizing {}, clone detection {}",
                        FormatDuration(summary.timing->scanning), FormatDuration(summary.timing->tokenizing),
                        FormatDuration(summary.timing->normalizing), FormatDuration(summary.timing->cloneDetection));
         if (summary.timing->intraDetection > PerformanceTiming::Duration::zero())
             std::format_to(inserter, ", intra-function detection {}", FormatDuration(summary.timing->intraDetection));
         std::format_to(inserter, ", total {}", FormatDuration(summary.timing->Total()));
-        out += '\n';
+        _output += '\n';
     }
 }
 
-void Reporter::PrintSourceSnippet(std::string& out, std::vector<Token> const& tokens, size_t tokenStart,
-                                  size_t tokenEnd, std::unordered_set<size_t> const& highlightTokens) const
+void ConsoleReporter::PrintSourceSnippet(std::string& out, std::vector<Token> const& tokens, size_t tokenStart,
+                                         size_t tokenEnd, std::unordered_set<size_t> const& highlightTokens) const
 {
     // Reconstruct source lines from token positions, preserving original indentation and spacing
 
@@ -511,6 +512,16 @@ void Reporter::PrintSourceSnippet(std::string& out, std::vector<Token> const& to
 
     if (lineStarted)
         out += '\n';
+}
+
+auto ConsoleReporter::Render() const -> std::string
+{
+    return _output;
+}
+
+void ConsoleReporter::WriteTo(std::ostream& out) const
+{
+    out << _output;
 }
 
 } // namespace codedup
