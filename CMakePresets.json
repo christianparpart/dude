@@ -89,6 +89,17 @@
             }
         },
         {
+            "name": "linux-clang-tsan",
+            "inherits": "base",
+            "displayName": "Linux Clang ThreadSanitizer",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_C_COMPILER": "clang",
+                "CMAKE_CXX_COMPILER": "clang++",
+                "ENABLE_TSAN": "ON"
+            }
+        },
+        {
             "name": "linux-gcc-debug",
             "inherits": "base",
             "displayName": "Linux GCC Debug",
@@ -127,6 +138,14 @@
         {
             "name": "linux-clang-coverage",
             "configurePreset": "linux-clang-coverage"
+        },
+        {
+            "name": "linux-clang-asan",
+            "configurePreset": "linux-clang-asan"
+        },
+        {
+            "name": "linux-clang-tsan",
+            "configurePreset": "linux-clang-tsan"
         },
         {
             "name": "linux-gcc-debug",
@@ -179,6 +198,20 @@
         {
             "name": "linux-clang-coverage",
             "configurePreset": "linux-clang-coverage",
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "linux-clang-asan",
+            "configurePreset": "linux-clang-asan",
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "linux-clang-tsan",
+            "configurePreset": "linux-clang-tsan",
             "output": {
                 "outputOnFailure": true
             }
