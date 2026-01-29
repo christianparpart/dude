@@ -58,6 +58,14 @@
             }
         },
         {
+            "name": "linux-clang-release-static",
+            "inherits": "linux-clang-release",
+            "displayName": "Linux Clang Release (static)",
+            "cacheVariables": {
+                "ENABLE_STATIC_LINKING": "ON"
+            }
+        },
+        {
             "name": "linux-clang-coverage",
             "inherits": "base",
             "displayName": "Linux Clang Coverage",
@@ -113,6 +121,10 @@
             "configurePreset": "linux-clang-release-native"
         },
         {
+            "name": "linux-clang-release-static",
+            "configurePreset": "linux-clang-release-static"
+        },
+        {
             "name": "linux-clang-coverage",
             "configurePreset": "linux-clang-coverage"
         },
@@ -153,6 +165,13 @@
         {
             "name": "linux-clang-release-native",
             "configurePreset": "linux-clang-release-native",
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "linux-clang-release-static",
+            "configurePreset": "linux-clang-release-static",
             "output": {
                 "outputOnFailure": true
             }

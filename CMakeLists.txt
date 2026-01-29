@@ -18,6 +18,7 @@ include(cmake/PedanticCompiler.cmake)
 include(cmake/Sanitizers.cmake)
 include(cmake/Coverage.cmake)
 include(cmake/ClangTidy.cmake)
+include(cmake/StaticLinking.cmake)
 
 if(ENABLE_NATIVE_ARCH)
     add_compile_options(-march=native)
