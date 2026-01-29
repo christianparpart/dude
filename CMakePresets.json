@@ -27,11 +27,6 @@
             }
         },
         {
-            "name": "linux-clnag-debug",
-            "inherits": "linux-clang-debug",
-            "displayName": "Linux Clang Debug (alias)"
-        },
-        {
             "name": "linux-clang-release",
             "inherits": "base",
             "displayName": "Linux Clang Release",
@@ -40,11 +35,6 @@
                 "CMAKE_C_COMPILER": "clang",
                 "CMAKE_CXX_COMPILER": "clang++"
             }
-        },
-        {
-            "name": "linux-clnag-release",
-            "inherits": "linux-clang-release",
-            "displayName": "Linux Clang Release (alias)"
         },
         {
             "name": "linux-clang-release-native",
@@ -116,16 +106,8 @@
             "configurePreset": "linux-clang-debug"
         },
         {
-            "name": "linux-clnag-debug",
-            "configurePreset": "linux-clnag-debug"
-        },
-        {
             "name": "linux-clang-release",
             "configurePreset": "linux-clang-release"
-        },
-        {
-            "name": "linux-clnag-release",
-            "configurePreset": "linux-clnag-release"
         },
         {
             "name": "linux-clang-release-native",
@@ -161,22 +143,8 @@
             }
         },
         {
-            "name": "linux-clnag-debug",
-            "configurePreset": "linux-clnag-debug",
-            "output": {
-                "outputOnFailure": true
-            }
-        },
-        {
             "name": "linux-clang-release",
             "configurePreset": "linux-clang-release",
-            "output": {
-                "outputOnFailure": true
-            }
-        },
-        {
-            "name": "linux-clnag-release",
-            "configurePreset": "linux-clnag-release",
             "output": {
                 "outputOnFailure": true
             }
