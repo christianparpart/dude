@@ -6,7 +6,8 @@
 namespace codedup
 {
 
-auto FileScanner::Scan(std::filesystem::path const& directory, std::vector<std::string> const& extensions)
+auto FileScanner::Scan(std::filesystem::path const& directory, std::vector<std::string> const& extensions,
+                       std::optional<FileFilter> const& filter)
     -> std::expected<std::vector<std::filesystem::path>, FileScanError>
 {
     if (!std::filesystem::exists(directory))
@@ -31,16 +32,25 @@ auto FileScanner::Scan(std::filesystem::path const& directory, std::vector<std::
         // Case-insensitive extension comparison
         std::ranges::transform(ext, ext.begin(), [](unsigned char c) { return std::tolower(c); });
 
+        auto extensionMatched = false;
         for (auto const& allowedExt : extensions)
         {
             auto lowerAllowed = allowedExt;
             std::ranges::transform(lowerAllowed, lowerAllowed.begin(), [](unsigned char c) { return std::tolower(c); });
             if (ext == lowerAllowed)
             {
-                result.push_back(entry.path());
+                extensionMatched = true;
                 break;
             }
         }
+
+        if (!extensionMatched)
+            continue;
+
+        if (filter.has_value() && !(*filter)(entry.path()))
+            continue;
+
+        result.push_back(entry.path());
     }
 
     if (ec)

@@ -110,3 +110,31 @@ TEST_CASE("FileScanner.SortedResults", "[scanner]")
 
     CHECK(std::is_sorted(result->begin(), result->end()));
 }
+
+TEST_CASE("FileScanner.WithFilter", "[scanner]")
+{
+    TempDir dir;
+    dir.CreateFile("keep.cpp");
+    dir.CreateFile("skip.cpp");
+    dir.CreateFile("also_keep.cpp");
+
+    // Filter that rejects files containing "skip" in the filename.
+    auto const filter = codedup::FileFilter([](std::filesystem::path const& path)
+                                            { return !path.filename().string().contains("skip"); });
+
+    auto result = FileScanner::Scan(dir.Path(), FileScanner::DefaultExtensions(), filter);
+    REQUIRE(result.has_value());
+    CHECK(result->size() == 2);
+}
+
+TEST_CASE("FileScanner.WithNulloptFilter", "[scanner]")
+{
+    TempDir dir;
+    dir.CreateFile("a.cpp");
+    dir.CreateFile("b.cpp");
+
+    // Passing std::nullopt should include all files (same as no filter).
+    auto result = FileScanner::Scan(dir.Path(), FileScanner::DefaultExtensions(), std::nullopt);
+    REQUIRE(result.has_value());
+    CHECK(result->size() == 2);
+}

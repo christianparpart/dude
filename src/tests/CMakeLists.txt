@@ -15,6 +15,7 @@ add_executable(CodeDupTest
     DiffRangeTest.cpp
     DiffFilterTest.cpp
     GitDiffParserTest.cpp
+    GitFileFilterTest.cpp
     EncodingTest.cpp
     TokenizerTest.cpp
     TokenNormalizerTest.cpp
@@ -26,8 +27,11 @@ add_executable(CodeDupTest
     IntegrationTest.cpp
 )
 
-# GitDiffParser lives in src/cli/ — compile its source and expose its headers to the test.
-target_sources(CodeDupTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../cli/GitDiffParser.cpp)
+# GitDiffParser and GitFileFilter live in src/cli/ — compile their sources and expose headers to the test.
+target_sources(CodeDupTest PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../cli/GitDiffParser.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../cli/GitFileFilter.cpp
+)
 target_include_directories(CodeDupTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
 target_link_libraries(CodeDupTest PRIVATE

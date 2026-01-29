@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "GitDiffParser.hpp"
+#include "GitFileFilter.hpp"
 
 #include <codedup/CloneDetector.hpp>
 #include <codedup/CodeBlock.hpp>
@@ -46,6 +47,7 @@ struct CliOptions
     codedup::InputEncoding encoding = codedup::InputEncoding::Auto; ///< Input file encoding.
     bool verbose = false;                                           ///< Show progress.
     bool detectIntraClones = true;                                  ///< Detect intra-function clones.
+    bool respectGitignore = true;                                   ///< Respect .gitignore when scanning files.
     bool showHelp = false;                                          ///< Show help text.
     bool showVersion = false;                                       ///< Show version.
     std::string diffBase;                                           ///< Git ref to diff against (enables diff mode).
@@ -66,6 +68,8 @@ void PrintUsage(FILE* out)
                  "  --theme <dark|light|auto>   Color theme (default: auto)\n"
                  "  -e, --extensions <list>     Comma-separated extensions (default: .cpp,.cxx,.cc,.c,.h,.hpp,.hxx)\n"
                  "  --encoding <enc>            Input encoding: auto, utf8, windows-1252 (default: auto)\n"
+                 "  --gitignore                 Respect .gitignore when scanning (default)\n"
+                 "  --no-gitignore              Include gitignored files in analysis\n"
                  "  --intra                     Enable intra-function clone detection (default)\n"
                  "  --no-intra                  Disable intra-function clone detection\n"
                  "  -v, --verbose               Show progress during scanning\n"
@@ -273,6 +277,16 @@ auto ProcessArg(int argc, char* argv[], int& i, CliOptions& opts)
                     opts.encoding = v;
                     return opts;
                 });
+    if (arg == "--gitignore")
+    {
+        opts.respectGitignore = true;
+        return std::nullopt;
+    }
+    if (arg == "--no-gitignore")
+    {
+        opts.respectGitignore = false;
+        return std::nullopt;
+    }
     if (arg == "--intra")
     {
         opts.detectIntraClones = true;
@@ -393,7 +407,11 @@ auto ScanFiles(CliOptions const& opts, codedup::PerformanceTiming& timing)
     auto const scanStart = Clock::now();
     auto const& extensions = opts.extensions.empty() ? codedup::FileScanner::DefaultExtensions() : opts.extensions;
 
-    auto const filesResult = codedup::FileScanner::Scan(opts.directory, extensions);
+    // Build an optional gitignore-aware filter.
+    auto const gitFilter =
+        opts.respectGitignore ? cli::GitFileFilter::CreateFilter(opts.directory, opts.verbose) : std::nullopt;
+
+    auto const filesResult = codedup::FileScanner::Scan(opts.directory, extensions, gitFilter);
     timing.scanning = Clock::now() - scanStart;
     if (!filesResult)
     {

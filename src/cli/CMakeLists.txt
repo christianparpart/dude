@@ -1,5 +1,6 @@
 add_executable(codedupdetector
     GitDiffParser.cpp
+    GitFileFilter.cpp
     main.cpp
 )
 target_link_libraries(codedupdetector PRIVATE codedup)
