@@ -4,6 +4,9 @@ add_executable(codedupdetector
     main.cpp
 )
 target_link_libraries(codedupdetector PRIVATE codedup mcp)
+target_compile_definitions(codedupdetector PRIVATE
+    CODEDUPDETECTOR_VERSION="${CMAKE_PROJECT_VERSION}"
+)
 
 set_pedantic_compiler_warnings(codedupdetector)
 enable_sanitizers(codedupdetector)

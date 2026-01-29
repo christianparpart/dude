@@ -14,7 +14,7 @@ namespace
 /// @brief Helper to create a server with test info.
 auto MakeTestServer() -> McpServer
 {
-    return McpServer({.name = "test-server", .version = "0.1.0", .title = {}, .description = {}, .websiteUrl = {}});
+    return McpServer({.name = "test-server", .version = CODEDUPDETECTOR_VERSION, .title = {}, .description = {}, .websiteUrl = {}});
 }
 
 /// @brief Helper to send a request and get a response via HandleMessage.

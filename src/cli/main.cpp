@@ -57,7 +57,7 @@
 namespace
 {
 
-constexpr auto versionString = "0.1.0";
+constexpr auto versionString = CODEDUPDETECTOR_VERSION;
 
 /// @brief Parsed command-line arguments.
 struct CliOptions

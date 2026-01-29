@@ -55,6 +55,10 @@ target_link_libraries(CodeDupTest PRIVATE
     Catch2::Catch2WithMain
 )
 
+target_compile_definitions(CodeDupTest PRIVATE
+    CODEDUPDETECTOR_VERSION="${CMAKE_PROJECT_VERSION}"
+)
+
 set_pedantic_compiler_warnings(CodeDupTest)
 enable_sanitizers(CodeDupTest)
 enable_coverage(CodeDupTest)
