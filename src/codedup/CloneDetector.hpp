@@ -3,6 +3,7 @@
 
 #include <codedup/Api.hpp>
 #include <codedup/CodeBlock.hpp>
+#include <codedup/ProgressCallback.hpp>
 
 #include <cstddef>
 #include <span>
@@ -64,8 +65,10 @@ public:
 
     /// @brief Detects clone groups among the given code blocks.
     /// @param blocks The code blocks to analyze.
+    /// @param progressCallback Optional callback for reporting progress.
     /// @return A vector of clone groups, each containing block indices and similarity.
-    [[nodiscard]] auto Detect(std::vector<CodeBlock> const& blocks) -> std::vector<CloneGroup>;
+    [[nodiscard]] auto Detect(std::vector<CodeBlock> const& blocks, ProgressCallback const& progressCallback = {})
+        -> std::vector<CloneGroup>;
 
     /// @brief Computes LCS-based Dice coefficient similarity between two ID sequences.
     ///

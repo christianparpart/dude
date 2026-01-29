@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <bit>
 #include <numeric>
 #include <ranges>
@@ -85,7 +86,9 @@ struct CandidatePair
 
 } // namespace
 
-auto CloneDetector::Detect(std::vector<CodeBlock> const& blocks) -> std::vector<CloneGroup>
+// NOLINTNEXTLINE(readability-function-cognitive-complexity)
+auto CloneDetector::Detect(std::vector<CodeBlock> const& blocks, ProgressCallback const& progressCallback)
+    -> std::vector<CloneGroup>
 {
     if (blocks.size() < 2)
         return {};
@@ -144,6 +147,7 @@ auto CloneDetector::Detect(std::vector<CodeBlock> const& blocks) -> std::vector<
     auto const candidateCount = candidates.size();
 
     std::vector<std::vector<ClonePair>> perThreadResults(numThreads);
+    std::atomic<size_t> processedCount{0};
 
     auto const computeRange = [&](size_t threadIdx, size_t threadCount)
     {
@@ -167,6 +171,12 @@ auto CloneDetector::Detect(std::vector<CodeBlock> const& blocks) -> std::vector<
                     .blockB = candidate.blockB,
                     .similarity = similarity,
                 });
+            }
+
+            if (progressCallback)
+            {
+                auto const processed = processedCount.fetch_add(1, std::memory_order_relaxed) + 1;
+                progressCallback(processed, candidateCount);
             }
         }
     };

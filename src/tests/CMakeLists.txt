@@ -40,6 +40,7 @@ add_executable(CodeDupTest
     McpAnalysisSessionTest.cpp
     McpToolsTest.cpp
     HelpFormatterTest.cpp
+    ProgressBarTest.cpp
 )
 
 # GitDiffParser and GitFileFilter live in src/cli/ — compile their sources and expose headers to the test.

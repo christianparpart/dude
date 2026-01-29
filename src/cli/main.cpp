@@ -19,6 +19,7 @@
 #include <codedup/IntraFunctionDetector.hpp>
 #include <codedup/Language.hpp>
 #include <codedup/LanguageRegistry.hpp>
+#include <codedup/ProgressBar.hpp>
 #include <codedup/Reporter.hpp>
 #include <codedup/ReporterFactory.hpp>
 #include <codedup/ScopeFilter.hpp>
@@ -32,6 +33,7 @@
 #include <cstdlib>
 #include <expected>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <iostream>
 #include <optional>
@@ -678,7 +680,7 @@ auto ScanFiles(CliOptions const& opts, codedup::PerformanceTiming& timing)
 /// @param timing Performance timing struct to record tokenization duration.
 /// @return A pair of (token vectors, language pointers), one per file (in the same order as files).
 auto TokenizeFiles(std::vector<std::filesystem::path> const& files, CliOptions const& opts,
-                   codedup::PerformanceTiming& timing)
+                   codedup::PerformanceTiming& timing, codedup::ProgressBar* progressBar)
     -> std::pair<std::vector<std::vector<codedup::Token>>, std::vector<codedup::Language const*>>
 {
     using Clock = std::chrono::steady_clock;
@@ -712,6 +714,8 @@ auto TokenizeFiles(std::vector<std::filesystem::path> const& files, CliOptions c
                                                            language->TokenizeFile(files[fi], fileIndex, opts.encoding);
                                                        if (result)
                                                            allTokens[fi] = std::move(*result);
+                                                       if (progressBar)
+                                                           progressBar->Tick();
                                                    }));
         stdexec::sync_wait(work);
     }
@@ -721,12 +725,20 @@ auto TokenizeFiles(std::vector<std::filesystem::path> const& files, CliOptions c
     {
         for (size_t fi = 0; fi < numFiles; ++fi)
         {
+            auto const logMsg = [&](std::string const& msg)
+            {
+                if (progressBar && progressBar->IsActive())
+                    progressBar->Log(msg);
+                else
+                    std::println(stderr, "{}", msg);
+            };
+
             if (!fileLanguages[fi])
-                std::println(stderr, "Warning: No language support for {}", files[fi].string());
+                logMsg(std::format("Warning: No language support for {}", files[fi].string()));
             else if (allTokens[fi].empty())
-                std::println(stderr, "Warning: Failed to tokenize {}", files[fi].string());
+                logMsg(std::format("Warning: Failed to tokenize {}", files[fi].string()));
             else
-                std::println(stderr, "Tokenized ({}): {}", fileLanguages[fi]->Name(), files[fi].string());
+                logMsg(std::format("Tokenized ({}): {}", fileLanguages[fi]->Name(), files[fi].string()));
         }
     }
 
@@ -750,7 +762,7 @@ auto TokenizeFiles(std::vector<std::filesystem::path> const& files, CliOptions c
 auto ExtractBlocks(std::vector<std::vector<codedup::Token>> const& allTokens,
                    std::vector<codedup::Language const*> const& fileLanguages,
                    std::vector<std::filesystem::path> const& files, CliOptions const& opts,
-                   codedup::PerformanceTiming& timing)
+                   codedup::PerformanceTiming& timing, codedup::ProgressBar* progressBar)
     -> std::tuple<std::vector<codedup::CodeBlock>, std::vector<size_t>>
 {
     using Clock = std::chrono::steady_clock;
@@ -779,13 +791,22 @@ auto ExtractBlocks(std::vector<std::vector<codedup::Token>> const& allTokens,
         auto blocks = language->ExtractBlocks(allTokens[fi], normalized, textPreserving, config);
 
         if (opts.verbose && !blocks.empty())
-            std::println(stderr, "  {} blocks from {}", blocks.size(), files[fi].string());
+        {
+            auto const msg = std::format("  {} blocks from {}", blocks.size(), files[fi].string());
+            if (progressBar && progressBar->IsActive())
+                progressBar->Log(msg);
+            else
+                std::println(stderr, "{}", msg);
+        }
 
         for (auto& block : blocks)
         {
             blockToFileIndex.push_back(fi);
             allBlocks.push_back(std::move(block));
         }
+
+        if (progressBar)
+            progressBar->Tick();
     }
     timing.normalizing = Clock::now() - normalizeStart;
 
@@ -797,6 +818,7 @@ auto ExtractBlocks(std::vector<std::vector<codedup::Token>> const& allTokens,
 
 } // namespace
 
+// NOLINTNEXTLINE(readability-function-cognitive-complexity)
 int main(int argc, char* argv[])
 {
     auto const optsResult = ParseArgs(argc, argv);
@@ -864,10 +886,22 @@ int main(int argc, char* argv[])
     auto const& files = *filesResult;
 
     // Step 2: Tokenize all files (language-aware)
-    auto [allTokens, fileLanguages] = TokenizeFiles(files, opts, timing);
+    auto tokenBar = opts.verbose ? std::make_optional<codedup::ProgressBar>("Tokenizing", files.size()) : std::nullopt;
+    if (tokenBar)
+        tokenBar->Start();
+    auto [allTokens, fileLanguages] = TokenizeFiles(files, opts, timing, tokenBar ? &*tokenBar : nullptr);
+    if (tokenBar)
+        tokenBar->Finish();
 
     // Step 3: Normalize and extract blocks (language-aware)
-    auto [allBlocks, blockToFileIndex] = ExtractBlocks(allTokens, fileLanguages, files, opts, timing);
+    auto extractBar =
+        opts.verbose ? std::make_optional<codedup::ProgressBar>("Extracting", files.size()) : std::nullopt;
+    if (extractBar)
+        extractBar->Start();
+    auto [allBlocks, blockToFileIndex] =
+        ExtractBlocks(allTokens, fileLanguages, files, opts, timing, extractBar ? &*extractBar : nullptr);
+    if (extractBar)
+        extractBar->Finish();
 
     // Step 4: Detect clones
     using Clock = std::chrono::steady_clock;
@@ -882,7 +916,13 @@ int main(int argc, char* argv[])
             .textSensitivity = opts.textSensitivity,
         });
 
-        groups = detector.Detect(allBlocks);
+        auto detectBar = opts.verbose ? std::make_optional<codedup::ProgressBar>("Detecting", size_t{0}) : std::nullopt;
+        if (detectBar)
+            detectBar->Start();
+        groups =
+            detector.Detect(allBlocks, detectBar ? detectBar->MakeAbsoluteCallback() : codedup::ProgressCallback{});
+        if (detectBar)
+            detectBar->Finish();
         timing.cloneDetection = Clock::now() - detectStart;
 
         // Apply scope-based filtering (inter-file vs intra-file).
@@ -913,7 +953,14 @@ int main(int argc, char* argv[])
             .textSensitivity = opts.textSensitivity,
         });
 
-        intraResults = intraDetector.Detect(allBlocks);
+        auto intraBar =
+            opts.verbose ? std::make_optional<codedup::ProgressBar>("Intra-detect", allBlocks.size()) : std::nullopt;
+        if (intraBar)
+            intraBar->Start();
+        intraResults =
+            intraDetector.Detect(allBlocks, intraBar ? intraBar->MakeAbsoluteCallback() : codedup::ProgressCallback{});
+        if (intraBar)
+            intraBar->Finish();
         timing.intraDetection = Clock::now() - intraStart;
 
         std::ranges::sort(intraResults,

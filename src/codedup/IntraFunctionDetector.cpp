@@ -187,7 +187,8 @@ constexpr auto kSimdWidth = NativeU32::size();
 
 } // namespace
 
-auto IntraFunctionDetector::Detect(std::vector<CodeBlock> const& blocks) -> std::vector<IntraCloneResult>
+auto IntraFunctionDetector::Detect(std::vector<CodeBlock> const& blocks, ProgressCallback const& progressCallback)
+    -> std::vector<IntraCloneResult>
 {
     std::vector<IntraCloneResult> results;
 
@@ -201,6 +202,9 @@ auto IntraFunctionDetector::Detect(std::vector<CodeBlock> const& blocks) -> std:
                 .pairs = std::move(pairs),
             });
         }
+
+        if (progressCallback)
+            progressCallback(bi + 1, blocks.size());
     }
 
     return results;

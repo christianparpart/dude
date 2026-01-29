@@ -3,6 +3,7 @@
 
 #include <codedup/Api.hpp>
 #include <codedup/CodeBlock.hpp>
+#include <codedup/ProgressCallback.hpp>
 
 #include <cstddef>
 #include <vector>
@@ -55,8 +56,10 @@ public:
 
     /// @brief Detects intra-function clones in all blocks.
     /// @param blocks The code blocks to analyze.
+    /// @param progressCallback Optional callback for reporting progress.
     /// @return A vector of results, one per block that contains intra-function clones.
-    [[nodiscard]] auto Detect(std::vector<CodeBlock> const& blocks) -> std::vector<IntraCloneResult>;
+    [[nodiscard]] auto Detect(std::vector<CodeBlock> const& blocks, ProgressCallback const& progressCallback = {})
+        -> std::vector<IntraCloneResult>;
 
 private:
     IntraCloneDetectorConfig _config;

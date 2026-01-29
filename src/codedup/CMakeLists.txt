@@ -12,6 +12,7 @@ add_library(codedup STATIC
     Languages/PythonLanguage.cpp
     CloneDetector.cpp
     IntraFunctionDetector.cpp
+    ProgressBar.cpp
     FileScanner.cpp
     ConsoleReporter.cpp
     JsonReporter.cpp
