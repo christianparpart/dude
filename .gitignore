@@ -1,6 +1,11 @@
 # Misc
 version.txt
 
+# CPM
+cpm.cmake
+_deps/
+CPM_modules/
+
 # Build directories
 build/
 out/
