@@ -179,5 +179,5 @@ TEST_CASE("Encoding.ParseEncodingNameUnknown", "[encoding]")
 {
     auto const result = ParseEncodingName("latin-1");
     REQUIRE(!result.has_value());
-    CHECK(result.error().message.find("Unknown encoding") != std::string::npos);
+    CHECK(result.error().message.contains("Unknown encoding"));
 }

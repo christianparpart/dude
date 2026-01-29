@@ -14,9 +14,9 @@ TEST_CASE("Reporter.SummaryNoColor", "[reporter]")
     std::string out;
     reporter.ReportSummary(out, {.totalFiles = 10, .totalBlocks = 50, .totalGroups = 3});
 
-    CHECK(out.find("10 files") != std::string::npos);
-    CHECK(out.find("50 blocks") != std::string::npos);
-    CHECK(out.find("3 clone groups") != std::string::npos);
+    CHECK(out.contains("10 files"));
+    CHECK(out.contains("50 blocks"));
+    CHECK(out.contains("3 clone groups"));
 }
 
 TEST_CASE("Reporter.SummaryWithColor", "[reporter]")
@@ -25,8 +25,8 @@ TEST_CASE("Reporter.SummaryWithColor", "[reporter]")
     std::string out;
     reporter.ReportSummary(out, {.totalFiles = 5, .totalBlocks = 20, .totalGroups = 1});
 
-    CHECK(out.find("\033[") != std::string::npos); // Contains ANSI escape
-    CHECK(out.find("5 files") != std::string::npos);
+    CHECK(out.contains("\033[")); // Contains ANSI escape
+    CHECK(out.contains("5 files"));
 }
 
 TEST_CASE("Reporter.EmptyGroups", "[reporter]")
@@ -86,11 +86,11 @@ TEST_CASE("Reporter.IndentationPreservation", "[reporter]")
     reporter.Report(out, {group}, {block, block2}, allTokens, blockToFile);
 
     // Line 1 should have 4 leading spaces for indentation (column 5 means 4 spaces before "if")
-    CHECK(out.find("| " + std::string(4, ' ') + "if") != std::string::npos);
+    CHECK(out.contains("| " + std::string(4, ' ') + "if"));
     // Line 2 should have 8 leading spaces for indentation (column 9 means 8 spaces before "return")
-    CHECK(out.find("| " + std::string(8, ' ') + "return") != std::string::npos);
+    CHECK(out.contains("| " + std::string(8, ' ') + "return"));
     // Line 3 should have 4 leading spaces for indentation (column 5 means 4 spaces before "}")
-    CHECK(out.find("| " + std::string(4, ' ') + "}") != std::string::npos);
+    CHECK(out.contains("| " + std::string(4, ' ') + "}"));
 }
 
 TEST_CASE("Reporter.InterTokenSpacingPreservation", "[reporter]")
@@ -127,7 +127,7 @@ TEST_CASE("Reporter.InterTokenSpacingPreservation", "[reporter]")
     reporter.Report(out, {group}, {block, block2}, allTokens, blockToFile);
 
     // Should preserve "a  +  b" spacing (2 spaces before +, 2 spaces before b), not "a + b"
-    CHECK(out.find("a  +  b") != std::string::npos);
+    CHECK(out.contains("a  +  b"));
 }
 
 TEST_CASE("Reporter.NoSourceOutput", "[reporter]")
@@ -156,9 +156,9 @@ TEST_CASE("Reporter.NoSourceOutput", "[reporter]")
 
     reporter.Report(out, {group}, {block, block2}, allTokens, blockToFile);
 
-    CHECK(out.find("Clone Group #1") != std::string::npos);
-    CHECK(out.find("testFunc") != std::string::npos);
-    CHECK(out.find("95%") != std::string::npos);
+    CHECK(out.contains("Clone Group #1"));
+    CHECK(out.contains("testFunc"));
+    CHECK(out.contains("95%"));
 }
 
 TEST_CASE("Reporter.SummaryWithTiming", "[reporter]")
@@ -176,16 +176,16 @@ TEST_CASE("Reporter.SummaryWithTiming", "[reporter]")
     reporter.ReportSummary(
         out, {.totalFiles = 100, .totalBlocks = 500, .totalGroups = 12, .totalIntraPairs = 5, .timing = timing});
 
-    CHECK(out.find("100 files") != std::string::npos);
-    CHECK(out.find("500 blocks") != std::string::npos);
-    CHECK(out.find("12 clone groups") != std::string::npos);
-    CHECK(out.find("5 intra-function") != std::string::npos);
-    CHECK(out.find("Timing:") != std::string::npos);
-    CHECK(out.find("scanning") != std::string::npos);
-    CHECK(out.find("tokenizing") != std::string::npos);
-    CHECK(out.find("clone detection") != std::string::npos);
-    CHECK(out.find("intra-function detection") != std::string::npos);
-    CHECK(out.find("total") != std::string::npos);
+    CHECK(out.contains("100 files"));
+    CHECK(out.contains("500 blocks"));
+    CHECK(out.contains("12 clone groups"));
+    CHECK(out.contains("5 intra-function"));
+    CHECK(out.contains("Timing:"));
+    CHECK(out.contains("scanning"));
+    CHECK(out.contains("tokenizing"));
+    CHECK(out.contains("clone detection"));
+    CHECK(out.contains("intra-function detection"));
+    CHECK(out.contains("total"));
 }
 
 TEST_CASE("Reporter.SummaryWithoutTiming", "[reporter]")
@@ -194,11 +194,11 @@ TEST_CASE("Reporter.SummaryWithoutTiming", "[reporter]")
     std::string out;
     reporter.ReportSummary(out, {.totalFiles = 10, .totalBlocks = 50, .totalGroups = 3});
 
-    CHECK(out.find("10 files") != std::string::npos);
+    CHECK(out.contains("10 files"));
     // No timing line should appear
-    CHECK(out.find("Timing:") == std::string::npos);
+    CHECK(!out.contains("Timing:"));
     // No duplications line when all counts are zero
-    CHECK(out.find("Duplications:") == std::string::npos);
+    CHECK(!out.contains("Duplications:"));
 }
 
 TEST_CASE("Reporter.SummaryDuplications", "[reporter]")
@@ -213,10 +213,10 @@ TEST_CASE("Reporter.SummaryDuplications", "[reporter]")
                                  .totalFunctions = 6,
                                  .totalIntraFunctions = 2});
 
-    CHECK(out.find("Duplications:") != std::string::npos);
-    CHECK(out.find("120 duplicated lines") != std::string::npos);
-    CHECK(out.find("6 functions in clone groups") != std::string::npos);
-    CHECK(out.find("2 functions with internal clones") != std::string::npos);
+    CHECK(out.contains("Duplications:"));
+    CHECK(out.contains("120 duplicated lines"));
+    CHECK(out.contains("6 functions in clone groups"));
+    CHECK(out.contains("2 functions with internal clones"));
 }
 
 TEST_CASE("Reporter.SummaryDuplicationsNoIntra", "[reporter]")
@@ -226,11 +226,11 @@ TEST_CASE("Reporter.SummaryDuplicationsNoIntra", "[reporter]")
     reporter.ReportSummary(
         out, {.totalFiles = 10, .totalBlocks = 50, .totalGroups = 3, .totalDuplicatedLines = 80, .totalFunctions = 4});
 
-    CHECK(out.find("Duplications:") != std::string::npos);
-    CHECK(out.find("80 duplicated lines") != std::string::npos);
-    CHECK(out.find("4 functions in clone groups") != std::string::npos);
+    CHECK(out.contains("Duplications:"));
+    CHECK(out.contains("80 duplicated lines"));
+    CHECK(out.contains("4 functions in clone groups"));
     // No intra-function text when count is zero
-    CHECK(out.find("internal clones") == std::string::npos);
+    CHECK(!out.contains("internal clones"));
 }
 
 // ============================================================================================
@@ -291,7 +291,7 @@ TEST_CASE("Reporter.DiffHighlighting.ColoredOutput", "[reporter][highlight]")
     reporter.Report(out, {group}, {blockA, blockB}, allTokens, blockToFile);
 
     // Background highlight ANSI code should appear (48;2; is background truecolor)
-    CHECK(out.find("\033[48;2;") != std::string::npos);
+    CHECK(out.contains("\033[48;2;"));
 }
 
 TEST_CASE("Reporter.DiffHighlighting.NoColorDisablesHighlight", "[reporter][highlight]")
@@ -338,7 +338,7 @@ TEST_CASE("Reporter.DiffHighlighting.NoColorDisablesHighlight", "[reporter][high
     reporter.Report(out, {group}, {blockA, blockB}, allTokens, blockToFile);
 
     // No ANSI codes at all
-    CHECK(out.find("\033[") == std::string::npos);
+    CHECK(!out.contains("\033["));
 }
 
 TEST_CASE("Reporter.DiffHighlighting.DisabledHighlightDifferences", "[reporter][highlight]")
@@ -386,8 +386,8 @@ TEST_CASE("Reporter.DiffHighlighting.DisabledHighlightDifferences", "[reporter][
     reporter.Report(out, {group}, {blockA, blockB}, allTokens, blockToFile);
 
     // Should have foreground ANSI codes (38;2;) but no background codes (48;2;)
-    CHECK(out.find("\033[38;2;") != std::string::npos);
-    CHECK(out.find("\033[48;2;") == std::string::npos);
+    CHECK(out.contains("\033[38;2;"));
+    CHECK(!out.contains("\033[48;2;"));
 }
 
 // ============================================================================================
@@ -464,9 +464,9 @@ TEST_CASE("Reporter.IntraCloneRegionLines.WithComments", "[reporter][intra]")
     reporter.ReportIntraClones(out, {result}, {block}, allTokens, blockToFile);
 
     // Region A should span lines 1-2 (original tokens 0 and 5)
-    CHECK(out.find("Region A: lines 1-2") != std::string::npos);
+    CHECK(out.contains("Region A: lines 1-2"));
     // Region B should span lines 3-4 (original tokens 6 and 11)
-    CHECK(out.find("Region B: lines 3-4") != std::string::npos);
+    CHECK(out.contains("Region B: lines 3-4"));
 }
 
 TEST_CASE("Reporter.IntraCloneHighlighting.WithComments", "[reporter][intra][highlight]")
@@ -535,13 +535,13 @@ TEST_CASE("Reporter.IntraCloneHighlighting.WithComments", "[reporter][intra][hig
     // The differing tokens are "a" (original idx 2), "1" (original idx 4),
     //                          "b" (original idx 8), "2" (original idx 10).
     // Background truecolor ANSI should be present.
-    CHECK(out.find("\033[48;2;") != std::string::npos);
+    CHECK(out.contains("\033[48;2;"));
 
     // The output should contain lines 1-2 for region A and lines 3-4 for region B
-    CHECK(out.find("lines 1-2") != std::string::npos);
-    CHECK(out.find("lines 3-4") != std::string::npos);
+    CHECK(out.contains("lines 1-2"));
+    CHECK(out.contains("lines 3-4"));
 
     // The tokens "a" and "b" should appear in the source output
-    CHECK(out.find('a') != std::string::npos);
-    CHECK(out.find('b') != std::string::npos);
+    CHECK(out.contains('a'));
+    CHECK(out.contains('b'));
 }
