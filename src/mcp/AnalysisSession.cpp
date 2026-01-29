@@ -54,7 +54,8 @@ auto AnalysisSession::Analyze(AnalysisConfig const& config) -> std::expected<voi
             continue;
         }
 
-        auto tokensResult = language->TokenizeFile(file, config.encoding);
+        auto const fileIndex = static_cast<uint32_t>(_allTokens.size());
+        auto tokensResult = language->TokenizeFile(file, fileIndex, config.encoding);
         if (!tokensResult)
         {
             _allTokens.emplace_back();
@@ -187,7 +188,11 @@ auto AnalysisSession::ReadBlockSource(size_t blockIndex) const -> std::expected<
             .message = std::format("Block index {} out of range (total: {})", blockIndex, _allBlocks.size())});
 
     auto const& block = _allBlocks[blockIndex];
-    auto const& filePath = block.sourceRange.start.filePath;
+    auto const fileIdx = block.sourceRange.start.fileIndex;
+    if (fileIdx >= _files.size())
+        return std::unexpected(
+            AnalysisError{.message = std::format("File index {} out of range (total: {})", fileIdx, _files.size())});
+    auto const& filePath = _files[fileIdx];
     auto const startLine = block.sourceRange.start.line;
     auto const endLine = block.sourceRange.end.line;
 

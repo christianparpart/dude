@@ -3,7 +3,9 @@
 #include <codedup/JsonReporter.hpp>
 
 #include <chrono>
+#include <filesystem>
 #include <ranges>
+#include <span>
 #include <vector>
 
 namespace codedup
@@ -47,7 +49,8 @@ auto BuildNormToOrigMap(std::vector<Token> const& tokens, size_t tokenStart, siz
 
 void JsonReporter::Report(std::vector<CloneGroup> const& groups, std::vector<CodeBlock> const& blocks,
                           [[maybe_unused]] std::vector<std::vector<Token>> const& allTokens,
-                          [[maybe_unused]] std::vector<size_t> const& blockToFileIndex)
+                          [[maybe_unused]] std::vector<size_t> const& blockToFileIndex,
+                          std::span<std::filesystem::path const> files)
 {
     for (auto const gi : std::views::iota(size_t{0}, groups.size()))
     {
@@ -66,7 +69,8 @@ void JsonReporter::Report(std::vector<CloneGroup> const& groups, std::vector<Cod
 
             nlohmann::json blockJson;
             blockJson["name"] = block.name;
-            blockJson["filePath"] = range.start.filePath.string();
+            blockJson["filePath"] =
+                range.start.fileIndex < files.size() ? files[range.start.fileIndex].string() : std::string("<unknown>");
             blockJson["startLine"] = range.start.line;
             blockJson["startColumn"] = range.start.column;
             blockJson["endLine"] = range.end.line;
@@ -82,7 +86,8 @@ void JsonReporter::Report(std::vector<CloneGroup> const& groups, std::vector<Cod
 
 void JsonReporter::ReportIntraClones(std::vector<IntraCloneResult> const& results, std::vector<CodeBlock> const& blocks,
                                      std::vector<std::vector<Token>> const& allTokens,
-                                     std::vector<size_t> const& blockToFileIndex)
+                                     std::vector<size_t> const& blockToFileIndex,
+                                     std::span<std::filesystem::path const> files)
 {
     for (auto const& result : results)
     {
@@ -98,7 +103,8 @@ void JsonReporter::ReportIntraClones(std::vector<IntraCloneResult> const& result
         nlohmann::json resultJson;
         resultJson["blockIndex"] = result.blockIndex;
         resultJson["name"] = block.name;
-        resultJson["filePath"] = range.start.filePath.string();
+        resultJson["filePath"] =
+            range.start.fileIndex < files.size() ? files[range.start.fileIndex].string() : std::string("<unknown>");
         resultJson["startLine"] = range.start.line;
         resultJson["endLine"] = range.end.line;
 

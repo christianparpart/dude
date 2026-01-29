@@ -7,6 +7,8 @@
 #include <codedup/DiffRange.hpp>
 #include <codedup/IntraFunctionDetector.hpp>
 
+#include <filesystem>
+#include <span>
 #include <unordered_set>
 #include <vector>
 
@@ -28,9 +30,12 @@ public:
     /// @param blocks All extracted code blocks.
     /// @param diff The parsed git diff result containing changed file/line information.
     /// @param projectRoot The project root directory for resolving relative diff paths.
+    /// @param files The file path vector for resolving file indices to paths.
     /// @return A set of block indices that overlap with changed lines.
     [[nodiscard]] static auto FindChangedBlocks(std::vector<CodeBlock> const& blocks, DiffResult const& diff,
-                                                std::filesystem::path const& projectRoot) -> std::unordered_set<size_t>;
+                                                std::filesystem::path const& projectRoot,
+                                                std::span<std::filesystem::path const> files)
+        -> std::unordered_set<size_t>;
 
     /// @brief Filters clone groups to only include those with at least one changed block.
     ///

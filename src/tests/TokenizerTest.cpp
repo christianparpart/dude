@@ -224,7 +224,7 @@ TEST_CASE("Tokenizer.Punctuation", "[tokenizer]")
 
 TEST_CASE("Tokenizer.SourceLocationTracking", "[tokenizer]")
 {
-    auto result = CppLanguage{}.Tokenize("int\nx;\n  y;", "test.cpp");
+    auto result = CppLanguage{}.Tokenize("int\nx;\n  y;", 0);
     REQUIRE(result.has_value());
 
     auto const& t = *result;

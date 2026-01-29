@@ -4,12 +4,14 @@
 
 #include <algorithm>
 #include <ranges>
+#include <span>
 
 namespace codedup
 {
 
 auto DiffFilter::FindChangedBlocks(std::vector<CodeBlock> const& blocks, DiffResult const& diff,
-                                   std::filesystem::path const& projectRoot) -> std::unordered_set<size_t>
+                                   std::filesystem::path const& projectRoot,
+                                   std::span<std::filesystem::path const> files) -> std::unordered_set<size_t>
 {
     std::unordered_set<size_t> changedIndices;
 
@@ -34,7 +36,9 @@ auto DiffFilter::FindChangedBlocks(std::vector<CodeBlock> const& blocks, DiffRes
     for (auto const blockIdx : std::views::iota(size_t{0}, blocks.size()))
     {
         auto const& block = blocks[blockIdx];
-        auto const blockFile = std::filesystem::weakly_canonical(block.sourceRange.start.filePath);
+        auto const fileIndex = block.sourceRange.start.fileIndex;
+        auto const blockFile =
+            fileIndex < files.size() ? std::filesystem::weakly_canonical(files[fileIndex]) : std::filesystem::path{};
         auto const blockStart = block.sourceRange.start.line;
         auto const blockEnd = block.sourceRange.end.line;
 

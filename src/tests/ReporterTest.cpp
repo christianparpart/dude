@@ -4,6 +4,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <filesystem>
+#include <span>
 #include <string>
 
 using namespace codedup;
@@ -37,8 +39,9 @@ TEST_CASE("Reporter.EmptyGroups", "[reporter]")
     std::vector<CodeBlock> blocks;
     std::vector<std::vector<Token>> allTokens;
     std::vector<size_t> blockToFile;
+    std::vector<std::filesystem::path> files = {"test.cpp"};
 
-    reporter.Report(groups, blocks, allTokens, blockToFile);
+    reporter.Report(groups, blocks, allTokens, blockToFile, files);
     auto const out = reporter.Render();
     CHECK(out.empty());
 }
@@ -52,22 +55,22 @@ TEST_CASE("Reporter.IndentationPreservation", "[reporter]")
     ConsoleReporter reporter({.useColor = false, .showSourceCode = true});
 
     std::vector<Token> tokens = {
-        {TokenType::If, "if", {.filePath = "test.cpp", .line = 1, .column = 5}},
-        {TokenType::LeftParen, "(", {.filePath = "test.cpp", .line = 1, .column = 8}},
-        {TokenType::Identifier, "x", {.filePath = "test.cpp", .line = 1, .column = 9}},
-        {TokenType::Greater, ">", {.filePath = "test.cpp", .line = 1, .column = 11}},
-        {TokenType::NumericLiteral, "0", {.filePath = "test.cpp", .line = 1, .column = 13}},
-        {TokenType::RightParen, ")", {.filePath = "test.cpp", .line = 1, .column = 14}},
-        {TokenType::LeftBrace, "{", {.filePath = "test.cpp", .line = 1, .column = 16}},
-        {TokenType::Return, "return", {.filePath = "test.cpp", .line = 2, .column = 9}},
-        {TokenType::Semicolon, ";", {.filePath = "test.cpp", .line = 2, .column = 15}},
-        {TokenType::RightBrace, "}", {.filePath = "test.cpp", .line = 3, .column = 5}},
+        {TokenType::If, "if", {.fileIndex = 0, .line = 1, .column = 5}},
+        {TokenType::LeftParen, "(", {.fileIndex = 0, .line = 1, .column = 8}},
+        {TokenType::Identifier, "x", {.fileIndex = 0, .line = 1, .column = 9}},
+        {TokenType::Greater, ">", {.fileIndex = 0, .line = 1, .column = 11}},
+        {TokenType::NumericLiteral, "0", {.fileIndex = 0, .line = 1, .column = 13}},
+        {TokenType::RightParen, ")", {.fileIndex = 0, .line = 1, .column = 14}},
+        {TokenType::LeftBrace, "{", {.fileIndex = 0, .line = 1, .column = 16}},
+        {TokenType::Return, "return", {.fileIndex = 0, .line = 2, .column = 9}},
+        {TokenType::Semicolon, ";", {.fileIndex = 0, .line = 2, .column = 15}},
+        {TokenType::RightBrace, "}", {.fileIndex = 0, .line = 3, .column = 5}},
     };
 
     CodeBlock block;
     block.name = "testFunc";
-    block.sourceRange = {.start = {.filePath = "test.cpp", .line = 1, .column = 5},
-                         .end = {.filePath = "test.cpp", .line = 3, .column = 6}};
+    block.sourceRange = {.start = {.fileIndex = 0, .line = 1, .column = 5},
+                         .end = {.fileIndex = 0, .line = 3, .column = 6}};
     block.tokenStart = 0;
     block.tokenEnd = 10;
     block.normalizedIds = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
@@ -81,8 +84,9 @@ TEST_CASE("Reporter.IndentationPreservation", "[reporter]")
 
     std::vector<std::vector<Token>> allTokens = {tokens};
     std::vector<size_t> blockToFile = {0, 0};
+    std::vector<std::filesystem::path> files = {"test.cpp"};
 
-    reporter.Report({group}, {block, block2}, allTokens, blockToFile);
+    reporter.Report({group}, {block, block2}, allTokens, blockToFile, files);
     auto const out = reporter.Render();
 
     // Line 1 should have 4 leading spaces for indentation (column 5 means 4 spaces before "if")
@@ -100,15 +104,15 @@ TEST_CASE("Reporter.InterTokenSpacingPreservation", "[reporter]")
     ConsoleReporter reporter({.useColor = false, .showSourceCode = true});
 
     std::vector<Token> tokens = {
-        {TokenType::Identifier, "a", {.filePath = "test.cpp", .line = 1, .column = 1}},
-        {TokenType::Plus, "+", {.filePath = "test.cpp", .line = 1, .column = 4}},
-        {TokenType::Identifier, "b", {.filePath = "test.cpp", .line = 1, .column = 7}},
+        {TokenType::Identifier, "a", {.fileIndex = 0, .line = 1, .column = 1}},
+        {TokenType::Plus, "+", {.fileIndex = 0, .line = 1, .column = 4}},
+        {TokenType::Identifier, "b", {.fileIndex = 0, .line = 1, .column = 7}},
     };
 
     CodeBlock block;
     block.name = "testFunc";
-    block.sourceRange = {.start = {.filePath = "test.cpp", .line = 1, .column = 1},
-                         .end = {.filePath = "test.cpp", .line = 1, .column = 8}};
+    block.sourceRange = {.start = {.fileIndex = 0, .line = 1, .column = 1},
+                         .end = {.fileIndex = 0, .line = 1, .column = 8}};
     block.tokenStart = 0;
     block.tokenEnd = 3;
     block.normalizedIds = {1, 2, 3};
@@ -122,8 +126,9 @@ TEST_CASE("Reporter.InterTokenSpacingPreservation", "[reporter]")
 
     std::vector<std::vector<Token>> allTokens = {tokens};
     std::vector<size_t> blockToFile = {0, 0};
+    std::vector<std::filesystem::path> files = {"test.cpp"};
 
-    reporter.Report({group}, {block, block2}, allTokens, blockToFile);
+    reporter.Report({group}, {block, block2}, allTokens, blockToFile, files);
     auto const out = reporter.Render();
 
     // Should preserve "a  +  b" spacing (2 spaces before +, 2 spaces before b), not "a + b"
@@ -136,14 +141,14 @@ TEST_CASE("Reporter.NoSourceOutput", "[reporter]")
 
     CodeBlock block;
     block.name = "testFunc";
-    block.sourceRange = {.start = {.filePath = "test.cpp", .line = 1, .column = 1},
-                         .end = {.filePath = "test.cpp", .line = 5, .column = 1}};
+    block.sourceRange = {.start = {.fileIndex = 0, .line = 1, .column = 1},
+                         .end = {.fileIndex = 0, .line = 5, .column = 1}};
     block.normalizedIds = {1, 2, 3};
 
     CodeBlock block2;
     block2.name = "testFunc2";
-    block2.sourceRange = {.start = {.filePath = "test2.cpp", .line = 1, .column = 1},
-                          .end = {.filePath = "test2.cpp", .line = 5, .column = 1}};
+    block2.sourceRange = {.start = {.fileIndex = 1, .line = 1, .column = 1},
+                          .end = {.fileIndex = 1, .line = 5, .column = 1}};
     block2.normalizedIds = {1, 2, 3};
 
     CloneGroup group;
@@ -152,8 +157,9 @@ TEST_CASE("Reporter.NoSourceOutput", "[reporter]")
 
     std::vector<std::vector<Token>> allTokens;
     std::vector<size_t> blockToFile;
+    std::vector<std::filesystem::path> files = {"test.cpp", "test2.cpp"};
 
-    reporter.Report({group}, {block, block2}, allTokens, blockToFile);
+    reporter.Report({group}, {block, block2}, allTokens, blockToFile, files);
     auto const out = reporter.Render();
 
     CHECK(out.contains("Clone Group #1"));
@@ -247,26 +253,26 @@ TEST_CASE("Reporter.DiffHighlighting.ColoredOutput", "[reporter][highlight]")
     // Block B: "int bar = 0;"  -> tokens: int, bar, =, 0, ;
     // Text-preserving IDs differ at position 1 (foo vs bar)
     std::vector<Token> tokensA = {
-        {TokenType::Int, "int", {.filePath = "a.cpp", .line = 1, .column = 1}},
-        {TokenType::Identifier, "foo", {.filePath = "a.cpp", .line = 1, .column = 5}},
-        {TokenType::Equal, "=", {.filePath = "a.cpp", .line = 1, .column = 9}},
-        {TokenType::NumericLiteral, "0", {.filePath = "a.cpp", .line = 1, .column = 11}},
-        {TokenType::Semicolon, ";", {.filePath = "a.cpp", .line = 1, .column = 12}},
+        {TokenType::Int, "int", {.fileIndex = 0, .line = 1, .column = 1}},
+        {TokenType::Identifier, "foo", {.fileIndex = 0, .line = 1, .column = 5}},
+        {TokenType::Equal, "=", {.fileIndex = 0, .line = 1, .column = 9}},
+        {TokenType::NumericLiteral, "0", {.fileIndex = 0, .line = 1, .column = 11}},
+        {TokenType::Semicolon, ";", {.fileIndex = 0, .line = 1, .column = 12}},
     };
     std::vector<Token> tokensB = {
-        {TokenType::Int, "int", {.filePath = "b.cpp", .line = 1, .column = 1}},
-        {TokenType::Identifier, "bar", {.filePath = "b.cpp", .line = 1, .column = 5}},
-        {TokenType::Equal, "=", {.filePath = "b.cpp", .line = 1, .column = 9}},
-        {TokenType::NumericLiteral, "0", {.filePath = "b.cpp", .line = 1, .column = 11}},
-        {TokenType::Semicolon, ";", {.filePath = "b.cpp", .line = 1, .column = 12}},
+        {TokenType::Int, "int", {.fileIndex = 1, .line = 1, .column = 1}},
+        {TokenType::Identifier, "bar", {.fileIndex = 1, .line = 1, .column = 5}},
+        {TokenType::Equal, "=", {.fileIndex = 1, .line = 1, .column = 9}},
+        {TokenType::NumericLiteral, "0", {.fileIndex = 1, .line = 1, .column = 11}},
+        {TokenType::Semicolon, ";", {.fileIndex = 1, .line = 1, .column = 12}},
     };
 
     // Structural IDs: int=57, Identifier=1000, Equal=166, NumericLiteral=1001, Semicolon=125
     // Text-preserving: int=57, "foo"=2000, "bar"=2001, =166, 0=2002, ;=125
     CodeBlock blockA{
         .name = "funcA",
-        .sourceRange = {.start = {.filePath = "a.cpp", .line = 1, .column = 1},
-                        .end = {.filePath = "a.cpp", .line = 1, .column = 13}},
+        .sourceRange = {.start = {.fileIndex = 0, .line = 1, .column = 1},
+                        .end = {.fileIndex = 0, .line = 1, .column = 13}},
         .tokenStart = 0,
         .tokenEnd = 5,
         .normalizedIds = {57, 1000, 166, 1001, 125},
@@ -274,8 +280,8 @@ TEST_CASE("Reporter.DiffHighlighting.ColoredOutput", "[reporter][highlight]")
     };
     CodeBlock blockB{
         .name = "funcB",
-        .sourceRange = {.start = {.filePath = "b.cpp", .line = 1, .column = 1},
-                        .end = {.filePath = "b.cpp", .line = 1, .column = 13}},
+        .sourceRange = {.start = {.fileIndex = 1, .line = 1, .column = 1},
+                        .end = {.fileIndex = 1, .line = 1, .column = 13}},
         .tokenStart = 0,
         .tokenEnd = 5,
         .normalizedIds = {57, 1000, 166, 1001, 125},
@@ -286,8 +292,9 @@ TEST_CASE("Reporter.DiffHighlighting.ColoredOutput", "[reporter][highlight]")
 
     std::vector<std::vector<Token>> allTokens = {tokensA, tokensB};
     std::vector<size_t> blockToFile = {0, 1};
+    std::vector<std::filesystem::path> files = {"a.cpp", "b.cpp"};
 
-    reporter.Report({group}, {blockA, blockB}, allTokens, blockToFile);
+    reporter.Report({group}, {blockA, blockB}, allTokens, blockToFile, files);
     auto const out = reporter.Render();
 
     // Background highlight ANSI code should appear (48;2; is background truecolor)
@@ -300,20 +307,20 @@ TEST_CASE("Reporter.DiffHighlighting.NoColorDisablesHighlight", "[reporter][high
     ConsoleReporter reporter({.useColor = false, .showSourceCode = true, .highlightDifferences = true});
 
     std::vector<Token> tokensA = {
-        {TokenType::Int, "int", {.filePath = "a.cpp", .line = 1, .column = 1}},
-        {TokenType::Identifier, "foo", {.filePath = "a.cpp", .line = 1, .column = 5}},
-        {TokenType::Semicolon, ";", {.filePath = "a.cpp", .line = 1, .column = 8}},
+        {TokenType::Int, "int", {.fileIndex = 0, .line = 1, .column = 1}},
+        {TokenType::Identifier, "foo", {.fileIndex = 0, .line = 1, .column = 5}},
+        {TokenType::Semicolon, ";", {.fileIndex = 0, .line = 1, .column = 8}},
     };
     std::vector<Token> tokensB = {
-        {TokenType::Int, "int", {.filePath = "b.cpp", .line = 1, .column = 1}},
-        {TokenType::Identifier, "bar", {.filePath = "b.cpp", .line = 1, .column = 5}},
-        {TokenType::Semicolon, ";", {.filePath = "b.cpp", .line = 1, .column = 8}},
+        {TokenType::Int, "int", {.fileIndex = 1, .line = 1, .column = 1}},
+        {TokenType::Identifier, "bar", {.fileIndex = 1, .line = 1, .column = 5}},
+        {TokenType::Semicolon, ";", {.fileIndex = 1, .line = 1, .column = 8}},
     };
 
     CodeBlock blockA{
         .name = "funcA",
-        .sourceRange = {.start = {.filePath = "a.cpp", .line = 1, .column = 1},
-                        .end = {.filePath = "a.cpp", .line = 1, .column = 9}},
+        .sourceRange = {.start = {.fileIndex = 0, .line = 1, .column = 1},
+                        .end = {.fileIndex = 0, .line = 1, .column = 9}},
         .tokenStart = 0,
         .tokenEnd = 3,
         .normalizedIds = {57, 1000, 125},
@@ -321,8 +328,8 @@ TEST_CASE("Reporter.DiffHighlighting.NoColorDisablesHighlight", "[reporter][high
     };
     CodeBlock blockB{
         .name = "funcB",
-        .sourceRange = {.start = {.filePath = "b.cpp", .line = 1, .column = 1},
-                        .end = {.filePath = "b.cpp", .line = 1, .column = 9}},
+        .sourceRange = {.start = {.fileIndex = 1, .line = 1, .column = 1},
+                        .end = {.fileIndex = 1, .line = 1, .column = 9}},
         .tokenStart = 0,
         .tokenEnd = 3,
         .normalizedIds = {57, 1000, 125},
@@ -333,8 +340,9 @@ TEST_CASE("Reporter.DiffHighlighting.NoColorDisablesHighlight", "[reporter][high
 
     std::vector<std::vector<Token>> allTokens = {tokensA, tokensB};
     std::vector<size_t> blockToFile = {0, 1};
+    std::vector<std::filesystem::path> files = {"a.cpp", "b.cpp"};
 
-    reporter.Report({group}, {blockA, blockB}, allTokens, blockToFile);
+    reporter.Report({group}, {blockA, blockB}, allTokens, blockToFile, files);
     auto const out = reporter.Render();
 
     // No ANSI codes at all
@@ -348,20 +356,20 @@ TEST_CASE("Reporter.DiffHighlighting.DisabledHighlightDifferences", "[reporter][
         {.useColor = true, .showSourceCode = true, .highlightDifferences = false, .theme = ColorTheme::Dark});
 
     std::vector<Token> tokensA = {
-        {TokenType::Int, "int", {.filePath = "a.cpp", .line = 1, .column = 1}},
-        {TokenType::Identifier, "foo", {.filePath = "a.cpp", .line = 1, .column = 5}},
-        {TokenType::Semicolon, ";", {.filePath = "a.cpp", .line = 1, .column = 8}},
+        {TokenType::Int, "int", {.fileIndex = 0, .line = 1, .column = 1}},
+        {TokenType::Identifier, "foo", {.fileIndex = 0, .line = 1, .column = 5}},
+        {TokenType::Semicolon, ";", {.fileIndex = 0, .line = 1, .column = 8}},
     };
     std::vector<Token> tokensB = {
-        {TokenType::Int, "int", {.filePath = "b.cpp", .line = 1, .column = 1}},
-        {TokenType::Identifier, "bar", {.filePath = "b.cpp", .line = 1, .column = 5}},
-        {TokenType::Semicolon, ";", {.filePath = "b.cpp", .line = 1, .column = 8}},
+        {TokenType::Int, "int", {.fileIndex = 1, .line = 1, .column = 1}},
+        {TokenType::Identifier, "bar", {.fileIndex = 1, .line = 1, .column = 5}},
+        {TokenType::Semicolon, ";", {.fileIndex = 1, .line = 1, .column = 8}},
     };
 
     CodeBlock blockA{
         .name = "funcA",
-        .sourceRange = {.start = {.filePath = "a.cpp", .line = 1, .column = 1},
-                        .end = {.filePath = "a.cpp", .line = 1, .column = 9}},
+        .sourceRange = {.start = {.fileIndex = 0, .line = 1, .column = 1},
+                        .end = {.fileIndex = 0, .line = 1, .column = 9}},
         .tokenStart = 0,
         .tokenEnd = 3,
         .normalizedIds = {57, 1000, 125},
@@ -369,8 +377,8 @@ TEST_CASE("Reporter.DiffHighlighting.DisabledHighlightDifferences", "[reporter][
     };
     CodeBlock blockB{
         .name = "funcB",
-        .sourceRange = {.start = {.filePath = "b.cpp", .line = 1, .column = 1},
-                        .end = {.filePath = "b.cpp", .line = 1, .column = 9}},
+        .sourceRange = {.start = {.fileIndex = 1, .line = 1, .column = 1},
+                        .end = {.fileIndex = 1, .line = 1, .column = 9}},
         .tokenStart = 0,
         .tokenEnd = 3,
         .normalizedIds = {57, 1000, 125},
@@ -381,8 +389,9 @@ TEST_CASE("Reporter.DiffHighlighting.DisabledHighlightDifferences", "[reporter][
 
     std::vector<std::vector<Token>> allTokens = {tokensA, tokensB};
     std::vector<size_t> blockToFile = {0, 1};
+    std::vector<std::filesystem::path> files = {"a.cpp", "b.cpp"};
 
-    reporter.Report({group}, {blockA, blockB}, allTokens, blockToFile);
+    reporter.Report({group}, {blockA, blockB}, allTokens, blockToFile, files);
     auto const out = reporter.Render();
 
     // Should have foreground ANSI codes (38;2;) but no background codes (48;2;)
@@ -422,24 +431,24 @@ TEST_CASE("Reporter.IntraCloneRegionLines.WithComments", "[reporter][intra]")
     ConsoleReporter reporter({.useColor = false, .showSourceCode = false});
 
     std::vector<Token> tokens = {
-        {TokenType::Int, "int", {.filePath = "test.cpp", .line = 1, .column = 1}},
-        {TokenType::LineComment, "// cmt", {.filePath = "test.cpp", .line = 1, .column = 5}},
-        {TokenType::Identifier, "a", {.filePath = "test.cpp", .line = 2, .column = 1}},
-        {TokenType::Equal, "=", {.filePath = "test.cpp", .line = 2, .column = 3}},
-        {TokenType::NumericLiteral, "1", {.filePath = "test.cpp", .line = 2, .column = 5}},
-        {TokenType::Semicolon, ";", {.filePath = "test.cpp", .line = 2, .column = 6}},
-        {TokenType::Int, "int", {.filePath = "test.cpp", .line = 3, .column = 1}},
-        {TokenType::LineComment, "// cmt2", {.filePath = "test.cpp", .line = 3, .column = 5}},
-        {TokenType::Identifier, "b", {.filePath = "test.cpp", .line = 4, .column = 1}},
-        {TokenType::Equal, "=", {.filePath = "test.cpp", .line = 4, .column = 3}},
-        {TokenType::NumericLiteral, "2", {.filePath = "test.cpp", .line = 4, .column = 5}},
-        {TokenType::Semicolon, ";", {.filePath = "test.cpp", .line = 4, .column = 6}},
+        {TokenType::Int, "int", {.fileIndex = 0, .line = 1, .column = 1}},
+        {TokenType::LineComment, "// cmt", {.fileIndex = 0, .line = 1, .column = 5}},
+        {TokenType::Identifier, "a", {.fileIndex = 0, .line = 2, .column = 1}},
+        {TokenType::Equal, "=", {.fileIndex = 0, .line = 2, .column = 3}},
+        {TokenType::NumericLiteral, "1", {.fileIndex = 0, .line = 2, .column = 5}},
+        {TokenType::Semicolon, ";", {.fileIndex = 0, .line = 2, .column = 6}},
+        {TokenType::Int, "int", {.fileIndex = 0, .line = 3, .column = 1}},
+        {TokenType::LineComment, "// cmt2", {.fileIndex = 0, .line = 3, .column = 5}},
+        {TokenType::Identifier, "b", {.fileIndex = 0, .line = 4, .column = 1}},
+        {TokenType::Equal, "=", {.fileIndex = 0, .line = 4, .column = 3}},
+        {TokenType::NumericLiteral, "2", {.fileIndex = 0, .line = 4, .column = 5}},
+        {TokenType::Semicolon, ";", {.fileIndex = 0, .line = 4, .column = 6}},
     };
 
     CodeBlock block{
         .name = "testFunc",
-        .sourceRange = {.start = {.filePath = "test.cpp", .line = 1, .column = 1},
-                        .end = {.filePath = "test.cpp", .line = 4, .column = 7}},
+        .sourceRange = {.start = {.fileIndex = 0, .line = 1, .column = 1},
+                        .end = {.fileIndex = 0, .line = 4, .column = 7}},
         .tokenStart = 0,
         .tokenEnd = 12,
         // Normalized IDs skip comments: tokens 0,2,3,4,5,6,8,9,10,11
@@ -459,8 +468,9 @@ TEST_CASE("Reporter.IntraCloneRegionLines.WithComments", "[reporter][intra]")
 
     std::vector<std::vector<Token>> allTokens = {tokens};
     std::vector<size_t> blockToFile = {0};
+    std::vector<std::filesystem::path> files = {"test.cpp"};
 
-    reporter.ReportIntraClones({result}, {block}, allTokens, blockToFile);
+    reporter.ReportIntraClones({result}, {block}, allTokens, blockToFile, files);
     auto const out = reporter.Render();
 
     // Region A should span lines 1-2 (original tokens 0 and 5)
@@ -489,24 +499,24 @@ TEST_CASE("Reporter.IntraCloneHighlighting.WithComments", "[reporter][intra][hig
         {.useColor = true, .showSourceCode = true, .highlightDifferences = true, .theme = ColorTheme::Dark});
 
     std::vector<Token> tokens = {
-        {TokenType::Int, "int", {.filePath = "test.cpp", .line = 1, .column = 1}},
-        {TokenType::LineComment, "// cmt", {.filePath = "test.cpp", .line = 1, .column = 5}},
-        {TokenType::Identifier, "a", {.filePath = "test.cpp", .line = 2, .column = 1}},
-        {TokenType::Equal, "=", {.filePath = "test.cpp", .line = 2, .column = 3}},
-        {TokenType::NumericLiteral, "1", {.filePath = "test.cpp", .line = 2, .column = 5}},
-        {TokenType::Semicolon, ";", {.filePath = "test.cpp", .line = 2, .column = 6}},
-        {TokenType::Int, "int", {.filePath = "test.cpp", .line = 3, .column = 1}},
-        {TokenType::LineComment, "// cmt2", {.filePath = "test.cpp", .line = 3, .column = 5}},
-        {TokenType::Identifier, "b", {.filePath = "test.cpp", .line = 4, .column = 1}},
-        {TokenType::Equal, "=", {.filePath = "test.cpp", .line = 4, .column = 3}},
-        {TokenType::NumericLiteral, "2", {.filePath = "test.cpp", .line = 4, .column = 5}},
-        {TokenType::Semicolon, ";", {.filePath = "test.cpp", .line = 4, .column = 6}},
+        {TokenType::Int, "int", {.fileIndex = 0, .line = 1, .column = 1}},
+        {TokenType::LineComment, "// cmt", {.fileIndex = 0, .line = 1, .column = 5}},
+        {TokenType::Identifier, "a", {.fileIndex = 0, .line = 2, .column = 1}},
+        {TokenType::Equal, "=", {.fileIndex = 0, .line = 2, .column = 3}},
+        {TokenType::NumericLiteral, "1", {.fileIndex = 0, .line = 2, .column = 5}},
+        {TokenType::Semicolon, ";", {.fileIndex = 0, .line = 2, .column = 6}},
+        {TokenType::Int, "int", {.fileIndex = 0, .line = 3, .column = 1}},
+        {TokenType::LineComment, "// cmt2", {.fileIndex = 0, .line = 3, .column = 5}},
+        {TokenType::Identifier, "b", {.fileIndex = 0, .line = 4, .column = 1}},
+        {TokenType::Equal, "=", {.fileIndex = 0, .line = 4, .column = 3}},
+        {TokenType::NumericLiteral, "2", {.fileIndex = 0, .line = 4, .column = 5}},
+        {TokenType::Semicolon, ";", {.fileIndex = 0, .line = 4, .column = 6}},
     };
 
     CodeBlock block{
         .name = "testFunc",
-        .sourceRange = {.start = {.filePath = "test.cpp", .line = 1, .column = 1},
-                        .end = {.filePath = "test.cpp", .line = 4, .column = 7}},
+        .sourceRange = {.start = {.fileIndex = 0, .line = 1, .column = 1},
+                        .end = {.fileIndex = 0, .line = 4, .column = 7}},
         .tokenStart = 0,
         .tokenEnd = 12,
         // Normalized IDs skip comments: tokens 0,2,3,4,5,6,8,9,10,11
@@ -527,8 +537,9 @@ TEST_CASE("Reporter.IntraCloneHighlighting.WithComments", "[reporter][intra][hig
 
     std::vector<std::vector<Token>> allTokens = {tokens};
     std::vector<size_t> blockToFile = {0};
+    std::vector<std::filesystem::path> files = {"test.cpp"};
 
-    reporter.ReportIntraClones({result}, {block}, allTokens, blockToFile);
+    reporter.ReportIntraClones({result}, {block}, allTokens, blockToFile, files);
     auto const out = reporter.Render();
 
     // With highlighting enabled, background highlight ANSI code should appear for differing tokens.

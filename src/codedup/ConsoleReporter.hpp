@@ -4,7 +4,9 @@
 #include <codedup/Api.hpp>
 #include <codedup/Reporter.hpp>
 
+#include <filesystem>
 #include <ostream>
+#include <span>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -35,17 +37,21 @@ public:
     /// @param blocks The code blocks referenced by the groups.
     /// @param allTokens All tokens from all files (indexed by block's token range).
     /// @param blockToFileIndex Mapping from block index to file index in allTokens.
+    /// @param files The file path vector for resolving file indices to paths.
     void Report(std::vector<CloneGroup> const& groups, std::vector<CodeBlock> const& blocks,
-                std::vector<std::vector<Token>> const& allTokens, std::vector<size_t> const& blockToFileIndex) override;
+                std::vector<std::vector<Token>> const& allTokens, std::vector<size_t> const& blockToFileIndex,
+                std::span<std::filesystem::path const> files) override;
 
     /// @brief Reports intra-function clone results.
     /// @param results The intra-function clone results to report.
     /// @param blocks The code blocks referenced by the results.
     /// @param allTokens All tokens from all files (indexed by block's token range).
     /// @param blockToFileIndex Mapping from block index to file index in allTokens.
+    /// @param files The file path vector for resolving file indices to paths.
     void ReportIntraClones(std::vector<IntraCloneResult> const& results, std::vector<CodeBlock> const& blocks,
                            std::vector<std::vector<Token>> const& allTokens,
-                           std::vector<size_t> const& blockToFileIndex) override;
+                           std::vector<size_t> const& blockToFileIndex,
+                           std::span<std::filesystem::path const> files) override;
 
     /// @brief Appends a summary of the scan results, optionally including performance timing.
     /// @param summary The summary data to report.

@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <codedup/Languages/CSharpLanguage.hpp>
+#include <codedup/MappedFile.hpp>
+#include <codedup/SimdCharClassifier.hpp>
 
 #include <algorithm>
 #include <array>
 #include <format>
-#include <fstream>
 #include <optional>
 #include <ranges>
 #include <span>
-#include <sstream>
 #include <utility>
 
 namespace codedup
@@ -219,18 +219,6 @@ constexpr auto twoCharOperators = std::to_array<OperatorEntry>({
     return ch >= '0' && ch <= '9';
 }
 
-/// @brief Returns true if the character is a hexadecimal digit.
-[[nodiscard]] auto IsHexDigit(char ch) -> bool
-{
-    return IsDigit(ch) || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F');
-}
-
-/// @brief Returns true if the character is a binary digit.
-[[nodiscard]] auto IsBinDigit(char ch) -> bool
-{
-    return ch == '0' || ch == '1';
-}
-
 /// @brief Returns true if the character is a valid C# numeric suffix character.
 [[nodiscard]] auto IsNumericSuffix(char ch) -> bool
 {
@@ -250,10 +238,8 @@ class Scanner
 public:
     /// @brief Constructs a scanner for the given source code.
     /// @param source The source text to tokenize.
-    /// @param filePath The file path for source location tracking.
-    Scanner(std::string_view source, std::filesystem::path filePath) : _source(source), _filePath(std::move(filePath))
-    {
-    }
+    /// @param fileIndex The file index for source location tracking.
+    Scanner(std::string_view source, uint32_t fileIndex) : _source(source), _fileIndex(fileIndex) {}
 
     /// @brief Tokenizes the entire source into a vector of tokens.
     /// @return The token vector on success, or a TokenizerError on failure.
@@ -280,7 +266,7 @@ public:
 
 private:
     std::string_view _source;
-    std::filesystem::path _filePath;
+    uint32_t _fileIndex;
     size_t _pos = 0;
     uint32_t _line = 1;
     uint32_t _column = 1;
@@ -321,23 +307,36 @@ private:
         return ch;
     }
 
+    /// @brief Advances the scanner by a given number of characters, tracking line/column.
+    /// @param count The number of characters to advance.
+    void AdvanceBy(size_t count)
+    {
+        for (size_t i = 0; i < count; ++i)
+        {
+            auto const ch = _source[_pos++];
+            if (ch == '\n')
+            {
+                ++_line;
+                _column = 1;
+            }
+            else
+            {
+                ++_column;
+            }
+        }
+    }
+
     /// @brief Skips whitespace characters (space, tab, carriage return, newline).
     void SkipWhitespace()
     {
-        while (!AtEnd())
-        {
-            auto const ch = Peek();
-            if (ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n')
-                Advance();
-            else
-                break;
-        }
+        auto const count = SimdCharClassifier::ScanWhitespace(_source, _pos);
+        AdvanceBy(count);
     }
 
     /// @brief Returns the current source location.
     [[nodiscard]] auto CurrentLocation() const -> SourceLocation
     {
-        return {.filePath = _filePath, .line = _line, .column = _column};
+        return {.fileIndex = _fileIndex, .line = _line, .column = _column};
     }
 
     /// @brief Dispatches to the appropriate scanning function for the next token.
@@ -696,8 +695,8 @@ private:
     [[nodiscard]] auto ScanIdentifierOrKeyword(SourceLocation const& loc) -> std::expected<Token, TokenizerError>
     {
         auto const start = _pos;
-        while (!AtEnd() && IsIdentifierContinue(Peek()))
-            Advance();
+        auto const count = SimdCharClassifier::ScanIdentifierContinue(_source, _pos);
+        AdvanceBy(count);
 
         auto const text = _source.substr(start, _pos - start);
         auto const type = LookupKeyword(text);
@@ -726,8 +725,8 @@ private:
     {
         Advance(); // 0
         Advance(); // x or X
-        while (!AtEnd() && (IsHexDigit(Peek()) || Peek() == '_'))
-            Advance();
+        auto const count = SimdCharClassifier::ScanHexDigits(_source, _pos, '_');
+        AdvanceBy(count);
     }
 
     /// @brief Scans binary digits (after 0b/0B prefix) with underscore separators.
@@ -735,8 +734,8 @@ private:
     {
         Advance(); // 0
         Advance(); // b or B
-        while (!AtEnd() && (IsBinDigit(Peek()) || Peek() == '_'))
-            Advance();
+        auto const count = SimdCharClassifier::ScanBinaryDigits(_source, _pos, '_');
+        AdvanceBy(count);
     }
 
     /// @brief Scans decimal digits with optional fractional part and exponent.
@@ -744,15 +743,19 @@ private:
     void ScanDecimalWithFractionalAndExponent(size_t start)
     {
         // Decimal integer digits (with _ as digit separator)
-        while (!AtEnd() && (IsDigit(Peek()) || Peek() == '_'))
-            Advance();
+        {
+            auto const n = SimdCharClassifier::ScanDecimalDigits(_source, _pos, '_');
+            AdvanceBy(n);
+        }
 
         // Fractional part
         if (Peek() == '.' && (IsDigit(PeekAt(1)) || PeekAt(1) == 'e' || PeekAt(1) == 'E'))
         {
             Advance(); // .
-            while (!AtEnd() && (IsDigit(Peek()) || Peek() == '_'))
-                Advance();
+            {
+                auto const n = SimdCharClassifier::ScanDecimalDigits(_source, _pos, '_');
+                AdvanceBy(n);
+            }
         }
         else if (Peek() == '.' && _pos > start && IsDigit(_source[start]))
         {
@@ -760,8 +763,10 @@ private:
                 PeekAt(1) == 'd' || PeekAt(1) == 'D' || PeekAt(1) == 'm' || PeekAt(1) == 'M')
             {
                 Advance(); // .
-                while (!AtEnd() && (IsDigit(Peek()) || Peek() == '_'))
-                    Advance();
+                {
+                    auto const n = SimdCharClassifier::ScanDecimalDigits(_source, _pos, '_');
+                    AdvanceBy(n);
+                }
             }
         }
 
@@ -771,8 +776,10 @@ private:
             Advance();
             if (Peek() == '+' || Peek() == '-')
                 Advance();
-            while (!AtEnd() && (IsDigit(Peek()) || Peek() == '_'))
-                Advance();
+            {
+                auto const n = SimdCharClassifier::ScanDecimalDigits(_source, _pos, '_');
+                AdvanceBy(n);
+            }
         }
     }
 
@@ -802,14 +809,6 @@ private:
         return Token{.type = TokenType::NumericLiteral,
                      .text = std::string(_source.substr(start, _pos - start)),
                      .location = loc};
-    }
-
-    /// @brief Advances the scanner by a given number of characters.
-    /// @param count The number of characters to advance.
-    void AdvanceBy(size_t count)
-    {
-        for (size_t i = 0; i < count; ++i)
-            Advance();
     }
 
     /// @brief Tries to match a multi-character operator from a table.
@@ -1357,33 +1356,33 @@ auto CSharpLanguage::Extensions() const -> std::span<std::string const>
     return exts;
 }
 
-auto CSharpLanguage::Tokenize(std::string_view source, std::filesystem::path const& filePath) const
+auto CSharpLanguage::Tokenize(std::string_view source, uint32_t fileIndex) const
     -> std::expected<std::vector<Token>, TokenizerError>
 {
-    Scanner scanner(source, filePath);
+    Scanner scanner(source, fileIndex);
     return scanner.Tokenize();
 }
 
-auto CSharpLanguage::TokenizeFile(std::filesystem::path const& filePath, InputEncoding encoding) const
-    -> std::expected<std::vector<Token>, TokenizerError>
+auto CSharpLanguage::TokenizeFile(std::filesystem::path const& filePath, uint32_t fileIndex,
+                                  InputEncoding encoding) const -> std::expected<std::vector<Token>, TokenizerError>
 {
-    std::ifstream file(filePath, std::ios::binary);
-    if (!file)
-        return std::unexpected(TokenizerError{.message = "Failed to open file: " + filePath.string(),
-                                              .location = {.filePath = filePath, .line = 0, .column = 0}});
+    auto mappedFile = MappedFile::Open(filePath);
+    if (!mappedFile)
+        return std::unexpected(TokenizerError{.message = mappedFile.error(),
+                                              .location = {.fileIndex = fileIndex, .line = 0, .column = 0},
+                                              .filePath = filePath});
 
-    std::ostringstream ss;
-    ss << file.rdbuf();
-    auto const rawContent = ss.str();
+    auto const rawContent = mappedFile->View();
 
     auto utf8Result = ConvertToUtf8(rawContent, encoding);
     if (!utf8Result)
         return std::unexpected(TokenizerError{
             .message = std::format("Encoding error in {}: {}", filePath.string(), utf8Result.error().message),
-            .location = {.filePath = filePath, .line = 0, .column = 0}});
+            .location = {.fileIndex = fileIndex, .line = 0, .column = 0},
+            .filePath = filePath});
 
     auto const& utf8Content = *utf8Result;
-    return Tokenize(utf8Content, filePath);
+    return Tokenize(utf8Content, fileIndex);
 }
 
 auto CSharpLanguage::ExtractBlocks(std::vector<Token> const& tokens, std::vector<NormalizedToken> const& normalized,

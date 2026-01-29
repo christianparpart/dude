@@ -88,6 +88,22 @@
                 "CMAKE_C_COMPILER": "gcc",
                 "CMAKE_CXX_COMPILER": "g++"
             }
+        },
+        {
+            "name": "linux-clang-pgo-instrument",
+            "inherits": "linux-clang-release-native",
+            "displayName": "Linux Clang PGO Instrumentation",
+            "cacheVariables": {
+                "ENABLE_PGO_INSTRUMENT": "ON"
+            }
+        },
+        {
+            "name": "linux-clang-pgo-optimize",
+            "inherits": "linux-clang-release-native",
+            "displayName": "Linux Clang PGO Optimized",
+            "cacheVariables": {
+                "ENABLE_PGO_OPTIMIZE": "ON"
+            }
         }
     ],
     "buildPresets": [
@@ -118,6 +134,14 @@
         {
             "name": "linux-gcc-debug",
             "configurePreset": "linux-gcc-debug"
+        },
+        {
+            "name": "linux-clang-pgo-instrument",
+            "configurePreset": "linux-clang-pgo-instrument"
+        },
+        {
+            "name": "linux-clang-pgo-optimize",
+            "configurePreset": "linux-clang-pgo-optimize"
         }
     ],
     "testPresets": [
@@ -166,6 +190,20 @@
         {
             "name": "linux-gcc-debug",
             "configurePreset": "linux-gcc-debug",
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "linux-clang-pgo-instrument",
+            "configurePreset": "linux-clang-pgo-instrument",
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "linux-clang-pgo-optimize",
+            "configurePreset": "linux-clang-pgo-optimize",
             "output": {
                 "outputOnFailure": true
             }

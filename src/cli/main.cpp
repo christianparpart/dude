@@ -2,10 +2,12 @@
 
 #include "GitDiffParser.hpp"
 #include "GitFileFilter.hpp"
+#include <exec/static_thread_pool.hpp>
 #include <fnmatch.h>
 #include <mcp/AnalysisSession.hpp>
 #include <mcp/McpTooling.hpp>
 #include <mcpprotocol/McpServer.hpp>
+#include <stdexec/execution.hpp>
 
 #include <codedup/AnalysisScope.hpp>
 #include <codedup/CloneDetector.hpp>
@@ -36,6 +38,7 @@
 #include <string>
 #include <string_view>
 #include <tuple>
+#include <unordered_set>
 #include <vector>
 
 namespace
@@ -629,39 +632,52 @@ auto TokenizeFiles(std::vector<std::filesystem::path> const& files, CliOptions c
     using Clock = std::chrono::steady_clock;
 
     auto const tokenizeStart = Clock::now();
-    std::vector<std::vector<codedup::Token>> allTokens;
-    std::vector<codedup::Language const*> fileLanguages;
-    allTokens.reserve(files.size());
-    fileLanguages.reserve(files.size());
+    auto const numFiles = files.size();
+
+    std::vector<std::vector<codedup::Token>> allTokens(numFiles);
+    std::vector<codedup::Language const*> fileLanguages(numFiles, nullptr);
 
     auto const& registry = codedup::LanguageRegistry::Instance();
 
-    for (auto const& file : files)
+    // Pre-resolve languages (lightweight, sequential)
+    for (size_t fi = 0; fi < numFiles; ++fi)
+        fileLanguages[fi] = registry.FindByPath(files[fi]);
+
+    // Parallel tokenization using stdexec::bulk
     {
-        auto const* language = registry.FindByPath(file);
-        if (!language)
-        {
-            if (opts.verbose)
-                std::println(stderr, "Warning: No language support for {}", file.string());
-            allTokens.emplace_back();
-            fileLanguages.push_back(nullptr);
-            continue;
-        }
+        exec::static_thread_pool pool(std::thread::hardware_concurrency());
+        auto sched = pool.get_scheduler();
 
-        if (opts.verbose)
-            std::println(stderr, "Tokenizing ({}): {}", language->Name(), file.string());
-
-        auto tokensResult = language->TokenizeFile(file, opts.encoding);
-        if (!tokensResult)
-        {
-            std::println(stderr, "Warning: Failed to tokenize {}: {}", file.string(), tokensResult.error().message);
-            allTokens.emplace_back(); // Empty tokens for failed files
-            fileLanguages.push_back(language);
-            continue;
-        }
-        allTokens.push_back(std::move(*tokensResult));
-        fileLanguages.push_back(language);
+        auto work = stdexec::starts_on(
+            sched, stdexec::just() | stdexec::bulk(stdexec::par, numFiles,
+                                                   [&](std::size_t fi)
+                                                   {
+                                                       auto const* language = fileLanguages[fi];
+                                                       if (!language)
+                                                           return;
+                                                       auto const fileIndex = static_cast<uint32_t>(fi);
+                                                       auto result =
+                                                           language->TokenizeFile(files[fi], fileIndex, opts.encoding);
+                                                       if (result)
+                                                           allTokens[fi] = std::move(*result);
+                                                   }));
+        stdexec::sync_wait(work);
     }
+
+    // Sequential verbose output and error reporting
+    if (opts.verbose)
+    {
+        for (size_t fi = 0; fi < numFiles; ++fi)
+        {
+            if (!fileLanguages[fi])
+                std::println(stderr, "Warning: No language support for {}", files[fi].string());
+            else if (allTokens[fi].empty())
+                std::println(stderr, "Warning: Failed to tokenize {}", files[fi].string());
+            else
+                std::println(stderr, "Tokenized ({}): {}", fileLanguages[fi]->Name(), files[fi].string());
+        }
+    }
+
     timing.tokenizing = Clock::now() - tokenizeStart;
 
     return {std::move(allTokens), std::move(fileLanguages)};
@@ -867,13 +883,38 @@ int main(int argc, char* argv[])
     if (diffMode)
     {
         auto const projectRoot = std::filesystem::weakly_canonical(opts.directory);
-        auto const changedBlocks = codedup::DiffFilter::FindChangedBlocks(allBlocks, diffResult, projectRoot);
+        auto const changedBlocks = codedup::DiffFilter::FindChangedBlocks(allBlocks, diffResult, projectRoot, files);
 
         if (opts.verbose)
             std::println(stderr, "Found {} code blocks overlapping with changed lines", changedBlocks.size());
 
         groups = codedup::DiffFilter::FilterCloneGroups(groups, changedBlocks);
         intraResults = codedup::DiffFilter::FilterIntraResults(intraResults, changedBlocks);
+    }
+
+    // Step 4d: Release token vectors for non-participating files to reduce peak memory.
+    {
+        std::unordered_set<size_t> participatingFiles;
+        for (auto const& group : groups)
+            for (auto const idx : group.blockIndices)
+                participatingFiles.insert(blockToFileIndex[idx]);
+        for (auto const& result : intraResults)
+            participatingFiles.insert(blockToFileIndex[result.blockIndex]);
+
+        for (size_t fi = 0; fi < allTokens.size(); ++fi)
+        {
+            if (!participatingFiles.contains(fi))
+            {
+                allTokens[fi].clear();
+                allTokens[fi].shrink_to_fit();
+            }
+        }
+
+        if (opts.verbose)
+        {
+            auto const released = allTokens.size() - participatingFiles.size();
+            std::println(stderr, "Released token vectors for {} non-participating files", released);
+        }
     }
 
     // Step 5: Report results
@@ -893,10 +934,10 @@ int main(int argc, char* argv[])
 
     auto const specResult = codedup::ParseReporterSpec(opts.reporterSpec);
 
-    reporter->Report(groups, allBlocks, allTokens, blockToFileIndex);
+    reporter->Report(groups, allBlocks, allTokens, blockToFileIndex, files);
 
     if (!intraResults.empty())
-        reporter->ReportIntraClones(intraResults, allBlocks, allTokens, blockToFileIndex);
+        reporter->ReportIntraClones(intraResults, allBlocks, allTokens, blockToFileIndex, files);
 
     size_t totalIntraPairs = 0;
     for (auto const& r : intraResults)

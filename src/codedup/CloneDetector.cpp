@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <ankerl/unordered_dense.h>
+
 #include <codedup/CloneDetector.hpp>
 #include <codedup/RollingHash.hpp>
 
@@ -9,8 +11,6 @@
 #include <ranges>
 #include <span>
 #include <thread>
-#include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 namespace codedup
@@ -91,12 +91,12 @@ auto CloneDetector::Detect(std::vector<CodeBlock> const& blocks) -> std::vector<
         return {};
 
     // Phase 1: Build inverted index of fingerprints to block indices
-    std::unordered_map<uint64_t, std::vector<size_t>> fingerprintIndex;
+    ankerl::unordered_dense::map<uint64_t, std::vector<size_t>> fingerprintIndex;
 
     for (auto const bi : std::views::iota(size_t{0}, blocks.size()))
     {
         auto const fingerprints = ComputeFingerprints(blocks[bi].normalizedIds);
-        std::unordered_set<uint64_t> seen; // Deduplicate within a single block
+        ankerl::unordered_dense::set<uint64_t> seen; // Deduplicate within a single block
         for (auto const fp : fingerprints)
         {
             if (seen.insert(fp).second)
@@ -109,7 +109,7 @@ auto CloneDetector::Detect(std::vector<CodeBlock> const& blocks) -> std::vector<
     auto const maxBlocksPerFingerprint = std::max(size_t{50}, blocks.size() / 2);
 
     // Count shared fingerprints per pair
-    std::unordered_map<std::pair<size_t, size_t>, size_t, PairHash> pairCounts;
+    ankerl::unordered_dense::map<std::pair<size_t, size_t>, size_t, PairHash> pairCounts;
     for (auto const& [fp, blockList] : fingerprintIndex)
     {
         if (blockList.size() > maxBlocksPerFingerprint)
@@ -205,7 +205,7 @@ auto CloneDetector::Detect(std::vector<CodeBlock> const& blocks) -> std::vector<
         uf.Unite(cp.blockA, cp.blockB);
 
     // Collect groups
-    std::unordered_map<size_t, std::vector<size_t>> groupMap;
+    ankerl::unordered_dense::map<size_t, std::vector<size_t>> groupMap;
     for (auto const& cp : clonePairs)
     {
         auto const root = uf.Find(cp.blockA);
@@ -214,7 +214,7 @@ auto CloneDetector::Detect(std::vector<CodeBlock> const& blocks) -> std::vector<
     }
 
     // Gather all blocks that participate in any clone pair
-    std::unordered_set<size_t> participatingBlocks;
+    ankerl::unordered_dense::set<size_t> participatingBlocks;
     for (auto const& cp : clonePairs)
     {
         participatingBlocks.insert(cp.blockA);

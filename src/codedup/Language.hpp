@@ -40,16 +40,17 @@ public:
 
     /// @brief Tokenizes source code from a string.
     /// @param source The source code to tokenize.
-    /// @param filePath The file path for source location tracking.
+    /// @param fileIndex Index into the global file path vector for source location tracking.
     /// @return A vector of tokens on success, or a TokenizerError on failure.
-    [[nodiscard]] virtual auto Tokenize(std::string_view source, std::filesystem::path const& filePath = {}) const
+    [[nodiscard]] virtual auto Tokenize(std::string_view source, uint32_t fileIndex = NoFileIndex) const
         -> std::expected<std::vector<Token>, TokenizerError> = 0;
 
     /// @brief Tokenizes a source file, handling encoding detection/conversion.
     /// @param filePath Path to the source file.
+    /// @param fileIndex Index into the global file path vector.
     /// @param encoding The input encoding to use (default: auto-detect).
     /// @return A vector of tokens on success, or a TokenizerError on failure.
-    [[nodiscard]] virtual auto TokenizeFile(std::filesystem::path const& filePath,
+    [[nodiscard]] virtual auto TokenizeFile(std::filesystem::path const& filePath, uint32_t fileIndex,
                                             InputEncoding encoding = InputEncoding::Auto) const
         -> std::expected<std::vector<Token>, TokenizerError> = 0;
 

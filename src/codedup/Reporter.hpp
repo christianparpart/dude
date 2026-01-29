@@ -11,8 +11,10 @@
 
 #include <chrono>
 #include <cstddef>
+#include <filesystem>
 #include <optional>
 #include <ostream>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -81,18 +83,21 @@ public:
     /// @param blocks The code blocks referenced by the groups.
     /// @param allTokens All tokens from all files (indexed by block's token range).
     /// @param blockToFileIndex Mapping from block index to file index in allTokens.
+    /// @param files The file path vector for resolving file indices to paths.
     virtual void Report(std::vector<CloneGroup> const& groups, std::vector<CodeBlock> const& blocks,
-                        std::vector<std::vector<Token>> const& allTokens,
-                        std::vector<size_t> const& blockToFileIndex) = 0;
+                        std::vector<std::vector<Token>> const& allTokens, std::vector<size_t> const& blockToFileIndex,
+                        std::span<std::filesystem::path const> files) = 0;
 
     /// @brief Reports intra-function clone results.
     /// @param results The intra-function clone results to report.
     /// @param blocks The code blocks referenced by the results.
     /// @param allTokens All tokens from all files (indexed by block's token range).
     /// @param blockToFileIndex Mapping from block index to file index in allTokens.
+    /// @param files The file path vector for resolving file indices to paths.
     virtual void ReportIntraClones(std::vector<IntraCloneResult> const& results, std::vector<CodeBlock> const& blocks,
                                    std::vector<std::vector<Token>> const& allTokens,
-                                   std::vector<size_t> const& blockToFileIndex) = 0;
+                                   std::vector<size_t> const& blockToFileIndex,
+                                   std::span<std::filesystem::path const> files) = 0;
 
     /// @brief Appends a summary of the scan results, optionally including performance timing.
     /// @param summary The summary data to report.

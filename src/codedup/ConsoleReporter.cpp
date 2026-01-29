@@ -3,9 +3,11 @@
 #include <codedup/CloneDetector.hpp>
 #include <codedup/ConsoleReporter.hpp>
 
+#include <filesystem>
 #include <format>
 #include <iterator>
 #include <ranges>
+#include <span>
 #include <unordered_set>
 
 namespace codedup
@@ -110,13 +112,16 @@ void ReportGroupHeader(std::string& out, size_t groupIndex, CloneGroup const& gr
 /// @param block The code block whose location to format.
 /// @param range The source range of the block.
 /// @param config Reporter configuration for color settings.
-void ReportBlockEntry(std::string& out, CodeBlock const& block, SourceRange const& range, ReporterConfig const& config)
+void ReportBlockEntry(std::string& out, CodeBlock const& block, SourceRange const& range,
+                      std::span<std::filesystem::path const> files, ReporterConfig const& config)
 {
     auto inserter = std::back_inserter(out);
     if (config.useColor)
         out += "\033[1;36m"; // Bold cyan
-    std::format_to(inserter, "  {} [{}:{}-{}:{}] {}", range.start.filePath.string(), range.start.line,
-                   range.start.column, range.end.line, range.end.column, block.name);
+    auto const& filePath =
+        range.start.fileIndex < files.size() ? files[range.start.fileIndex].string() : std::string("<unknown>");
+    std::format_to(inserter, "  {} [{}:{}-{}:{}] {}", filePath, range.start.line, range.start.column, range.end.line,
+                   range.end.column, block.name);
     if (config.useColor)
         out += ansiReset;
     out += '\n';
@@ -270,7 +275,7 @@ void ReportIntraRegion(std::string& out, std::string_view label, IntraCloneRegio
 
 void ConsoleReporter::Report(std::vector<CloneGroup> const& groups, std::vector<CodeBlock> const& blocks,
                              std::vector<std::vector<Token>> const& allTokens,
-                             std::vector<size_t> const& blockToFileIndex)
+                             std::vector<size_t> const& blockToFileIndex, std::span<std::filesystem::path const> files)
 {
     for (auto const gi : std::views::iota(size_t{0}, groups.size()))
     {
@@ -283,7 +288,7 @@ void ConsoleReporter::Report(std::vector<CloneGroup> const& groups, std::vector<
             auto const blockIdx = group.blockIndices[bi];
             auto const& block = blocks[blockIdx];
 
-            ReportBlockEntry(_output, block, block.sourceRange, _config);
+            ReportBlockEntry(_output, block, block.sourceRange, files, _config);
 
             if (_config.showSourceCode && blockIdx < blockToFileIndex.size())
             {
@@ -305,7 +310,8 @@ void ConsoleReporter::Report(std::vector<CloneGroup> const& groups, std::vector<
 void ConsoleReporter::ReportIntraClones(std::vector<IntraCloneResult> const& results,
                                         std::vector<CodeBlock> const& blocks,
                                         std::vector<std::vector<Token>> const& allTokens,
-                                        std::vector<size_t> const& blockToFileIndex)
+                                        std::vector<size_t> const& blockToFileIndex,
+                                        std::span<std::filesystem::path const> files)
 {
     auto inserter = std::back_inserter(_output);
 
@@ -318,12 +324,14 @@ void ConsoleReporter::ReportIntraClones(std::vector<IntraCloneResult> const& res
         auto const& block = blocks[result.blockIndex];
         auto const& range = block.sourceRange;
 
+        auto const& filePath =
+            range.start.fileIndex < files.size() ? files[range.start.fileIndex].string() : std::string("<unknown>");
+
         // Block header
         if (_config.useColor)
             _output += "\033[1;35m"; // Bold magenta
-        std::format_to(inserter, "Intra-function clones in {} [{}:{}-{}:{}] {} ({} pairs)",
-                       range.start.filePath.string(), range.start.line, range.start.column, range.end.line,
-                       range.end.column, block.name, result.pairs.size());
+        std::format_to(inserter, "Intra-function clones in {} [{}:{}-{}:{}] {} ({} pairs)", filePath, range.start.line,
+                       range.start.column, range.end.line, range.end.column, block.name, result.pairs.size());
         if (_config.useColor)
             _output += ansiReset;
         _output += '\n';

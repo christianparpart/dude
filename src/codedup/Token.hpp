@@ -5,6 +5,7 @@
 #include <codedup/SourceLocation.hpp>
 
 #include <cstdint>
+#include <filesystem>
 #include <string>
 #include <string_view>
 
@@ -288,8 +289,9 @@ struct Token
 /// @brief Error information from the tokenizer.
 struct TokenizerError
 {
-    std::string message;     ///< Description of the error.
-    SourceLocation location; ///< Location where the error occurred.
+    std::string message;                 ///< Description of the error.
+    SourceLocation location;             ///< Location where the error occurred.
+    std::filesystem::path filePath = {}; ///< File path (stored here since SourceLocation uses file index).
 };
 
 /// @brief Returns a human-readable name for the given token type.

@@ -6,6 +6,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <filesystem>
 #include <sstream>
 
 using namespace codedup;
@@ -90,10 +91,12 @@ TEST_CASE("JsonReporter.CloneGroups", "[reporter][json]")
 {
     JsonReporter reporter;
 
+    std::vector<std::filesystem::path> files = {"a.cpp", "b.cpp"};
+
     CodeBlock blockA{
         .name = "funcA",
-        .sourceRange = {.start = {.filePath = "a.cpp", .line = 1, .column = 1},
-                        .end = {.filePath = "a.cpp", .line = 10, .column = 1}},
+        .sourceRange = {.start = {.fileIndex = 0, .line = 1, .column = 1},
+                        .end = {.fileIndex = 0, .line = 10, .column = 1}},
         .tokenStart = 0,
         .tokenEnd = 5,
         .normalizedIds = {1, 2, 3, 4, 5},
@@ -101,8 +104,8 @@ TEST_CASE("JsonReporter.CloneGroups", "[reporter][json]")
     };
     CodeBlock blockB{
         .name = "funcB",
-        .sourceRange = {.start = {.filePath = "b.cpp", .line = 5, .column = 1},
-                        .end = {.filePath = "b.cpp", .line = 15, .column = 1}},
+        .sourceRange = {.start = {.fileIndex = 1, .line = 5, .column = 1},
+                        .end = {.fileIndex = 1, .line = 15, .column = 1}},
         .tokenStart = 0,
         .tokenEnd = 5,
         .normalizedIds = {1, 2, 3, 4, 5},
@@ -114,7 +117,7 @@ TEST_CASE("JsonReporter.CloneGroups", "[reporter][json]")
     std::vector<std::vector<Token>> allTokens;
     std::vector<size_t> blockToFile;
 
-    reporter.Report({group}, {blockA, blockB}, allTokens, blockToFile);
+    reporter.Report({group}, {blockA, blockB}, allTokens, blockToFile, files);
     reporter.ReportSummary({.totalFiles = 2, .totalBlocks = 2, .totalGroups = 1});
 
     auto const output = reporter.Render();
@@ -139,23 +142,25 @@ TEST_CASE("JsonReporter.IntraClones", "[reporter][json]")
 {
     JsonReporter reporter;
 
+    std::vector<std::filesystem::path> files = {"test.cpp"};
+
     std::vector<Token> tokens = {
-        {TokenType::Int, "int", {.filePath = "test.cpp", .line = 1, .column = 1}},
-        {TokenType::Identifier, "a", {.filePath = "test.cpp", .line = 2, .column = 1}},
-        {TokenType::Equal, "=", {.filePath = "test.cpp", .line = 2, .column = 3}},
-        {TokenType::NumericLiteral, "1", {.filePath = "test.cpp", .line = 2, .column = 5}},
-        {TokenType::Semicolon, ";", {.filePath = "test.cpp", .line = 2, .column = 6}},
-        {TokenType::Int, "int", {.filePath = "test.cpp", .line = 3, .column = 1}},
-        {TokenType::Identifier, "b", {.filePath = "test.cpp", .line = 4, .column = 1}},
-        {TokenType::Equal, "=", {.filePath = "test.cpp", .line = 4, .column = 3}},
-        {TokenType::NumericLiteral, "2", {.filePath = "test.cpp", .line = 4, .column = 5}},
-        {TokenType::Semicolon, ";", {.filePath = "test.cpp", .line = 4, .column = 6}},
+        {TokenType::Int, "int", {.fileIndex = 0, .line = 1, .column = 1}},
+        {TokenType::Identifier, "a", {.fileIndex = 0, .line = 2, .column = 1}},
+        {TokenType::Equal, "=", {.fileIndex = 0, .line = 2, .column = 3}},
+        {TokenType::NumericLiteral, "1", {.fileIndex = 0, .line = 2, .column = 5}},
+        {TokenType::Semicolon, ";", {.fileIndex = 0, .line = 2, .column = 6}},
+        {TokenType::Int, "int", {.fileIndex = 0, .line = 3, .column = 1}},
+        {TokenType::Identifier, "b", {.fileIndex = 0, .line = 4, .column = 1}},
+        {TokenType::Equal, "=", {.fileIndex = 0, .line = 4, .column = 3}},
+        {TokenType::NumericLiteral, "2", {.fileIndex = 0, .line = 4, .column = 5}},
+        {TokenType::Semicolon, ";", {.fileIndex = 0, .line = 4, .column = 6}},
     };
 
     CodeBlock block{
         .name = "testFunc",
-        .sourceRange = {.start = {.filePath = "test.cpp", .line = 1, .column = 1},
-                        .end = {.filePath = "test.cpp", .line = 4, .column = 7}},
+        .sourceRange = {.start = {.fileIndex = 0, .line = 1, .column = 1},
+                        .end = {.fileIndex = 0, .line = 4, .column = 7}},
         .tokenStart = 0,
         .tokenEnd = 10,
         .normalizedIds = {57, 1000, 166, 1001, 125, 57, 1002, 166, 1003, 125},
@@ -175,7 +180,7 @@ TEST_CASE("JsonReporter.IntraClones", "[reporter][json]")
     std::vector<std::vector<Token>> allTokens = {tokens};
     std::vector<size_t> blockToFile = {0};
 
-    reporter.ReportIntraClones({result}, {block}, allTokens, blockToFile);
+    reporter.ReportIntraClones({result}, {block}, allTokens, blockToFile, files);
     reporter.ReportSummary({.totalFiles = 1, .totalBlocks = 1, .totalGroups = 0, .totalIntraPairs = 1});
 
     auto const output = reporter.Render();
@@ -200,8 +205,8 @@ TEST_CASE("JsonReporter.ValidJson", "[reporter][json]")
     // Ensure output is always valid JSON even with empty data
     JsonReporter reporter;
 
-    reporter.Report({}, {}, {}, {});
-    reporter.ReportIntraClones({}, {}, {}, {});
+    reporter.Report({}, {}, {}, {}, {});
+    reporter.ReportIntraClones({}, {}, {}, {}, {});
     reporter.ReportSummary({});
 
     auto const output = reporter.Render();

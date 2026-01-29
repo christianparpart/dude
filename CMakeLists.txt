@@ -13,6 +13,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(ENABLE_NATIVE_ARCH "Enable -march=native for optimized builds (POPCNT, BMI2, AVX2)" OFF)
+option(ENABLE_PGO_INSTRUMENT "Enable PGO instrumentation (profile generation)" OFF)
+option(ENABLE_PGO_OPTIMIZE "Enable PGO optimization (profile use)" OFF)
+set(PGO_PROFILE_DIR "${CMAKE_BINARY_DIR}/pgo-profiles" CACHE PATH "Directory for PGO profile data")
 
 include(cmake/PedanticCompiler.cmake)
 include(cmake/Sanitizers.cmake)
@@ -22,6 +25,19 @@ include(cmake/StaticLinking.cmake)
 
 if(ENABLE_NATIVE_ARCH)
     add_compile_options(-march=native)
+endif()
+
+if(ENABLE_PGO_INSTRUMENT)
+    add_compile_options(-fprofile-instr-generate=${PGO_PROFILE_DIR}/default-%p.profraw)
+    add_link_options(-fprofile-instr-generate=${PGO_PROFILE_DIR}/default-%p.profraw)
+elseif(ENABLE_PGO_OPTIMIZE)
+    if(NOT EXISTS "${PGO_PROFILE_DIR}/merged.profdata")
+        message(FATAL_ERROR "PGO profile data not found at ${PGO_PROFILE_DIR}/merged.profdata. "
+            "Run the instrumented build first, then merge with: "
+            "llvm-profdata merge -output=${PGO_PROFILE_DIR}/merged.profdata ${PGO_PROFILE_DIR}/*.profraw")
+    endif()
+    add_compile_options(-fprofile-instr-use=${PGO_PROFILE_DIR}/merged.profdata)
+    add_link_options(-fprofile-instr-use=${PGO_PROFILE_DIR}/merged.profdata)
 endif()
 
 # CPM for dependency management
@@ -40,7 +56,23 @@ CPMAddPackage(
     NAME nlohmann_json
     GITHUB_REPOSITORY nlohmann/json
     VERSION 3.11.3
+    EXCLUDE_FROM_ALL YES
     OPTIONS "JSON_BuildTests OFF" "JSON_Install OFF"
+)
+
+CPMAddPackage(
+    NAME unordered_dense
+    GITHUB_REPOSITORY martinus/unordered_dense
+    VERSION 4.4.0
+    EXCLUDE_FROM_ALL YES
+)
+
+CPMAddPackage(
+    NAME stdexec
+    GITHUB_REPOSITORY NVIDIA/stdexec
+    GIT_TAG main
+    EXCLUDE_FROM_ALL YES
+    OPTIONS "STDEXEC_BUILD_TESTS OFF" "STDEXEC_BUILD_EXAMPLES OFF"
 )
 
 add_subdirectory(src/codedup)

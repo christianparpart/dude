@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <ankerl/unordered_dense.h>
 #include <experimental/simd>
 
 #include <codedup/IntraFunctionDetector.hpp>
@@ -8,7 +9,6 @@
 #include <cstddef>
 #include <ranges>
 #include <set>
-#include <unordered_map>
 #include <vector>
 
 namespace codedup
@@ -19,18 +19,21 @@ namespace stdx = std::experimental;
 namespace
 {
 
-/// @brief SIMD type for comparing 8 uint32_t values (NormalizedTokenId) in parallel.
+/// @brief SIMD type for comparing NormalizedTokenId values in parallel using native ABI.
 ///
-/// Uses std::experimental::simd with fixed_size<8> ABI, which maps to 256-bit SIMD
-/// registers (AVX2) when available. Each iteration compares 8 token IDs simultaneously,
-/// yielding 4-8x speedup over scalar comparison on the match extension hot path.
-using SimdU32x8 = stdx::simd<uint32_t, stdx::simd_abi::fixed_size<8>>;
+/// Uses std::experimental::native_simd which auto-selects the optimal vector width
+/// for the target architecture: 4 elements on SSE2, 8 on AVX2, 16 on AVX-512.
+/// With -march=native, the compiler selects the widest available register width.
+using NativeU32 = stdx::native_simd<uint32_t>;
+
+/// @brief Number of uint32_t elements per native SIMD register.
+constexpr auto kSimdWidth = NativeU32::size();
 
 /// @brief SIMD-accelerated forward match extension between two token sequences.
 ///
-/// Compares 8 NormalizedTokenId values per iteration using SIMD, finding the first
-/// mismatch position. When a SIMD lane contains a mismatch, `find_first_set` identifies
-/// the exact position within the 8-element group.
+/// Compares kSimdWidth NormalizedTokenId values per iteration using native SIMD,
+/// finding the first mismatch position. Adapts to the target architecture:
+/// 4 elements/iter on SSE2, 8 on AVX2, 16 on AVX-512.
 ///
 /// @param a Pointer to the start of the first region.
 /// @param b Pointer to the start of the second region.
@@ -40,21 +43,21 @@ using SimdU32x8 = stdx::simd<uint32_t, stdx::simd_abi::fixed_size<8>>;
 {
     size_t offset = 0;
 
-    // SIMD loop: compare 8 uint32_t values per iteration
-    while (offset + 8 <= maxLen)
+    // SIMD loop: compare kSimdWidth uint32_t values per iteration
+    while (offset + kSimdWidth <= maxLen)
     {
-        SimdU32x8 const va(a + offset, stdx::element_aligned);
-        SimdU32x8 const vb(b + offset, stdx::element_aligned);
+        NativeU32 const va(a + offset, stdx::element_aligned);
+        NativeU32 const vb(b + offset, stdx::element_aligned);
         auto const mismatch = va != vb;
         if (stdx::any_of(mismatch))
         {
-            // Found a mismatch in this 8-element group; find the exact lane
+            // Found a mismatch in this group; find the exact lane
             return offset + static_cast<size_t>(stdx::find_first_set(mismatch));
         }
-        offset += 8;
+        offset += kSimdWidth;
     }
 
-    // Scalar tail loop: handle remaining elements (maxLen not divisible by 8)
+    // Scalar tail loop: handle remaining elements (maxLen not divisible by kSimdWidth)
     while (offset < maxLen && a[offset] == b[offset])
         ++offset;
 
@@ -64,8 +67,8 @@ using SimdU32x8 = stdx::simd<uint32_t, stdx::simd_abi::fixed_size<8>>;
 /// @brief SIMD-accelerated backward match extension between two token sequences.
 ///
 /// Similar to SimdForwardMatch but scans backward from the given positions. Compares
-/// 8 elements per iteration in reverse order, using SIMD to find the first mismatch
-/// when scanning toward the beginning of the sequences.
+/// kSimdWidth elements per iteration in reverse order, using SIMD to find the first
+/// mismatch when scanning toward the beginning of the sequences.
 ///
 /// @param a Pointer to the start of the first region.
 /// @param b Pointer to the start of the second region.
@@ -78,33 +81,29 @@ using SimdU32x8 = stdx::simd<uint32_t, stdx::simd_abi::fixed_size<8>>;
     auto const maxLen = std::min(posA, posB);
     size_t matched = 0;
 
-    // SIMD loop: compare 8 elements at a time going backward.
-    // We load 8 elements ending at the current backward scan position.
-    while (matched + 8 <= maxLen)
+    // SIMD loop: compare kSimdWidth elements at a time going backward.
+    // We load kSimdWidth elements ending at the current backward scan position.
+    while (matched + kSimdWidth <= maxLen)
     {
-        // Load 8 elements ending before current backward scan position
-        auto const offA = posA - matched - 8;
-        auto const offB = posB - matched - 8;
-        SimdU32x8 const va(a + offA, stdx::element_aligned);
-        SimdU32x8 const vb(b + offB, stdx::element_aligned);
+        // Load kSimdWidth elements ending before current backward scan position
+        auto const offA = posA - matched - kSimdWidth;
+        auto const offB = posB - matched - kSimdWidth;
+        NativeU32 const va(a + offA, stdx::element_aligned);
+        NativeU32 const vb(b + offB, stdx::element_aligned);
         auto const mismatch = va != vb;
         if (stdx::any_of(mismatch))
         {
             // Found a mismatch; count matching elements from the end of this group.
-            // find_first_set gives the first mismatching lane from the start (low index),
-            // but we're scanning backward, so matching elements from the end of this
-            // 8-element group are (7 - last_mismatch_lane). We need the count from
-            // the high end, which is 7 - find_last_set(mismatch).
-            // Simpler: check each element from the high end.
-            for (auto const k : std::views::iota(size_t{0}, size_t{8}))
+            // Scan from the high end to find the first mismatch from the tail.
+            for (auto const k : std::views::iota(size_t{0}, kSimdWidth))
             {
-                auto const idx = 7 - k;
+                auto const idx = kSimdWidth - 1 - k;
                 if (a[offA + idx] != b[offB + idx])
                     return matched + k;
             }
             return matched; // shouldn't reach here
         }
-        matched += 8;
+        matched += kSimdWidth;
     }
 
     // Scalar tail loop
@@ -143,11 +142,23 @@ using SimdU32x8 = stdx::simd<uint32_t, stdx::simd_abi::fixed_size<8>>;
         return 1.0;
 
     size_t matches = 0;
-    for (size_t i = 0; i < length; ++i)
+
+    // SIMD loop: compare kSimdWidth text-preserving IDs per iteration
+    size_t i = 0;
+    for (; i + kSimdWidth <= length; i += kSimdWidth)
+    {
+        NativeU32 const va(textIds.data() + startA + i, stdx::element_aligned);
+        NativeU32 const vb(textIds.data() + startB + i, stdx::element_aligned);
+        matches += static_cast<size_t>(stdx::popcount(va == vb));
+    }
+
+    // Scalar tail loop for remainder
+    for (; i < length; ++i)
     {
         if (textIds[startA + i] == textIds[startB + i])
             ++matches;
     }
+
     return static_cast<double>(matches) / static_cast<double>(length);
 }
 
@@ -210,7 +221,7 @@ auto IntraFunctionDetector::DetectInBlock(CodeBlock const& block, size_t blockIn
         return {};
 
     // Build inverted index: fingerprint -> [position, ...]
-    std::unordered_map<uint64_t, std::vector<size_t>> fpIndex;
+    ankerl::unordered_dense::map<uint64_t, std::vector<size_t>> fpIndex;
     for (auto const pos : std::views::iota(size_t{0}, fingerprints.size()))
         fpIndex[fingerprints[pos]].push_back(pos);
 

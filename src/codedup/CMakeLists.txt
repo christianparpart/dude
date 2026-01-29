@@ -25,7 +25,13 @@ target_include_directories(codedup PUBLIC
     $<INSTALL_INTERFACE:include>
 )
 
-target_link_libraries(codedup PUBLIC Threads::Threads nlohmann_json::nlohmann_json)
+target_link_libraries(codedup PUBLIC Threads::Threads nlohmann_json::nlohmann_json unordered_dense::unordered_dense STDEXEC::stdexec)
+
+# Mark stdexec headers as SYSTEM to suppress warnings from third-party code
+get_target_property(_stdexec_includes STDEXEC::stdexec INTERFACE_INCLUDE_DIRECTORIES)
+if(_stdexec_includes)
+    target_include_directories(codedup SYSTEM PUBLIC ${_stdexec_includes})
+endif()
 
 set_target_properties(codedup PROPERTIES
     CXX_VISIBILITY_PRESET hidden

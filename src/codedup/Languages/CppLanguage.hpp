@@ -19,10 +19,10 @@ public:
     [[nodiscard]] auto Name() const -> std::string_view override;
     [[nodiscard]] auto Extensions() const -> std::span<std::string const> override;
 
-    [[nodiscard]] auto Tokenize(std::string_view source, std::filesystem::path const& filePath = {}) const
+    [[nodiscard]] auto Tokenize(std::string_view source, uint32_t fileIndex = NoFileIndex) const
         -> std::expected<std::vector<Token>, TokenizerError> override;
 
-    [[nodiscard]] auto TokenizeFile(std::filesystem::path const& filePath,
+    [[nodiscard]] auto TokenizeFile(std::filesystem::path const& filePath, uint32_t fileIndex,
                                     InputEncoding encoding = InputEncoding::Auto) const
         -> std::expected<std::vector<Token>, TokenizerError> override;
 
