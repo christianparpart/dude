@@ -22,10 +22,12 @@
 #include <codedup/Reporter.hpp>
 #include <codedup/ReporterFactory.hpp>
 #include <codedup/ScopeFilter.hpp>
+#include <codedup/SimdCharClassifier.hpp>
 #include <codedup/Token.hpp>
 #include <codedup/TokenNormalizer.hpp>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstdlib>
 #include <expected>
@@ -37,9 +39,20 @@
 #include <ranges>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <tuple>
 #include <unordered_set>
 #include <vector>
+
+// x86 CPUID for runtime SIMD detection
+#if defined(__x86_64__) || defined(__i386__) || defined(_M_X64) || defined(_M_IX86)
+#define CODEDUP_X86 1
+#if defined(_MSC_VER)
+#include <intrin.h>
+#else
+#include <cpuid.h>
+#endif
+#endif
 
 namespace
 {
@@ -64,6 +77,7 @@ struct CliOptions
     bool showHelp = false;                                          ///< Show help text.
     bool showVersion = false;                                       ///< Show version.
     bool showExamples = false;                                      ///< Show usage examples.
+    bool showInfo = false;                                          ///< Show system capabilities info.
     bool mcpMode = false;                                           ///< Run as MCP server.
     std::string diffBase;                                           ///< Git ref to diff against (enables diff mode).
     std::string reporterSpec; ///< Reporter spec (e.g. "console", "json", "json:file=out.json").
@@ -94,7 +108,8 @@ void PrintUsage(FILE* out, bool useColor, codedup::ColorTheme theme)
         "  --mcp                       Run as MCP server (JSON-RPC over stdio)\n"
         "  -h, --help                  Show help\n"
         "  --version                   Show version\n"
-        "  --show-examples             Show usage examples";
+        "  --show-examples             Show usage examples\n"
+        "  --info                      Show system capabilities (threads, SIMD)";
     auto const formatted = codedup::HelpFormatter::FormatHelp(helpText, useColor, theme);
     std::print(out, "{}\n", formatted);
 }
@@ -213,6 +228,56 @@ void PrintExamples(bool useColor, codedup::ColorTheme theme)
     std::print("{}\n", formatted);
 }
 
+#if defined(CODEDUP_X86)
+/// @brief Queries x86 CPUID leaf/sub-leaf, returns {eax, ebx, ecx, edx}.
+auto Cpuid(int leaf, int subleaf = 0) -> std::array<unsigned, 4>
+{
+    std::array<unsigned, 4> regs{};
+#if defined(_MSC_VER)
+    int buf[4];
+    __cpuidex(buf, leaf, subleaf);
+    regs = {static_cast<unsigned>(buf[0]), static_cast<unsigned>(buf[1]), static_cast<unsigned>(buf[2]),
+            static_cast<unsigned>(buf[3])};
+#else
+    __cpuid_count(leaf, subleaf, regs[0], regs[1], regs[2], regs[3]);
+#endif
+    return regs;
+}
+#endif
+
+/// @brief Prints system capabilities relevant to this tool.
+void PrintInfo()
+{
+    std::println("System Capabilities");
+    std::println("===================");
+    std::println("  Threads (hardware concurrency): {}", std::thread::hardware_concurrency());
+
+#if defined(CODEDUP_X86)
+    auto const [eax1, ebx1, ecx1, edx1] = Cpuid(1);
+    auto const [eax7, ebx7, ecx7, edx7] = Cpuid(7, 0);
+    std::println("  CPU SIMD support:");
+    std::println("    SSE2:    {}", (edx1 >> 26) & 1 ? "yes" : "no");
+    std::println("    SSE3:    {}", (ecx1 >> 0) & 1 ? "yes" : "no");
+    std::println("    SSSE3:   {}", (ecx1 >> 9) & 1 ? "yes" : "no");
+    std::println("    SSE4.1:  {}", (ecx1 >> 19) & 1 ? "yes" : "no");
+    std::println("    SSE4.2:  {}", (ecx1 >> 20) & 1 ? "yes" : "no");
+    std::println("    AVX:     {}", (ecx1 >> 28) & 1 ? "yes" : "no");
+    std::println("    AVX2:    {}", (ebx7 >> 5) & 1 ? "yes" : "no");
+    std::println("    AVX-512: {}", (ebx7 >> 16) & 1 ? "yes" : "no");
+#endif
+
+#if CODEDUP_HAS_SIMD
+    namespace stdx = std::experimental;
+    using SimdU8 = stdx::native_simd<uint8_t>;
+    using SimdU32 = stdx::native_simd<uint32_t>;
+    std::println("  Binary SIMD (compiled):");
+    std::println("    Vector width (uint8):  {} elements ({} bits)", SimdU8::size(), SimdU8::size() * 8);
+    std::println("    Vector width (uint32): {} elements ({} bits)", SimdU32::size(), SimdU32::size() * 32);
+#else
+    std::println("  Binary SIMD:             not available");
+#endif
+}
+
 // ---------------------------------------------------------------------------
 // ParseArgs helper functions
 // ---------------------------------------------------------------------------
@@ -325,6 +390,11 @@ auto ProcessArg(int argc, char* argv[], int& i, CliOptions& opts)
     if (arg == "--show-examples")
     {
         opts.showExamples = true;
+        return opts;
+    }
+    if (arg == "--info")
+    {
+        opts.showInfo = true;
         return opts;
     }
     if (arg == "-t" || arg == "--threshold")
@@ -460,12 +530,13 @@ auto ParseArgs(int argc, char* argv[]) -> std::expected<CliOptions, std::string>
             // Only return early for errors, --help, or --version.
             if (!result->has_value())
                 return std::unexpected(std::move(result->error()));
-            if (opts.showHelp || opts.showVersion || opts.showExamples || opts.mcpMode)
+            if (opts.showHelp || opts.showVersion || opts.showExamples || opts.showInfo || opts.mcpMode)
                 return opts;
         }
     }
 
-    if (!opts.showHelp && !opts.showVersion && !opts.showExamples && !opts.mcpMode && opts.directory.empty())
+    if (!opts.showHelp && !opts.showVersion && !opts.showExamples && !opts.showInfo && !opts.mcpMode &&
+        opts.directory.empty())
         return std::unexpected("No directory specified");
 
     return opts;
@@ -753,6 +824,12 @@ int main(int argc, char* argv[])
     if (opts.showExamples)
     {
         PrintExamples(opts.useColor, opts.theme);
+        return 0;
+    }
+
+    if (opts.showInfo)
+    {
+        PrintInfo();
         return 0;
     }
 
