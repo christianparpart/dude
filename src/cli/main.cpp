@@ -73,7 +73,8 @@ struct CliOptions
     codedup::ColorTheme theme = codedup::ColorTheme::Auto;          ///< Color theme.
     std::vector<std::string> globPatterns;                          ///< Filename glob patterns to include.
     codedup::InputEncoding encoding = codedup::InputEncoding::Auto; ///< Input file encoding.
-    bool verbose = false;                                           ///< Show progress.
+    bool verbose = false;                                           ///< Show verbose diagnostics.
+    bool showProgress = false;                                      ///< Show progress bars.
     codedup::AnalysisScope scope = codedup::AnalysisScope::All;     ///< Analysis scope bitmask.
     bool respectGitignore = true;                                   ///< Respect .gitignore when scanning files.
     bool showHelp = false;                                          ///< Show help text.
@@ -106,7 +107,8 @@ void PrintUsage(FILE* out, bool useColor, codedup::ColorTheme theme)
         "  --reporter <spec>           Output reporter: console (default), json, json:file=<path>\n"
         "  --gitignore                 Respect .gitignore when scanning (default)\n"
         "  --no-gitignore              Include gitignored files in analysis\n"
-        "  -v, --verbose               Show progress during scanning\n"
+        "  -p, --progress              Show progress bars during analysis\n"
+        "  -v, --verbose               Show verbose diagnostics during scanning\n"
         "  --mcp                       Run as MCP server (JSON-RPC over stdio)\n"
         "  -h, --help                  Show help\n"
         "  --version                   Show version\n"
@@ -126,6 +128,9 @@ void PrintExamples(bool useColor, codedup::ColorTheme theme)
                                          "-----------\n"
                                          "  # Scan a directory with default settings\n"
                                          "  codedupdetector /path/to/project\n"
+                                         "\n"
+                                         "  # Scan with progress bars\n"
+                                         "  codedupdetector -p /path/to/project\n"
                                          "\n"
                                          "  # Scan with verbose output\n"
                                          "  codedupdetector -v /path/to/project\n"
@@ -499,6 +504,11 @@ auto ProcessArg(int argc, char* argv[], int& i, CliOptions& opts)
     {
         opts.mcpMode = true;
         return opts;
+    }
+    if (arg == "-p" || arg == "--progress")
+    {
+        opts.showProgress = true;
+        return std::nullopt;
     }
     if (arg == "-v" || arg == "--verbose")
     {
@@ -886,7 +896,8 @@ int main(int argc, char* argv[])
     auto const& files = *filesResult;
 
     // Step 2: Tokenize all files (language-aware)
-    auto tokenBar = opts.verbose ? std::make_optional<codedup::ProgressBar>("Tokenizing", files.size()) : std::nullopt;
+    auto tokenBar =
+        opts.showProgress ? std::make_optional<codedup::ProgressBar>("Tokenizing", files.size()) : std::nullopt;
     if (tokenBar)
         tokenBar->Start();
     auto [allTokens, fileLanguages] = TokenizeFiles(files, opts, timing, tokenBar ? &*tokenBar : nullptr);
@@ -895,7 +906,7 @@ int main(int argc, char* argv[])
 
     // Step 3: Normalize and extract blocks (language-aware)
     auto extractBar =
-        opts.verbose ? std::make_optional<codedup::ProgressBar>("Extracting", files.size()) : std::nullopt;
+        opts.showProgress ? std::make_optional<codedup::ProgressBar>("Extracting", files.size()) : std::nullopt;
     if (extractBar)
         extractBar->Start();
     auto [allBlocks, blockToFileIndex] =
@@ -916,7 +927,8 @@ int main(int argc, char* argv[])
             .textSensitivity = opts.textSensitivity,
         });
 
-        auto detectBar = opts.verbose ? std::make_optional<codedup::ProgressBar>("Detecting", size_t{0}) : std::nullopt;
+        auto detectBar =
+            opts.showProgress ? std::make_optional<codedup::ProgressBar>("Detecting", size_t{0}) : std::nullopt;
         if (detectBar)
             detectBar->Start();
         groups =
@@ -953,8 +965,8 @@ int main(int argc, char* argv[])
             .textSensitivity = opts.textSensitivity,
         });
 
-        auto intraBar =
-            opts.verbose ? std::make_optional<codedup::ProgressBar>("Intra-detect", allBlocks.size()) : std::nullopt;
+        auto intraBar = opts.showProgress ? std::make_optional<codedup::ProgressBar>("Intra-detect", allBlocks.size())
+                                          : std::nullopt;
         if (intraBar)
             intraBar->Start();
         intraResults =

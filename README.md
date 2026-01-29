@@ -113,7 +113,8 @@ Valid scopes: `inter-file`, `intra-file`, `inter-function`, `intra-function`, `a
 
 | Option | Description |
 |--------|-------------|
-| `-v, --verbose` | Show progress during scanning |
+| `-p, --progress` | Show progress bars during analysis |
+| `-v, --verbose` | Show verbose diagnostics during scanning |
 | `--mcp` | Run as MCP server (JSON-RPC over stdio) |
 | `--show-examples` | Show categorized usage examples |
 | `-h, --help` | Show help |
