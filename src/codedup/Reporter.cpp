@@ -172,15 +172,13 @@ auto ComputeBlockHighlights(CloneGroup const& group, size_t blockIndexInGroup, s
 /// @brief Computes highlight sets for both regions of an intra-clone pair.
 ///
 /// Extracts normalized sub-sequences for each region, performs LCS alignment, and maps
-/// unmatched positions back to original token indices. Returns empty sets when the regions
-/// exceed the available token IDs.
+/// unmatched positions back to original token indices using the full block's normToOrig map.
+/// Returns empty sets when the regions exceed the available token IDs.
 /// @param pair The intra-clone pair containing region offsets and lengths.
 /// @param block The code block containing both regions.
-/// @param allTokens All tokens from the block's file.
-/// @param fileIdx Index into allTokens for the block's file.
+/// @param normToOrig Mapping from normalized-ID position to original token index for the full block.
 /// @return Pair of highlight sets: first for region A, second for region B.
-auto ComputeIntraHighlights(IntraClonePair const& pair, CodeBlock const& block,
-                            std::vector<std::vector<Token>> const& allTokens, size_t fileIdx)
+auto ComputeIntraHighlights(IntraClonePair const& pair, CodeBlock const& block, std::vector<size_t> const& normToOrig)
     -> std::pair<std::unordered_set<size_t>, std::unordered_set<size_t>>
 {
     auto const& ids = block.textPreservingIds.empty() ? block.normalizedIds : block.textPreservingIds;
@@ -194,23 +192,20 @@ auto ComputeIntraHighlights(IntraClonePair const& pair, CodeBlock const& block,
     auto const subB = std::span<NormalizedTokenId const>(ids).subspan(pair.regionB.start, pair.regionB.length);
     auto const alignment = CloneDetector::ComputeLcsAlignment(subA, subB);
 
-    auto const normToOrigA =
-        BuildNormToOrigMap(allTokens[fileIdx], block.tokenStart + pair.regionA.start, block.tokenStart + regionAEnd);
-    auto const normToOrigB =
-        BuildNormToOrigMap(allTokens[fileIdx], block.tokenStart + pair.regionB.start, block.tokenStart + regionBEnd);
-
     std::unordered_set<size_t> highlightA;
-    for (auto const i : std::views::iota(size_t{0}, std::min(alignment.matchedA.size(), normToOrigA.size())))
+    for (auto const i : std::views::iota(size_t{0}, alignment.matchedA.size()))
     {
-        if (!alignment.matchedA[i])
-            highlightA.insert(normToOrigA[i]);
+        auto const normIdx = pair.regionA.start + i;
+        if (!alignment.matchedA[i] && normIdx < normToOrig.size())
+            highlightA.insert(normToOrig[normIdx]);
     }
 
     std::unordered_set<size_t> highlightB;
-    for (auto const i : std::views::iota(size_t{0}, std::min(alignment.matchedB.size(), normToOrigB.size())))
+    for (auto const i : std::views::iota(size_t{0}, alignment.matchedB.size()))
     {
-        if (!alignment.matchedB[i])
-            highlightB.insert(normToOrigB[i]);
+        auto const normIdx = pair.regionB.start + i;
+        if (!alignment.matchedB[i] && normIdx < normToOrig.size())
+            highlightB.insert(normToOrig[normIdx]);
     }
 
     return {std::move(highlightA), std::move(highlightB)};
@@ -224,18 +219,27 @@ auto ComputeIntraHighlights(IntraClonePair const& pair, CodeBlock const& block,
 /// @param out Output string to append to.
 /// @param label Region label (e.g. "A" or "B").
 /// @param region The intra-clone region describing the token offset and length.
-/// @param block The code block containing the region.
 /// @param tokens All tokens from the block's file.
+/// @param normToOrig Mapping from normalized-ID position to original token index for the full block.
 /// @param highlights Set of original token indices to background-highlight.
 /// @param config Reporter configuration for color and source display settings.
 /// @param printSnippet Callback to print a source snippet (the Reporter's PrintSourceSnippet member).
-void ReportIntraRegion(std::string& out, std::string_view label, IntraCloneRegion const& region, CodeBlock const& block,
-                       std::vector<Token> const& tokens, std::unordered_set<size_t> const& highlights,
-                       ReporterConfig const& config, auto const& printSnippet)
+void ReportIntraRegion(std::string& out, std::string_view label, IntraCloneRegion const& region,
+                       std::vector<Token> const& tokens, std::vector<size_t> const& normToOrig,
+                       std::unordered_set<size_t> const& highlights, ReporterConfig const& config,
+                       auto const& printSnippet)
 {
     auto inserter = std::back_inserter(out);
-    auto const tokenStart = block.tokenStart + region.start;
-    auto const tokenEnd = block.tokenStart + region.start + region.length;
+
+    if (region.start + region.length > normToOrig.size())
+    {
+        std::format_to(inserter, "    Region {}: token offset {}-{} ({} tokens)\n", label, region.start,
+                       region.start + region.length, region.length);
+        return;
+    }
+
+    auto const tokenStart = normToOrig[region.start];
+    auto const tokenEnd = normToOrig[region.start + region.length - 1] + 1;
 
     if (tokenStart < tokens.size() && tokenEnd <= tokens.size())
     {
@@ -325,6 +329,8 @@ void Reporter::ReportIntraClones(std::string& out, std::vector<IntraCloneResult>
         auto const fileIdx =
             result.blockIndex < blockToFileIndex.size() ? blockToFileIndex[result.blockIndex] : size_t{0};
         auto const hasTokens = fileIdx < allTokens.size() && !allTokens[fileIdx].empty();
+        auto const normToOrig = hasTokens ? BuildNormToOrigMap(allTokens[fileIdx], block.tokenStart, block.tokenEnd)
+                                          : std::vector<size_t>{};
 
         for (auto const pi : std::views::iota(size_t{0}, result.pairs.size()))
         {
@@ -339,13 +345,15 @@ void Reporter::ReportIntraClones(std::string& out, std::vector<IntraCloneResult>
 
             // Compute highlight sets for both intra-clone regions
             auto [highlightA, highlightB] = (_config.highlightDifferences && _config.useColor && hasTokens)
-                                                ? ComputeIntraHighlights(pair, block, allTokens, fileIdx)
+                                                ? ComputeIntraHighlights(pair, block, normToOrig)
                                                 : std::pair<std::unordered_set<size_t>, std::unordered_set<size_t>>{};
 
             if (hasTokens)
             {
-                ReportIntraRegion(out, "A", pair.regionA, block, allTokens[fileIdx], highlightA, _config, printSnippet);
-                ReportIntraRegion(out, "B", pair.regionB, block, allTokens[fileIdx], highlightB, _config, printSnippet);
+                ReportIntraRegion(out, "A", pair.regionA, allTokens[fileIdx], normToOrig, highlightA, _config,
+                                  printSnippet);
+                ReportIntraRegion(out, "B", pair.regionB, allTokens[fileIdx], normToOrig, highlightB, _config,
+                                  printSnippet);
             }
             else
             {

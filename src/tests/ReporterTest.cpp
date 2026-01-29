@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <codedup/IntraFunctionDetector.hpp>
 #include <codedup/Reporter.hpp>
 
 #include <catch2/catch_test_macros.hpp>
@@ -387,4 +388,160 @@ TEST_CASE("Reporter.DiffHighlighting.DisabledHighlightDifferences", "[reporter][
     // Should have foreground ANSI codes (38;2;) but no background codes (48;2;)
     CHECK(out.find("\033[38;2;") != std::string::npos);
     CHECK(out.find("\033[48;2;") == std::string::npos);
+}
+
+// ============================================================================================
+// Intra-Clone Highlighting Tests (coordinate space fix)
+// ============================================================================================
+
+TEST_CASE("Reporter.IntraCloneRegionLines.WithComments", "[reporter][intra]")
+{
+    // Verifies that intra-clone region line numbers are correct when comments
+    // cause normalized indices to diverge from original token indices.
+    //
+    // Original tokens (indices 0..11):
+    //   0: int       line 1   (normalized idx 0)
+    //   1: // cmt    line 1   (skipped - comment)
+    //   2: a         line 2   (normalized idx 1)
+    //   3: =         line 2   (normalized idx 2)
+    //   4: 1         line 2   (normalized idx 3)
+    //   5: ;         line 2   (normalized idx 4)
+    //   6: int       line 3   (normalized idx 5)
+    //   7: // cmt2   line 3   (skipped - comment)
+    //   8: b         line 4   (normalized idx 6)
+    //   9: =         line 4   (normalized idx 7)
+    //  10: 2         line 4   (normalized idx 8)
+    //  11: ;         line 4   (normalized idx 9)
+    //
+    // Normalized IDs: [int, a, =, 1, ;, int, b, =, 2, ;]  (10 entries)
+    // Region A: normalized [0..5) -> "int a = 1 ;" -> original tokens [0,2,3,4,5] -> lines 1-2
+    // Region B: normalized [5..10) -> "int b = 2 ;" -> original tokens [6,8,9,10,11] -> lines 3-4
+    //
+    // Without the fix, block.tokenStart + region.start would use wrong original indices.
+
+    Reporter reporter({.useColor = false, .showSourceCode = false});
+
+    std::vector<Token> tokens = {
+        {TokenType::Int, "int", {.filePath = "test.cpp", .line = 1, .column = 1}},
+        {TokenType::LineComment, "// cmt", {.filePath = "test.cpp", .line = 1, .column = 5}},
+        {TokenType::Identifier, "a", {.filePath = "test.cpp", .line = 2, .column = 1}},
+        {TokenType::Equal, "=", {.filePath = "test.cpp", .line = 2, .column = 3}},
+        {TokenType::NumericLiteral, "1", {.filePath = "test.cpp", .line = 2, .column = 5}},
+        {TokenType::Semicolon, ";", {.filePath = "test.cpp", .line = 2, .column = 6}},
+        {TokenType::Int, "int", {.filePath = "test.cpp", .line = 3, .column = 1}},
+        {TokenType::LineComment, "// cmt2", {.filePath = "test.cpp", .line = 3, .column = 5}},
+        {TokenType::Identifier, "b", {.filePath = "test.cpp", .line = 4, .column = 1}},
+        {TokenType::Equal, "=", {.filePath = "test.cpp", .line = 4, .column = 3}},
+        {TokenType::NumericLiteral, "2", {.filePath = "test.cpp", .line = 4, .column = 5}},
+        {TokenType::Semicolon, ";", {.filePath = "test.cpp", .line = 4, .column = 6}},
+    };
+
+    CodeBlock block{
+        .name = "testFunc",
+        .sourceRange = {.start = {.filePath = "test.cpp", .line = 1, .column = 1},
+                        .end = {.filePath = "test.cpp", .line = 4, .column = 7}},
+        .tokenStart = 0,
+        .tokenEnd = 12,
+        // Normalized IDs skip comments: tokens 0,2,3,4,5,6,8,9,10,11
+        .normalizedIds = {57, 1000, 166, 1001, 125, 57, 1002, 166, 1003, 125},
+        .textPreservingIds = {},
+    };
+
+    IntraCloneResult result{
+        .blockIndex = 0,
+        .pairs = {IntraClonePair{
+            .blockIndex = 0,
+            .regionA = {.start = 0, .length = 5},
+            .regionB = {.start = 5, .length = 5},
+            .similarity = 0.80,
+        }},
+    };
+
+    std::vector<std::vector<Token>> allTokens = {tokens};
+    std::vector<size_t> blockToFile = {0};
+
+    std::string out;
+    reporter.ReportIntraClones(out, {result}, {block}, allTokens, blockToFile);
+
+    // Region A should span lines 1-2 (original tokens 0 and 5)
+    CHECK(out.find("Region A: lines 1-2") != std::string::npos);
+    // Region B should span lines 3-4 (original tokens 6 and 11)
+    CHECK(out.find("Region B: lines 3-4") != std::string::npos);
+}
+
+TEST_CASE("Reporter.IntraCloneHighlighting.WithComments", "[reporter][intra][highlight]")
+{
+    // Verifies that intra-clone highlight positions are correct when comments
+    // cause normalized indices to diverge from original token indices.
+    //
+    // Same token layout as the region lines test above.
+    // The two regions differ in identifier and literal tokens:
+    //   Region A normalized: [int, a, =, 1, ;]  (indices 0..4)
+    //   Region B normalized: [int, b, =, 2, ;]  (indices 5..9)
+    // LCS matches: int, =, ;  (positions 0,2,4 in A; 0,2,4 in B)
+    // Unmatched A: positions 1,3 -> normalized idx 1,3 -> original tokens 2,4
+    // Unmatched B: positions 1,3 -> normalized idx 6,8 -> original tokens 8,10
+    //
+    // Without the fix, the highlights would use wrong original token indices because
+    // the old code added block.tokenStart + region.start (mixing coordinate spaces).
+
+    Reporter reporter(
+        {.useColor = true, .showSourceCode = true, .highlightDifferences = true, .theme = ColorTheme::Dark});
+
+    std::vector<Token> tokens = {
+        {TokenType::Int, "int", {.filePath = "test.cpp", .line = 1, .column = 1}},
+        {TokenType::LineComment, "// cmt", {.filePath = "test.cpp", .line = 1, .column = 5}},
+        {TokenType::Identifier, "a", {.filePath = "test.cpp", .line = 2, .column = 1}},
+        {TokenType::Equal, "=", {.filePath = "test.cpp", .line = 2, .column = 3}},
+        {TokenType::NumericLiteral, "1", {.filePath = "test.cpp", .line = 2, .column = 5}},
+        {TokenType::Semicolon, ";", {.filePath = "test.cpp", .line = 2, .column = 6}},
+        {TokenType::Int, "int", {.filePath = "test.cpp", .line = 3, .column = 1}},
+        {TokenType::LineComment, "// cmt2", {.filePath = "test.cpp", .line = 3, .column = 5}},
+        {TokenType::Identifier, "b", {.filePath = "test.cpp", .line = 4, .column = 1}},
+        {TokenType::Equal, "=", {.filePath = "test.cpp", .line = 4, .column = 3}},
+        {TokenType::NumericLiteral, "2", {.filePath = "test.cpp", .line = 4, .column = 5}},
+        {TokenType::Semicolon, ";", {.filePath = "test.cpp", .line = 4, .column = 6}},
+    };
+
+    CodeBlock block{
+        .name = "testFunc",
+        .sourceRange = {.start = {.filePath = "test.cpp", .line = 1, .column = 1},
+                        .end = {.filePath = "test.cpp", .line = 4, .column = 7}},
+        .tokenStart = 0,
+        .tokenEnd = 12,
+        // Normalized IDs skip comments: tokens 0,2,3,4,5,6,8,9,10,11
+        .normalizedIds = {57, 1000, 166, 1001, 125, 57, 1002, 166, 1003, 125},
+        // Text-preserving IDs: identifiers/literals differ between regions
+        .textPreservingIds = {57, 2000, 166, 2002, 125, 57, 2001, 166, 2003, 125},
+    };
+
+    IntraCloneResult result{
+        .blockIndex = 0,
+        .pairs = {IntraClonePair{
+            .blockIndex = 0,
+            .regionA = {.start = 0, .length = 5},
+            .regionB = {.start = 5, .length = 5},
+            .similarity = 0.80,
+        }},
+    };
+
+    std::vector<std::vector<Token>> allTokens = {tokens};
+    std::vector<size_t> blockToFile = {0};
+
+    std::string out;
+    reporter.ReportIntraClones(out, {result}, {block}, allTokens, blockToFile);
+
+    // With highlighting enabled, background highlight ANSI code should appear for differing tokens.
+    // The differing tokens are "a" (original idx 2), "1" (original idx 4),
+    //                          "b" (original idx 8), "2" (original idx 10).
+    // Background truecolor ANSI should be present.
+    CHECK(out.find("\033[48;2;") != std::string::npos);
+
+    // The output should contain lines 1-2 for region A and lines 3-4 for region B
+    CHECK(out.find("lines 1-2") != std::string::npos);
+    CHECK(out.find("lines 3-4") != std::string::npos);
+
+    // The tokens "a" and "b" should appear in the source output
+    CHECK(out.find('a') != std::string::npos);
+    CHECK(out.find('b') != std::string::npos);
 }
