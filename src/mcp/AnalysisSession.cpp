@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <fnmatch.h>
 #include <mcp/AnalysisSession.hpp>
 
 #include <codedup/FileScanner.hpp>
@@ -27,8 +28,21 @@ auto AnalysisSession::Analyze(AnalysisConfig const& config) -> std::expected<voi
 
     // Step 1: Scan files
     auto const scanStart = Clock::now();
-    auto const& extensions = config.extensions.empty() ? codedup::FileScanner::DefaultExtensions() : config.extensions;
-    auto const filesResult = codedup::FileScanner::Scan(config.directory, extensions);
+    auto const extensions =
+        config.globPatterns.empty() ? codedup::FileScanner::DefaultExtensions() : std::vector<std::string>{};
+
+    auto const globFilter =
+        config.globPatterns.empty()
+            ? std::optional<codedup::FileFilter>(std::nullopt)
+            : std::optional<codedup::FileFilter>(
+                  [&patterns = config.globPatterns](std::filesystem::path const& path) -> bool
+                  {
+                      auto const filename = path.filename().string();
+                      return std::ranges::any_of(patterns, [&filename](std::string const& pattern)
+                                                 { return fnmatch(pattern.c_str(), filename.c_str(), 0) == 0; });
+                  });
+
+    auto const filesResult = codedup::FileScanner::Scan(config.directory, extensions, globFilter);
     _timing.scanning = Clock::now() - scanStart;
 
     if (!filesResult)

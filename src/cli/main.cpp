@@ -56,7 +56,6 @@ struct CliOptions
     bool useColor = true;                                           ///< Whether to use ANSI colors.
     bool showSource = true;                                         ///< Whether to show source snippets.
     codedup::ColorTheme theme = codedup::ColorTheme::Auto;          ///< Color theme.
-    std::vector<std::string> extensions;                            ///< File extensions to scan.
     std::vector<std::string> globPatterns;                          ///< Filename glob patterns to include.
     codedup::InputEncoding encoding = codedup::InputEncoding::Auto; ///< Input file encoding.
     bool verbose = false;                                           ///< Show progress.
@@ -83,8 +82,7 @@ void PrintUsage(FILE* out, bool useColor, codedup::ColorTheme theme)
         "  --no-color                  Disable ANSI color output\n"
         "  --no-source                 Don't print source code snippets\n"
         "  --theme <dark|light|auto>   Color theme (default: auto)\n"
-        "  -e, --extensions <list>     Comma-separated extensions (default: all registered languages)\n"
-        "  -g, --glob <pattern>        Filename glob filter (may be repeated, e.g., -g '*Fnord*')\n"
+        "  -g, --glob <pattern>        Filename glob filter (may be repeated, e.g., -g '*.cpp' -g '*Ctrl*')\n"
         "  --encoding <enc>            Input encoding: auto, utf8, windows-1252 (default: auto)\n"
         "  -s, --scope <scopes>        Comma-separated analysis scopes (default: all)\n"
         "                              Valid: inter-file, intra-file, inter-function,\n"
@@ -143,10 +141,10 @@ void PrintExamples(bool useColor, codedup::ColorTheme theme)
                                          "File Filtering\n"
                                          "--------------\n"
                                          "  # Scan only C++ headers and source files\n"
-                                         "  codedupdetector -e .hpp,.cpp /path/to/project\n"
+                                         "  codedupdetector -g '*.hpp' -g '*.cpp' /path/to/project\n"
                                          "\n"
                                          "  # Scan only C# files\n"
-                                         "  codedupdetector -e .cs /path/to/project\n"
+                                         "  codedupdetector -g '*.cs' /path/to/project\n"
                                          "\n"
                                          "  # Glob-based filename filter\n"
                                          "  codedupdetector -g '*Controller*' /path/to/project\n"
@@ -284,30 +282,6 @@ auto ParseThemeOption(int argc, char* argv[], int& i) -> std::expected<codedup::
     return std::unexpected(std::format("Unknown theme: {}", val));
 }
 
-/// @brief Parses a comma-separated list of file extensions from the command-line.
-/// @param argc Total argument count.
-/// @param argv Argument vector.
-/// @param i Current argument index (advanced past the value on success).
-/// @return A vector of extension strings (each prefixed with '.'), or an error string.
-auto ParseExtensionsOption(int argc, char* argv[], int& i) -> std::expected<std::vector<std::string>, std::string>
-{
-    if (++i >= argc)
-        return std::unexpected(std::string("Missing value for --extensions"));
-    auto const list = std::string(argv[i]);
-    std::vector<std::string> extensions;
-    size_t start = 0;
-    while (start < list.size())
-    {
-        auto const end = list.find(',', start);
-        auto ext = list.substr(start, end == std::string::npos ? end : end - start);
-        if (!ext.empty() && ext[0] != '.')
-            ext.insert(0, ".");
-        extensions.push_back(std::move(ext));
-        start = (end == std::string::npos) ? list.size() : end + 1;
-    }
-    return extensions;
-}
-
 /// @brief Parses the --encoding option value into an InputEncoding enum.
 /// @param argc Total argument count.
 /// @param argv Argument vector.
@@ -402,14 +376,6 @@ auto ProcessArg(int argc, char* argv[], int& i, CliOptions& opts)
                 [&](codedup::ColorTheme v) -> CliOptions
                 {
                     opts.theme = v;
-                    return opts;
-                });
-    if (arg == "-e" || arg == "--extensions")
-        return ParseExtensionsOption(argc, argv, i)
-            .transform(
-                [&](std::vector<std::string> v) -> CliOptions
-                {
-                    opts.extensions = std::move(v);
                     return opts;
                 });
     if (arg == "-g" || arg == "--glob")
@@ -533,8 +499,21 @@ auto RunDiffSetup(CliOptions const& opts) -> std::expected<codedup::DiffResult, 
         return std::unexpected(2);
     }
 
-    auto const& extensions = opts.extensions.empty() ? codedup::FileScanner::DefaultExtensions() : opts.extensions;
+    auto const extensions =
+        opts.globPatterns.empty() ? codedup::FileScanner::DefaultExtensions() : std::vector<std::string>{};
     auto diffResult = cli::GitDiffParser::ParseDiffOutput(*diffOutput, extensions);
+
+    // Post-filter by glob patterns when active
+    if (!opts.globPatterns.empty())
+    {
+        std::erase_if(diffResult,
+                      [&](auto const& fc)
+                      {
+                          auto const filename = fc.filePath.filename().string();
+                          return !std::ranges::any_of(opts.globPatterns, [&filename](std::string const& pattern)
+                                                      { return fnmatch(pattern.c_str(), filename.c_str(), 0) == 0; });
+                      });
+    }
 
     if (diffResult.empty())
     {
@@ -570,7 +549,9 @@ auto ScanFiles(CliOptions const& opts, codedup::PerformanceTiming& timing)
         std::println(stderr, "Scanning directory: {}", opts.directory.string());
 
     auto const scanStart = Clock::now();
-    auto const& extensions = opts.extensions.empty() ? codedup::FileScanner::DefaultExtensions() : opts.extensions;
+    // When glob patterns are active, skip extension filtering (pass empty → accept all)
+    auto const extensions =
+        opts.globPatterns.empty() ? codedup::FileScanner::DefaultExtensions() : std::vector<std::string>{};
 
     // Build an optional gitignore-aware filter.
     auto const gitFilter =

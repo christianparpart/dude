@@ -26,7 +26,7 @@ struct AnalysisConfig
     size_t minTokens = 30;                                          ///< Minimum block size in tokens.
     double textSensitivity = 0.3;                                   ///< Text sensitivity blend factor.
     codedup::AnalysisScope scope = codedup::AnalysisScope::All;     ///< Analysis scope bitmask.
-    std::vector<std::string> extensions;                            ///< File extensions (empty = defaults).
+    std::vector<std::string> globPatterns;                          ///< Filename glob patterns (empty = defaults).
     codedup::InputEncoding encoding = codedup::InputEncoding::Auto; ///< Input encoding.
 };
 

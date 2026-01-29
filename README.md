@@ -81,8 +81,7 @@ codedupdetector [OPTIONS] <directory>
 
 | Option | Description |
 |--------|-------------|
-| `-e, --extensions <list>` | Comma-separated extensions (default: all registered languages) |
-| `-g, --glob <pattern>` | Filename glob filter (repeatable, e.g. `-g '*Controller*'`) |
+| `-g, --glob <pattern>` | Filename glob filter (repeatable, e.g. `-g '*.cpp'` `-g '*Controller*'`) |
 | `--encoding <enc>` | Input encoding: `auto`, `utf8`, `windows-1252` (default: `auto`) |
 | `--gitignore` | Respect `.gitignore` when scanning (default) |
 | `--no-gitignore` | Include gitignored files in analysis |
@@ -133,10 +132,10 @@ codedupdetector -t 0.95 /path/to/project/
 codedupdetector --text-sensitivity 0.0 /path/to/project/
 
 # Scan only C# files
-codedupdetector -e .cs /path/to/csharp_project/
+codedupdetector -g '*.cs' /path/to/csharp_project/
 
 # Scan only Python files
-codedupdetector -e .py /path/to/python_project/
+codedupdetector -g '*.py' /path/to/python_project/
 
 # Filter by filename pattern
 codedupdetector -g '*Controller*' -g '*Service*' /path/to/project/

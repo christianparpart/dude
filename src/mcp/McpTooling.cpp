@@ -80,7 +80,11 @@ auto MakeAnalyzeDirectoryDescriptor() -> mcpprotocol::ToolDescriptor
                      {"extensions",
                       {{"type", "array"},
                        {"items", {{"type", "string"}}},
-                       {"description", "File extensions to scan (default: all registered languages)"}}},
+                       {"description", "File extensions (converted to glob patterns, e.g. \".cpp\" → \"*.cpp\")"}}},
+                     {"glob_patterns",
+                      {{"type", "array"},
+                       {"items", {{"type", "string"}}},
+                       {"description", R"(Filename glob patterns (e.g. "*.cpp", "*Controller*"))"}}},
                  }},
             },
         .outputSchema = nullptr,
@@ -115,8 +119,13 @@ auto HandleAnalyzeDirectory(AnalysisSession& session, nlohmann::json const& args
             auto s = ext.get<std::string>();
             if (!s.empty() && s[0] != '.')
                 s.insert(0, ".");
-            config.extensions.push_back(std::move(s));
+            config.globPatterns.push_back("*" + s);
         }
+    }
+    if (args.contains("glob_patterns"))
+    {
+        for (auto const& pat : args["glob_patterns"])
+            config.globPatterns.push_back(pat.get<std::string>());
     }
 
     auto result = session.Analyze(config);

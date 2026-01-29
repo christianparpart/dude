@@ -33,20 +33,24 @@ auto FileScanner::Scan(std::filesystem::path const& directory, std::vector<std::
         // Case-insensitive extension comparison
         std::ranges::transform(ext, ext.begin(), [](unsigned char c) { return std::tolower(c); });
 
-        auto extensionMatched = false;
-        for (auto const& allowedExt : extensions)
+        if (!extensions.empty())
         {
-            auto lowerAllowed = allowedExt;
-            std::ranges::transform(lowerAllowed, lowerAllowed.begin(), [](unsigned char c) { return std::tolower(c); });
-            if (ext == lowerAllowed)
+            auto extensionMatched = false;
+            for (auto const& allowedExt : extensions)
             {
-                extensionMatched = true;
-                break;
+                auto lowerAllowed = allowedExt;
+                std::ranges::transform(lowerAllowed, lowerAllowed.begin(),
+                                       [](unsigned char c) { return std::tolower(c); });
+                if (ext == lowerAllowed)
+                {
+                    extensionMatched = true;
+                    break;
+                }
             }
-        }
 
-        if (!extensionMatched)
-            continue;
+            if (!extensionMatched)
+                continue;
+        }
 
         if (filter.has_value() && !(*filter)(entry.path()))
             continue;

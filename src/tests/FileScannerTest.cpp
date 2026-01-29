@@ -162,6 +162,34 @@ TEST_CASE("FileScanner.WithGlobFilter", "[scanner]")
     CHECK(result->size() == 2);
 }
 
+TEST_CASE("FileScanner.EmptyExtensionsAcceptsAll", "[scanner]")
+{
+    TempDir dir;
+    dir.CreateFile("test.cpp");
+    dir.CreateFile("test.txt");
+    dir.CreateFile("test.unknown");
+
+    auto result = FileScanner::Scan(dir.Path(), {});
+    REQUIRE(result.has_value());
+    CHECK(result->size() == 3);
+}
+
+TEST_CASE("FileScanner.EmptyExtensionsWithGlobFilter", "[scanner]")
+{
+    TempDir dir;
+    dir.CreateFile("Controller.cpp");
+    dir.CreateFile("Controller.hpp");
+    dir.CreateFile("Main.cpp");
+    dir.CreateFile("notes.txt");
+
+    auto const filter = codedup::FileFilter([](std::filesystem::path const& path) -> bool
+                                            { return fnmatch("*.cpp", path.filename().string().c_str(), 0) == 0; });
+
+    auto result = FileScanner::Scan(dir.Path(), {}, filter);
+    REQUIRE(result.has_value());
+    CHECK(result->size() == 2); // Controller.cpp and Main.cpp
+}
+
 TEST_CASE("FileScanner.WithMultipleGlobPatterns", "[scanner]")
 {
     TempDir dir;
