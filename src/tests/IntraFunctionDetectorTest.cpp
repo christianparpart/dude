@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <codedup/CodeBlock.hpp>
 #include <codedup/IntraFunctionDetector.hpp>
+#include <codedup/Languages/CppLanguage.hpp>
 #include <codedup/TokenNormalizer.hpp>
-#include <codedup/Tokenizer.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -15,7 +15,7 @@ namespace
 /// @brief Creates a CodeBlock from source code by running the full tokenize+normalize pipeline.
 auto MakeBlock(std::string_view source, std::string const& name = "test") -> CodeBlock
 {
-    auto tokens = Tokenizer::Tokenize(source);
+    auto tokens = CppLanguage{}.Tokenize(source);
     if (!tokens)
         return {};
 
@@ -372,7 +372,7 @@ namespace
 /// @brief Creates a CodeBlock with both structural and text-preserving IDs.
 auto MakeBlockWithTP(std::string_view source, std::string const& name = "test") -> CodeBlock
 {
-    auto tokens = Tokenizer::Tokenize(source);
+    auto tokens = CppLanguage{}.Tokenize(source);
     if (!tokens)
         return {};
 

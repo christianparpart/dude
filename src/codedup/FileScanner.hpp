@@ -39,7 +39,7 @@ public:
                                    std::optional<FileFilter> const& filter = std::nullopt)
         -> std::expected<std::vector<std::filesystem::path>, FileScanError>;
 
-    /// @brief Returns the default set of C++ file extensions.
+    /// @brief Returns the default set of file extensions for all registered languages.
     [[nodiscard]] static auto DefaultExtensions() -> std::vector<std::string> const&;
 };
 

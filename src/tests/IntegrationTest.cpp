@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <codedup/CloneDetector.hpp>
 #include <codedup/CodeBlock.hpp>
+#include <codedup/Languages/CppLanguage.hpp>
 #include <codedup/TokenNormalizer.hpp>
-#include <codedup/Tokenizer.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -17,18 +17,19 @@ auto RunPipeline(std::vector<std::string> const& sources, double threshold = 0.8
     -> std::pair<std::vector<CodeBlock>, std::vector<CloneGroup>>
 {
     TokenNormalizer normalizer;
-    CodeBlockExtractor extractor({.minTokens = minTokens});
+    CppLanguage const cpp;
+    CodeBlockExtractorConfig const config{.minTokens = minTokens};
 
     std::vector<CodeBlock> allBlocks;
 
     for (auto const& source : sources)
     {
-        auto tokens = Tokenizer::Tokenize(source);
+        auto tokens = cpp.Tokenize(source);
         if (!tokens)
             continue;
 
         auto normalized = normalizer.Normalize(*tokens);
-        auto blocks = extractor.Extract(*tokens, normalized);
+        auto blocks = cpp.ExtractBlocks(*tokens, normalized, {}, config);
 
         for (auto& block : blocks)
             allBlocks.push_back(std::move(block));
@@ -184,8 +185,9 @@ int sum(int x, int y) {
 }
 )cpp";
 
-    auto tokens1 = Tokenizer::Tokenize(source1);
-    auto tokens2 = Tokenizer::Tokenize(source2);
+    CppLanguage const cpp;
+    auto tokens1 = cpp.Tokenize(source1);
+    auto tokens2 = cpp.Tokenize(source2);
     REQUIRE(tokens1.has_value());
     REQUIRE(tokens2.has_value());
 
@@ -221,19 +223,20 @@ auto RunPipelineWithTextSensitivity(std::vector<std::string> const& sources, dou
     -> std::pair<std::vector<CodeBlock>, std::vector<CloneGroup>>
 {
     TokenNormalizer normalizer;
-    CodeBlockExtractor extractor({.minTokens = minTokens});
+    CppLanguage const cpp;
+    CodeBlockExtractorConfig const config{.minTokens = minTokens};
 
     std::vector<CodeBlock> allBlocks;
 
     for (auto const& source : sources)
     {
-        auto tokens = Tokenizer::Tokenize(source);
+        auto tokens = cpp.Tokenize(source);
         if (!tokens)
             continue;
 
         auto normalized = normalizer.Normalize(*tokens);
         auto textPreserving = normalizer.NormalizeTextPreserving(*tokens);
-        auto blocks = extractor.Extract(*tokens, normalized, textPreserving);
+        auto blocks = cpp.ExtractBlocks(*tokens, normalized, textPreserving, config);
 
         for (auto& block : blocks)
             allBlocks.push_back(std::move(block));

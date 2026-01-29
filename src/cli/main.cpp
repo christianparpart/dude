@@ -11,11 +11,12 @@
 #include <codedup/Encoding.hpp>
 #include <codedup/FileScanner.hpp>
 #include <codedup/IntraFunctionDetector.hpp>
+#include <codedup/Language.hpp>
+#include <codedup/LanguageRegistry.hpp>
 #include <codedup/Reporter.hpp>
 #include <codedup/ScopeFilter.hpp>
 #include <codedup/Token.hpp>
 #include <codedup/TokenNormalizer.hpp>
-#include <codedup/Tokenizer.hpp>
 
 #include <algorithm>
 #include <chrono>
@@ -59,28 +60,27 @@ struct CliOptions
 
 void PrintUsage(FILE* out)
 {
-    std::println(out,
-                 "Usage: codedupdetector [OPTIONS] <directory>\n"
-                 "\n"
-                 "Options:\n"
-                 "  -t, --threshold <N>         Similarity threshold 0.0-1.0 (default: 0.80)\n"
-                 "  -m, --min-tokens <N>        Minimum block size in tokens (default: 30)\n"
-                 "  --text-sensitivity <N>      Text sensitivity blend factor 0.0-1.0 (default: 0.3)\n"
-                 "  --diff-base <ref>           Git ref to diff against (enables diff mode for CI)\n"
-                 "  --no-color                  Disable ANSI color output\n"
-                 "  --no-source                 Don't print source code snippets\n"
-                 "  --theme <dark|light|auto>   Color theme (default: auto)\n"
-                 "  -e, --extensions <list>     Comma-separated extensions (default: .cpp,.cxx,.cc,.c,.h,.hpp,.hxx)\n"
-                 "  -g, --glob <pattern>        Filename glob filter (may be repeated, e.g., -g '*Fnord*')\n"
-                 "  --encoding <enc>            Input encoding: auto, utf8, windows-1252 (default: auto)\n"
-                 "  -s, --scope <scopes>        Comma-separated analysis scopes (default: all)\n"
-                 "                              Valid: inter-file, intra-file, inter-function,\n"
-                 "                                     intra-function, all\n"
-                 "  --gitignore                 Respect .gitignore when scanning (default)\n"
-                 "  --no-gitignore              Include gitignored files in analysis\n"
-                 "  -v, --verbose               Show progress during scanning\n"
-                 "  -h, --help                  Show help\n"
-                 "  --version                   Show version");
+    std::println(out, "Usage: codedupdetector [OPTIONS] <directory>\n"
+                      "\n"
+                      "Options:\n"
+                      "  -t, --threshold <N>         Similarity threshold 0.0-1.0 (default: 0.80)\n"
+                      "  -m, --min-tokens <N>        Minimum block size in tokens (default: 30)\n"
+                      "  --text-sensitivity <N>      Text sensitivity blend factor 0.0-1.0 (default: 0.3)\n"
+                      "  --diff-base <ref>           Git ref to diff against (enables diff mode for CI)\n"
+                      "  --no-color                  Disable ANSI color output\n"
+                      "  --no-source                 Don't print source code snippets\n"
+                      "  --theme <dark|light|auto>   Color theme (default: auto)\n"
+                      "  -e, --extensions <list>     Comma-separated extensions (default: all registered languages)\n"
+                      "  -g, --glob <pattern>        Filename glob filter (may be repeated, e.g., -g '*Fnord*')\n"
+                      "  --encoding <enc>            Input encoding: auto, utf8, windows-1252 (default: auto)\n"
+                      "  -s, --scope <scopes>        Comma-separated analysis scopes (default: all)\n"
+                      "                              Valid: inter-file, intra-file, inter-function,\n"
+                      "                                     intra-function, all\n"
+                      "  --gitignore                 Respect .gitignore when scanning (default)\n"
+                      "  --no-gitignore              Include gitignored files in analysis\n"
+                      "  -v, --verbose               Show progress during scanning\n"
+                      "  -h, --help                  Show help\n"
+                      "  --version                   Show version");
 }
 
 // ---------------------------------------------------------------------------
@@ -467,52 +467,73 @@ auto ScanFiles(CliOptions const& opts, codedup::PerformanceTiming& timing)
 
 /// @brief Tokenizes all source files (step 2).
 ///
-/// Each file is tokenized independently. Files that fail to tokenize produce
-/// a warning on stderr and contribute an empty token vector.
+/// Each file is tokenized using the appropriate language implementation based on
+/// file extension. Files with unrecognized extensions or tokenization failures
+/// produce a warning on stderr and contribute an empty token vector.
 ///
 /// @param files The source file paths to tokenize.
 /// @param opts The parsed CLI options (for encoding and verbosity).
 /// @param timing Performance timing struct to record tokenization duration.
-/// @return A vector of token vectors, one per file (in the same order as files).
+/// @return A pair of (token vectors, language pointers), one per file (in the same order as files).
 auto TokenizeFiles(std::vector<std::filesystem::path> const& files, CliOptions const& opts,
-                   codedup::PerformanceTiming& timing) -> std::vector<std::vector<codedup::Token>>
+                   codedup::PerformanceTiming& timing)
+    -> std::pair<std::vector<std::vector<codedup::Token>>, std::vector<codedup::Language const*>>
 {
     using Clock = std::chrono::steady_clock;
 
     auto const tokenizeStart = Clock::now();
     std::vector<std::vector<codedup::Token>> allTokens;
+    std::vector<codedup::Language const*> fileLanguages;
     allTokens.reserve(files.size());
+    fileLanguages.reserve(files.size());
+
+    auto const& registry = codedup::LanguageRegistry::Instance();
 
     for (auto const& file : files)
     {
-        if (opts.verbose)
-            std::println(stderr, "Tokenizing: {}", file.string());
+        auto const* language = registry.FindByPath(file);
+        if (!language)
+        {
+            if (opts.verbose)
+                std::println(stderr, "Warning: No language support for {}", file.string());
+            allTokens.emplace_back();
+            fileLanguages.push_back(nullptr);
+            continue;
+        }
 
-        auto tokensResult = codedup::Tokenizer::TokenizeFile(file, opts.encoding);
+        if (opts.verbose)
+            std::println(stderr, "Tokenizing ({}): {}", language->Name(), file.string());
+
+        auto tokensResult = language->TokenizeFile(file, opts.encoding);
         if (!tokensResult)
         {
             std::println(stderr, "Warning: Failed to tokenize {}: {}", file.string(), tokensResult.error().message);
             allTokens.emplace_back(); // Empty tokens for failed files
+            fileLanguages.push_back(language);
             continue;
         }
         allTokens.push_back(std::move(*tokensResult));
+        fileLanguages.push_back(language);
     }
     timing.tokenizing = Clock::now() - tokenizeStart;
 
-    return allTokens;
+    return {std::move(allTokens), std::move(fileLanguages)};
 }
 
 /// @brief Normalizes tokens and extracts code blocks (step 3).
 ///
 /// For each non-empty token vector, normalizes the tokens structurally (and
-/// optionally text-preserving) and extracts function-level code blocks.
+/// optionally text-preserving) using language-aware stripping, and extracts
+/// function-level code blocks via the language's block extractor.
 ///
 /// @param allTokens Token vectors for all files.
+/// @param fileLanguages Language pointers for each file (may be nullptr).
 /// @param files Source file paths (for verbose output).
 /// @param opts The parsed CLI options (for minTokens, textSensitivity, verbosity).
 /// @param timing Performance timing struct to record normalization duration.
 /// @return A tuple of (all extracted code blocks, block-to-file-index mapping).
 auto ExtractBlocks(std::vector<std::vector<codedup::Token>> const& allTokens,
+                   std::vector<codedup::Language const*> const& fileLanguages,
                    std::vector<std::filesystem::path> const& files, CliOptions const& opts,
                    codedup::PerformanceTiming& timing)
     -> std::tuple<std::vector<codedup::CodeBlock>, std::vector<size_t>>
@@ -521,7 +542,7 @@ auto ExtractBlocks(std::vector<std::vector<codedup::Token>> const& allTokens,
 
     auto const normalizeStart = Clock::now();
     codedup::TokenNormalizer normalizer;
-    codedup::CodeBlockExtractor extractor({.minTokens = opts.minTokens});
+    codedup::CodeBlockExtractorConfig const config{.minTokens = opts.minTokens};
 
     std::vector<codedup::CodeBlock> allBlocks;
     std::vector<size_t> blockToFileIndex;
@@ -533,10 +554,14 @@ auto ExtractBlocks(std::vector<std::vector<codedup::Token>> const& allTokens,
         if (allTokens[fi].empty())
             continue;
 
-        auto normalized = normalizer.Normalize(allTokens[fi]);
-        auto textPreserving = useTextSensitivity ? normalizer.NormalizeTextPreserving(allTokens[fi])
+        auto const* language = fileLanguages[fi];
+        if (!language)
+            continue;
+
+        auto normalized = normalizer.Normalize(allTokens[fi], language);
+        auto textPreserving = useTextSensitivity ? normalizer.NormalizeTextPreserving(allTokens[fi], language)
                                                  : std::vector<codedup::NormalizedToken>{};
-        auto blocks = extractor.Extract(allTokens[fi], normalized, textPreserving);
+        auto blocks = language->ExtractBlocks(allTokens[fi], normalized, textPreserving, config);
 
         if (opts.verbose && !blocks.empty())
             std::println(stderr, "  {} blocks from {}", blocks.size(), files[fi].string());
@@ -597,11 +622,11 @@ int main(int argc, char* argv[])
         return filesResult.error();
     auto const& files = *filesResult;
 
-    // Step 2: Tokenize all files
-    auto allTokens = TokenizeFiles(files, opts, timing);
+    // Step 2: Tokenize all files (language-aware)
+    auto [allTokens, fileLanguages] = TokenizeFiles(files, opts, timing);
 
-    // Step 3: Normalize and extract blocks
-    auto [allBlocks, blockToFileIndex] = ExtractBlocks(allTokens, files, opts, timing);
+    // Step 3: Normalize and extract blocks (language-aware)
+    auto [allBlocks, blockToFileIndex] = ExtractBlocks(allTokens, fileLanguages, files, opts, timing);
 
     // Step 4: Detect clones
     using Clock = std::chrono::steady_clock;

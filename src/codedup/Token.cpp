@@ -290,6 +290,115 @@ auto TokenTypeName(TokenType type) -> std::string_view
             return "#";
         case TokenType::HashHash:
             return "##";
+        // C#-specific keywords
+        case TokenType::CSharp_Abstract:
+            return "abstract";
+        case TokenType::CSharp_As:
+            return "as";
+        case TokenType::CSharp_Async:
+            return "async";
+        case TokenType::CSharp_Await:
+            return "await";
+        case TokenType::CSharp_Base:
+            return "base";
+        case TokenType::CSharp_Byte:
+            return "byte";
+        case TokenType::CSharp_Checked:
+            return "checked";
+        case TokenType::CSharp_Decimal:
+            return "decimal";
+        case TokenType::CSharp_Delegate:
+            return "delegate";
+        case TokenType::CSharp_Event:
+            return "event";
+        case TokenType::CSharp_Finally:
+            return "finally";
+        case TokenType::CSharp_Fixed:
+            return "fixed";
+        case TokenType::CSharp_Foreach:
+            return "foreach";
+        case TokenType::CSharp_In:
+            return "in";
+        case TokenType::CSharp_Interface:
+            return "interface";
+        case TokenType::CSharp_Internal:
+            return "internal";
+        case TokenType::CSharp_Is:
+            return "is";
+        case TokenType::CSharp_Lock:
+            return "lock";
+        case TokenType::CSharp_Nameof:
+            return "nameof";
+        case TokenType::CSharp_Null:
+            return "null";
+        case TokenType::CSharp_Object:
+            return "object";
+        case TokenType::CSharp_Out:
+            return "out";
+        case TokenType::CSharp_Params:
+            return "params";
+        case TokenType::CSharp_Partial:
+            return "partial";
+        case TokenType::CSharp_Readonly:
+            return "readonly";
+        case TokenType::CSharp_Ref:
+            return "ref";
+        case TokenType::CSharp_Sbyte:
+            return "sbyte";
+        case TokenType::CSharp_Sealed:
+            return "sealed";
+        case TokenType::CSharp_Stackalloc:
+            return "stackalloc";
+        case TokenType::CSharp_String:
+            return "string";
+        case TokenType::CSharp_Typeof:
+            return "typeof";
+        case TokenType::CSharp_Uint:
+            return "uint";
+        case TokenType::CSharp_Ulong:
+            return "ulong";
+        case TokenType::CSharp_Unchecked:
+            return "unchecked";
+        case TokenType::CSharp_Unsafe:
+            return "unsafe";
+        case TokenType::CSharp_Ushort:
+            return "ushort";
+        case TokenType::CSharp_Var:
+            return "var";
+        case TokenType::CSharp_Where:
+            return "where";
+        case TokenType::CSharp_Yield:
+            return "yield";
+        // C# contextual keywords
+        case TokenType::CSharp_Get:
+            return "get";
+        case TokenType::CSharp_Set:
+            return "set";
+        case TokenType::CSharp_Value:
+            return "value";
+        case TokenType::CSharp_When:
+            return "when";
+        case TokenType::CSharp_Init:
+            return "init";
+        case TokenType::CSharp_Record:
+            return "record";
+        case TokenType::CSharp_With:
+            return "with";
+        case TokenType::CSharp_And:
+            return "and";
+        case TokenType::CSharp_Or:
+            return "or";
+        case TokenType::CSharp_Not:
+            return "not";
+        // C#-specific operators
+        case TokenType::CSharp_NullConditional:
+            return "?.";
+        case TokenType::CSharp_NullCoalescing:
+            return "??";
+        case TokenType::CSharp_NullCoalescingAssign:
+            return "\?\?="; // ??=
+        case TokenType::CSharp_Lambda:
+            return "=>";
     }
     return "Unknown";
 }
@@ -297,7 +406,15 @@ auto TokenTypeName(TokenType type) -> std::string_view
 auto IsKeyword(TokenType type) -> bool
 {
     auto const val = static_cast<uint16_t>(type);
-    return val >= static_cast<uint16_t>(TokenType::Alignas) && val <= static_cast<uint16_t>(TokenType::While);
+    return (val >= static_cast<uint16_t>(TokenType::Alignas) && val <= static_cast<uint16_t>(TokenType::While)) ||
+           IsCSharpKeyword(type);
+}
+
+auto IsCSharpKeyword(TokenType type) -> bool
+{
+    auto const val = static_cast<uint16_t>(type);
+    return val >= static_cast<uint16_t>(TokenType::CSharp_Abstract) &&
+           val <= static_cast<uint16_t>(TokenType::CSharp_Not);
 }
 
 auto IsComment(TokenType type) -> bool
@@ -313,7 +430,9 @@ auto IsLiteral(TokenType type) -> bool
 auto IsOperatorOrPunctuation(TokenType type) -> bool
 {
     auto const val = static_cast<uint16_t>(type);
-    return val >= static_cast<uint16_t>(TokenType::LeftParen) && val <= static_cast<uint16_t>(TokenType::HashHash);
+    return (val >= static_cast<uint16_t>(TokenType::LeftParen) && val <= static_cast<uint16_t>(TokenType::HashHash)) ||
+           (val >= static_cast<uint16_t>(TokenType::CSharp_NullConditional) &&
+            val <= static_cast<uint16_t>(TokenType::CSharp_Lambda));
 }
 
 } // namespace codedup

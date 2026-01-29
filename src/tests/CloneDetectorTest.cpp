@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <codedup/CloneDetector.hpp>
 #include <codedup/CodeBlock.hpp>
+#include <codedup/Languages/CppLanguage.hpp>
 #include <codedup/TokenNormalizer.hpp>
-#include <codedup/Tokenizer.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -17,7 +17,7 @@ namespace
 
 auto MakeBlock(std::string_view source, std::string const& name = "test") -> CodeBlock
 {
-    auto tokens = Tokenizer::Tokenize(source);
+    auto tokens = CppLanguage{}.Tokenize(source);
     if (!tokens)
         return {};
 
@@ -434,7 +434,7 @@ namespace
 auto MakeBlockWithTextPreserving(TokenNormalizer& normalizer, std::string_view source, std::string const& name = "test")
     -> CodeBlock
 {
-    auto tokens = Tokenizer::Tokenize(source);
+    auto tokens = CppLanguage{}.Tokenize(source);
     if (!tokens)
         return {};
 

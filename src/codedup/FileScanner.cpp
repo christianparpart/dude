@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <codedup/FileScanner.hpp>
+#include <codedup/LanguageRegistry.hpp>
 
 #include <algorithm>
 
@@ -62,9 +63,7 @@ auto FileScanner::Scan(std::filesystem::path const& directory, std::vector<std::
 
 auto FileScanner::DefaultExtensions() -> std::vector<std::string> const&
 {
-    static std::vector<std::string> const extensions = {
-        ".cpp", ".cxx", ".cc", ".c", ".h", ".hpp", ".hxx",
-    };
+    static auto const extensions = LanguageRegistry::Instance().AllExtensions();
     return extensions;
 }
 

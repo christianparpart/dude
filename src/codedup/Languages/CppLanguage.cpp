@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
-#include <codedup/Tokenizer.hpp>
+#include <codedup/Languages/CppLanguage.hpp>
 
 #include <algorithm>
 #include <array>
 #include <format>
 #include <fstream>
 #include <optional>
+#include <ranges>
 #include <span>
 #include <sstream>
 #include <utility>
@@ -15,6 +16,10 @@ namespace codedup
 
 namespace
 {
+
+// =====================================================================
+// Tokenizer internals
+// =====================================================================
 
 struct KeywordEntry
 {
@@ -147,9 +152,6 @@ constexpr auto twoCharOperators = std::to_array<OperatorEntry>({
 }
 
 /// @brief Looks up a multi-character operator by text using binary search.
-/// @param table The sorted array of operator entries to search.
-/// @param text The operator text to look up.
-/// @return The corresponding TokenType, or std::nullopt if not found.
 [[nodiscard]] auto LookupOperator(std::span<const OperatorEntry> table, std::string_view text)
     -> std::optional<TokenType>
 {
@@ -189,7 +191,7 @@ constexpr auto twoCharOperators = std::to_array<OperatorEntry>({
     return ch >= '0' && ch <= '7';
 }
 
-/// @brief Scanner state for the tokenizer.
+/// @brief Scanner state for the C++ tokenizer.
 class Scanner
 {
 public:
@@ -564,9 +566,6 @@ private:
         return Token{.type = type, .text = std::string(text), .location = loc};
     }
 
-    /// @brief Scans hexadecimal digit sequence after the '0x' or '0X' prefix.
-    ///
-    /// Consumes the '0' and 'x'/'X' prefix, then all hex digits and digit separators.
     void ScanHexDigits()
     {
         Advance(); // 0
@@ -575,9 +574,6 @@ private:
             Advance();
     }
 
-    /// @brief Scans binary digit sequence after the '0b' or '0B' prefix.
-    ///
-    /// Consumes the '0' and 'b'/'B' prefix, then all binary digits and digit separators.
     void ScanBinaryDigits()
     {
         Advance(); // 0
@@ -586,9 +582,6 @@ private:
             Advance();
     }
 
-    /// @brief Scans octal digit sequence after the leading '0'.
-    ///
-    /// Consumes the leading '0', then all octal digits and digit separators.
     void ScanOctalDigits()
     {
         Advance(); // 0
@@ -596,11 +589,6 @@ private:
             Advance();
     }
 
-    /// @brief Scans a decimal number including optional fractional and exponent parts.
-    /// @param start The starting position of the numeric literal (used to validate fractional detection).
-    ///
-    /// Consumes decimal digits with digit separators, an optional fractional part (dot followed by digits),
-    /// and an optional exponent part (e/E with optional sign and digits).
     void ScanDecimalWithFractionalAndExponent(size_t start)
     {
         // Decimal integer digits
@@ -616,8 +604,6 @@ private:
         }
         else if (Peek() == '.' && _pos > start && IsDigit(_source[start]))
         {
-            // Might be a decimal point at end like 1.
-            // Only consume if it looks numeric (not member access)
             if (IsDigit(PeekAt(1)) || PeekAt(1) == 'e' || PeekAt(1) == 'E' || PeekAt(1) == 'f' || PeekAt(1) == 'F' ||
                 PeekAt(1) == 'l' || PeekAt(1) == 'L')
             {
@@ -638,9 +624,6 @@ private:
         }
     }
 
-    /// @brief Scans integer and floating-point type suffixes.
-    ///
-    /// Consumes suffix characters: u, U, l, L, ll, LL, ul, UL, ull, ULL, f, F, z, Z.
     void ScanNumericSuffix()
     {
         while (!AtEnd() && (Peek() == 'u' || Peek() == 'U' || Peek() == 'l' || Peek() == 'L' || Peek() == 'f' ||
@@ -650,12 +633,6 @@ private:
         }
     }
 
-    /// @brief Scans a complete numeric literal (integer or floating-point).
-    /// @param loc The source location where the literal starts.
-    /// @return The numeric literal token, or an error if the literal is malformed.
-    ///
-    /// Handles hexadecimal (0x), binary (0b), octal (0), and decimal literals,
-    /// including fractional parts, exponents, and type suffixes.
     [[nodiscard]] auto ScanNumericLiteral(SourceLocation const& loc) -> std::expected<Token, TokenizerError>
     {
         auto const start = _pos;
@@ -676,19 +653,12 @@ private:
                      .location = loc};
     }
 
-    /// @brief Advances the scanner position by the given number of characters.
-    /// @param count The number of characters to advance.
     void AdvanceBy(size_t count)
     {
         for (size_t i = 0; i < count; ++i)
             Advance();
     }
 
-    /// @brief Attempts to match and consume a multi-character operator from a lookup table.
-    /// @param table The sorted array of operator entries to search.
-    /// @param length The number of characters to match (must be 2 or 3).
-    /// @param loc The source location for the resulting token.
-    /// @return The operator token if matched, or std::nullopt if no match was found.
     [[nodiscard]] auto TryMatchOperator(std::span<const OperatorEntry> table, size_t length, SourceLocation const& loc)
         -> std::optional<Token>
     {
@@ -704,10 +674,6 @@ private:
         return Token{.type = *type, .text = std::string(text), .location = loc};
     }
 
-    /// @brief Scans a single-character operator or punctuation token.
-    /// @param ch The character that was already peeked at and advanced past.
-    /// @param loc The source location for the resulting token.
-    /// @return The single-character operator token.
     [[nodiscard]] static auto ScanSingleCharOperator(char ch, SourceLocation const& loc) -> Token
     {
         switch (ch)
@@ -767,13 +733,6 @@ private:
         }
     }
 
-    /// @brief Scans an operator or punctuation token.
-    /// @param loc The source location where the operator starts.
-    /// @return The operator token, or an error if the character is unrecognized.
-    ///
-    /// Tries three-character operators first, then two-character operators (both via
-    /// binary search in sorted lookup tables), and finally falls back to single-character
-    /// operator matching via a switch statement.
     [[nodiscard]] auto ScanOperator(SourceLocation const& loc) -> std::expected<Token, TokenizerError>
     {
         // Try three-character operators first
@@ -791,16 +750,387 @@ private:
     }
 };
 
-} // namespace
+// =====================================================================
+// Block extraction internals
+// =====================================================================
 
-auto Tokenizer::Tokenize(std::string_view source, std::filesystem::path const& filePath)
+/// @brief Result of a backward paren-matching operation.
+struct ParenMatchResult
+{
+    size_t pos;   ///< The position after matching.
+    bool success; ///< Whether matching succeeded.
+};
+
+[[nodiscard]] auto IsTrailingQualifier(TokenType type) -> bool
+{
+    return type == TokenType::Const || type == TokenType::Noexcept || type == TokenType::Override ||
+           type == TokenType::Volatile || type == TokenType::Amp || type == TokenType::AmpAmp ||
+           type == TokenType::Arrow || type == TokenType::Identifier;
+}
+
+[[nodiscard]] auto IsSimpleTrailingQualifier(TokenType type) -> bool
+{
+    return type == TokenType::Const || type == TokenType::Noexcept || type == TokenType::Override ||
+           type == TokenType::Volatile || type == TokenType::Amp || type == TokenType::AmpAmp;
+}
+
+[[nodiscard]] auto SkipTrailingQualifiers(std::span<Token const> tokens, size_t pos) -> size_t
+{
+    while (pos > 0)
+    {
+        auto const type = tokens[pos].type;
+        if (!IsTrailingQualifier(type))
+            break;
+
+        if (type == TokenType::Identifier && tokens[pos].text != "final" && tokens[pos].text != "noexcept")
+        {
+            if (pos > 0 && tokens[pos - 1].type == TokenType::Arrow)
+            {
+                pos -= 2;
+                continue;
+            }
+            break;
+        }
+        --pos;
+    }
+    return pos;
+}
+
+[[nodiscard]] auto SkipSimpleTrailingQualifiers(std::span<Token const> tokens, size_t pos) -> size_t
+{
+    while (pos > 0)
+    {
+        auto const type = tokens[pos].type;
+        if (IsSimpleTrailingQualifier(type))
+        {
+            --pos;
+            continue;
+        }
+        if (type == TokenType::Identifier && (tokens[pos].text == "final" || tokens[pos].text == "noexcept"))
+        {
+            --pos;
+            continue;
+        }
+        break;
+    }
+    return pos;
+}
+
+[[nodiscard]] auto SkipMatchedDelimiterBackward(std::span<Token const> tokens, size_t scanPos, TokenType openType,
+                                                TokenType closeType) -> ParenMatchResult
+{
+    size_t depth = 1;
+    if (scanPos == 0)
+        return {.pos = scanPos, .success = false};
+    --scanPos;
+    while (scanPos > 0 && depth > 0)
+    {
+        if (tokens[scanPos].type == closeType)
+            ++depth;
+        else if (tokens[scanPos].type == openType)
+            --depth;
+        if (depth > 0)
+            --scanPos;
+    }
+    return {.pos = scanPos, .success = depth == 0};
+}
+
+[[nodiscard]] auto SkipInitializerList(std::span<Token const> tokens, size_t pos) -> size_t
+{
+    if (tokens[pos].type == TokenType::RightParen)
+        return pos;
+
+    if (pos == 0)
+        return pos;
+
+    auto scanPos = pos;
+    while (scanPos > 0)
+    {
+        if (tokens[scanPos].type == TokenType::RightParen)
+        {
+            auto const [newPos, ok] =
+                SkipMatchedDelimiterBackward(tokens, scanPos, TokenType::LeftParen, TokenType::RightParen);
+            if (!ok)
+                break;
+            scanPos = newPos;
+            if (scanPos > 0)
+                --scanPos;
+            continue;
+        }
+        if (tokens[scanPos].type == TokenType::LeftBrace)
+        {
+            auto const [newPos, ok] =
+                SkipMatchedDelimiterBackward(tokens, scanPos, TokenType::RightBrace, TokenType::LeftBrace);
+            if (!ok)
+                break;
+            scanPos = newPos;
+            if (scanPos > 0)
+                --scanPos;
+            continue;
+        }
+        if (tokens[scanPos].type == TokenType::Comma || tokens[scanPos].type == TokenType::Identifier ||
+            tokens[scanPos].type == TokenType::ColonColon)
+        {
+            --scanPos;
+            continue;
+        }
+        if (tokens[scanPos].type == TokenType::Colon)
+        {
+            pos = scanPos;
+            if (pos > 0)
+                --pos;
+            return pos;
+        }
+        break;
+    }
+    return pos;
+}
+
+[[nodiscard]] auto SkipMatchedParensBackward(std::span<Token const> tokens, size_t pos) -> ParenMatchResult
+{
+    if (tokens[pos].type != TokenType::RightParen)
+        return {.pos = pos, .success = false};
+
+    size_t depth = 1;
+    if (pos == 0)
+        return {.pos = pos, .success = false};
+    --pos;
+    while (pos > 0 && depth > 0)
+    {
+        if (tokens[pos].type == TokenType::RightParen)
+            ++depth;
+        else if (tokens[pos].type == TokenType::LeftParen)
+            --depth;
+        if (depth > 0)
+            --pos;
+    }
+
+    if (depth != 0 || pos == 0)
+        return {.pos = pos, .success = false};
+
+    return {.pos = pos, .success = true};
+}
+
+[[nodiscard]] auto SkipTemplateParamsBackward(std::span<Token const> tokens, size_t pos) -> size_t
+{
+    if (tokens[pos].type != TokenType::Greater)
+        return pos;
+
+    size_t angleDepth = 1;
+    if (pos == 0)
+        return pos;
+    --pos;
+    while (pos > 0 && angleDepth > 0)
+    {
+        if (tokens[pos].type == TokenType::Greater)
+            ++angleDepth;
+        else if (tokens[pos].type == TokenType::Less)
+            --angleDepth;
+        if (angleDepth > 0)
+            --pos;
+    }
+    if (pos > 0)
+        --pos;
+    return pos;
+}
+
+[[nodiscard]] auto ExtractFunctionIdentifier(std::span<Token const> tokens, size_t pos) -> std::string
+{
+    if (tokens[pos].type == TokenType::Identifier)
+    {
+        auto name = tokens[pos].text;
+        if (pos >= 2 && tokens[pos - 1].type == TokenType::ColonColon && tokens[pos - 2].type == TokenType::Identifier)
+        {
+            name = tokens[pos - 2].text + "::" + name;
+        }
+        return name;
+    }
+    if (tokens[pos].type == TokenType::Operator)
+    {
+        return "operator";
+    }
+    if (tokens[pos].type == TokenType::Tilde && pos > 0 && tokens[pos - 1].type == TokenType::Identifier)
+    {
+        return "~" + tokens[pos - 1].text;
+    }
+    return {};
+}
+
+[[nodiscard]] auto IsAllowedFunctionPrefixKeyword(TokenType type) -> bool
+{
+    return type == TokenType::Const || type == TokenType::Static || type == TokenType::Inline ||
+           type == TokenType::Virtual || type == TokenType::Explicit || type == TokenType::Constexpr ||
+           type == TokenType::Consteval || type == TokenType::Auto || type == TokenType::Template ||
+           type == TokenType::Typename || type == TokenType::Void || type == TokenType::Int ||
+           type == TokenType::Long || type == TokenType::Short || type == TokenType::Unsigned ||
+           type == TokenType::Signed || type == TokenType::Char || type == TokenType::Bool ||
+           type == TokenType::Float || type == TokenType::Double || type == TokenType::WcharT ||
+           type == TokenType::Char8T || type == TokenType::Char16T || type == TokenType::Char32T ||
+           type == TokenType::Extern || type == TokenType::Friend || type == TokenType::Noexcept;
+}
+
+[[nodiscard]] auto IsNonFunctionKeyword(std::span<Token const> tokens, size_t namePos) -> bool
+{
+    auto checkPos = namePos;
+    while (checkPos > 0)
+    {
+        --checkPos;
+        auto const type = tokens[checkPos].type;
+        if (type == TokenType::Namespace)
+            return true;
+        if (type == TokenType::Class || type == TokenType::Struct || type == TokenType::Enum ||
+            type == TokenType::Union)
+        {
+            if (checkPos + 1 == namePos || checkPos + 2 == namePos)
+                return true;
+            return false;
+        }
+        if (type == TokenType::Semicolon || type == TokenType::RightBrace || type == TokenType::LeftBrace)
+            return false;
+        if (IsKeyword(type) && !IsAllowedFunctionPrefixKeyword(type))
+            return false;
+    }
+    return false;
+}
+
+[[nodiscard]] auto FindFunctionName(std::vector<Token> const& tokens, size_t braceIndex) -> std::string
+{
+    if (braceIndex == 0)
+        return {};
+
+    auto const tokenSpan = std::span<Token const>{tokens};
+
+    auto pos = SkipTrailingQualifiers(tokenSpan, braceIndex - 1);
+    pos = SkipInitializerList(tokenSpan, pos);
+    pos = SkipSimpleTrailingQualifiers(tokenSpan, pos);
+
+    auto const [parenPos, parenSuccess] = SkipMatchedParensBackward(tokenSpan, pos);
+    if (!parenSuccess)
+        return {};
+    pos = parenPos - 1;
+
+    pos = SkipTemplateParamsBackward(tokenSpan, pos);
+
+    auto name = ExtractFunctionIdentifier(tokenSpan, pos);
+    if (name.empty())
+        return {};
+
+    if (IsNonFunctionKeyword(tokenSpan, pos))
+        return {};
+
+    return name;
+}
+
+/// @brief Extracts code blocks from tokens, building index maps for normalized tokens.
+[[nodiscard]] auto ExtractBlocksImpl(std::vector<Token> const& tokens, std::vector<NormalizedToken> const& normalized,
+                                     std::vector<NormalizedToken> const& textPreserving,
+                                     CodeBlockExtractorConfig const& config) -> std::vector<CodeBlock>
+{
+    std::vector<CodeBlock> blocks;
+    auto const hasTextPreserving = !textPreserving.empty();
+
+    // Build a mapping from original token index to normalized token index.
+    std::vector<size_t> origToNormalized(tokens.size(), SIZE_MAX);
+    for (auto const ni : std::views::iota(size_t{0}, normalized.size()))
+        origToNormalized[normalized[ni].originalIndex] = ni;
+
+    // Build the same mapping for text-preserving normalization.
+    std::vector<size_t> origToTextPreserving;
+    if (hasTextPreserving)
+    {
+        origToTextPreserving.assign(tokens.size(), SIZE_MAX);
+        for (auto const ni : std::views::iota(size_t{0}, textPreserving.size()))
+            origToTextPreserving[textPreserving[ni].originalIndex] = ni;
+    }
+
+    for (size_t i = 0; i < tokens.size(); ++i)
+    {
+        if (tokens[i].type != TokenType::LeftBrace)
+            continue;
+
+        auto funcName = FindFunctionName(tokens, i);
+        if (funcName.empty())
+            continue;
+
+        size_t depth = 1;
+        size_t bodyEnd = i + 1;
+        while (bodyEnd < tokens.size() && depth > 0)
+        {
+            if (tokens[bodyEnd].type == TokenType::LeftBrace)
+                ++depth;
+            else if (tokens[bodyEnd].type == TokenType::RightBrace)
+                --depth;
+            ++bodyEnd;
+        }
+
+        if (depth != 0)
+            continue;
+
+        std::vector<NormalizedTokenId> normalizedIds;
+        std::vector<NormalizedTokenId> textPreservingIds;
+        for (size_t ti = i; ti < bodyEnd; ++ti)
+        {
+            if (origToNormalized[ti] != SIZE_MAX)
+            {
+                auto normIdx = origToNormalized[ti];
+                if (normIdx < normalized.size())
+                    normalizedIds.push_back(normalized[normIdx].id);
+            }
+
+            if (hasTextPreserving && origToTextPreserving[ti] != SIZE_MAX)
+            {
+                auto tpIdx = origToTextPreserving[ti];
+                if (tpIdx < textPreserving.size())
+                    textPreservingIds.push_back(textPreserving[tpIdx].id);
+            }
+        }
+
+        if (normalizedIds.size() < config.minTokens)
+            continue;
+
+        auto const& startLoc = tokens[i].location;
+        auto const& endLoc = tokens[bodyEnd - 1].location;
+
+        blocks.push_back(CodeBlock{
+            .name = std::move(funcName),
+            .sourceRange = SourceRange{.start = startLoc, .end = endLoc},
+            .tokenStart = i,
+            .tokenEnd = bodyEnd,
+            .normalizedIds = std::move(normalizedIds),
+            .textPreservingIds = std::move(textPreservingIds),
+        });
+
+        i = bodyEnd - 1;
+    }
+
+    return blocks;
+}
+
+} // anonymous namespace
+
+// =====================================================================
+// CppLanguage public API
+// =====================================================================
+
+auto CppLanguage::Name() const -> std::string_view
+{
+    return "C++";
+}
+
+auto CppLanguage::Extensions() const -> std::span<std::string const>
+{
+    static std::string const exts[] = {".cpp", ".cxx", ".cc", ".c", ".h", ".hpp", ".hxx"};
+    return exts;
+}
+
+auto CppLanguage::Tokenize(std::string_view source, std::filesystem::path const& filePath) const
     -> std::expected<std::vector<Token>, TokenizerError>
 {
     Scanner scanner(source, filePath);
     return scanner.Tokenize();
 }
 
-auto Tokenizer::TokenizeFile(std::filesystem::path const& filePath, InputEncoding encoding)
+auto CppLanguage::TokenizeFile(std::filesystem::path const& filePath, InputEncoding encoding) const
     -> std::expected<std::vector<Token>, TokenizerError>
 {
     std::ifstream file(filePath, std::ios::binary);
@@ -820,6 +1150,23 @@ auto Tokenizer::TokenizeFile(std::filesystem::path const& filePath, InputEncodin
 
     auto const& utf8Content = *utf8Result;
     return Tokenize(utf8Content, filePath);
+}
+
+auto CppLanguage::ExtractBlocks(std::vector<Token> const& tokens, std::vector<NormalizedToken> const& normalized,
+                                std::vector<NormalizedToken> const& textPreserving,
+                                CodeBlockExtractorConfig const& config) const -> std::vector<CodeBlock>
+{
+    return ExtractBlocksImpl(tokens, normalized, textPreserving, config);
+}
+
+auto CppLanguage::ShouldStripToken(TokenType type) const -> bool
+{
+    return IsComment(type) || type == TokenType::PreprocessorDirective || type == TokenType::EndOfFile;
+}
+
+auto CreateCppLanguage() -> std::shared_ptr<Language>
+{
+    return std::make_shared<CppLanguage>();
 }
 
 } // namespace codedup

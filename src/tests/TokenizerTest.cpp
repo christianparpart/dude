@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-#include <codedup/Tokenizer.hpp>
+#include <codedup/Languages/CppLanguage.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -7,7 +7,7 @@ using namespace codedup;
 
 TEST_CASE("Tokenizer.EmptyInput", "[tokenizer]")
 {
-    auto result = Tokenizer::Tokenize("");
+    auto result = CppLanguage{}.Tokenize("");
     REQUIRE(result.has_value());
     REQUIRE(result->size() == 1); // EndOfFile only
     CHECK(result->front().type == TokenType::EndOfFile);
@@ -15,7 +15,7 @@ TEST_CASE("Tokenizer.EmptyInput", "[tokenizer]")
 
 TEST_CASE("Tokenizer.Keywords", "[tokenizer]")
 {
-    auto result = Tokenizer::Tokenize("if else for while return class struct void const int");
+    auto result = CppLanguage{}.Tokenize("if else for while return class struct void const int");
     REQUIRE(result.has_value());
 
     auto const& tokens = *result;
@@ -35,7 +35,7 @@ TEST_CASE("Tokenizer.Keywords", "[tokenizer]")
 
 TEST_CASE("Tokenizer.CppKeywords", "[tokenizer]")
 {
-    auto result = Tokenizer::Tokenize("constexpr auto template typename namespace co_await co_return co_yield");
+    auto result = CppLanguage{}.Tokenize("constexpr auto template typename namespace co_await co_return co_yield");
     REQUIRE(result.has_value());
 
     auto const& tokens = *result;
@@ -51,7 +51,7 @@ TEST_CASE("Tokenizer.CppKeywords", "[tokenizer]")
 
 TEST_CASE("Tokenizer.Identifiers", "[tokenizer]")
 {
-    auto result = Tokenizer::Tokenize("foo _bar baz123 __internal");
+    auto result = CppLanguage{}.Tokenize("foo _bar baz123 __internal");
     REQUIRE(result.has_value());
 
     for (size_t i = 0; i < 4; ++i)
@@ -66,7 +66,7 @@ TEST_CASE("Tokenizer.Identifiers", "[tokenizer]")
 
 TEST_CASE("Tokenizer.NumericLiterals", "[tokenizer]")
 {
-    auto result = Tokenizer::Tokenize("42 3.14 0xFF 0b1010 0777 1'000'000 1.5e10 2.0f");
+    auto result = CppLanguage{}.Tokenize("42 3.14 0xFF 0b1010 0777 1'000'000 1.5e10 2.0f");
     REQUIRE(result.has_value());
 
     for (size_t i = 0; i < 8; ++i)
@@ -83,7 +83,7 @@ TEST_CASE("Tokenizer.NumericLiterals", "[tokenizer]")
 
 TEST_CASE("Tokenizer.StringLiterals", "[tokenizer]")
 {
-    auto result = Tokenizer::Tokenize(R"("hello" "world\n" "escaped\"quote")");
+    auto result = CppLanguage{}.Tokenize(R"("hello" "world\n" "escaped\"quote")");
     REQUIRE(result.has_value());
 
     CHECK((*result)[0].type == TokenType::StringLiteral);
@@ -94,7 +94,7 @@ TEST_CASE("Tokenizer.StringLiterals", "[tokenizer]")
 
 TEST_CASE("Tokenizer.RawStringLiteral", "[tokenizer]")
 {
-    auto result = Tokenizer::Tokenize(R"cpp(R"(raw string)")cpp");
+    auto result = CppLanguage{}.Tokenize(R"cpp(R"(raw string)")cpp");
     REQUIRE(result.has_value());
     CHECK((*result)[0].type == TokenType::StringLiteral);
     CHECK((*result)[0].text == R"cpp(R"(raw string)")cpp");
@@ -102,14 +102,14 @@ TEST_CASE("Tokenizer.RawStringLiteral", "[tokenizer]")
 
 TEST_CASE("Tokenizer.RawStringWithDelimiter", "[tokenizer]")
 {
-    auto result = Tokenizer::Tokenize(R"cpp(R"delim(has "quotes" inside)delim")cpp");
+    auto result = CppLanguage{}.Tokenize(R"cpp(R"delim(has "quotes" inside)delim")cpp");
     REQUIRE(result.has_value());
     CHECK((*result)[0].type == TokenType::StringLiteral);
 }
 
 TEST_CASE("Tokenizer.CharLiterals", "[tokenizer]")
 {
-    auto result = Tokenizer::Tokenize("'a' '\\n' '\\0'");
+    auto result = CppLanguage{}.Tokenize("'a' '\\n' '\\0'");
     REQUIRE(result.has_value());
 
     CHECK((*result)[0].type == TokenType::CharLiteral);
@@ -120,7 +120,7 @@ TEST_CASE("Tokenizer.CharLiterals", "[tokenizer]")
 
 TEST_CASE("Tokenizer.LineComment", "[tokenizer]")
 {
-    auto result = Tokenizer::Tokenize("x // comment\ny");
+    auto result = CppLanguage{}.Tokenize("x // comment\ny");
     REQUIRE(result.has_value());
 
     CHECK((*result)[0].type == TokenType::Identifier);
@@ -131,7 +131,7 @@ TEST_CASE("Tokenizer.LineComment", "[tokenizer]")
 
 TEST_CASE("Tokenizer.BlockComment", "[tokenizer]")
 {
-    auto result = Tokenizer::Tokenize("x /* block\ncomment */ y");
+    auto result = CppLanguage{}.Tokenize("x /* block\ncomment */ y");
     REQUIRE(result.has_value());
 
     CHECK((*result)[0].type == TokenType::Identifier);
@@ -141,7 +141,7 @@ TEST_CASE("Tokenizer.BlockComment", "[tokenizer]")
 
 TEST_CASE("Tokenizer.PreprocessorDirective", "[tokenizer]")
 {
-    auto result = Tokenizer::Tokenize("#include <stdio.h>\nint x;");
+    auto result = CppLanguage{}.Tokenize("#include <stdio.h>\nint x;");
     REQUIRE(result.has_value());
 
     CHECK((*result)[0].type == TokenType::PreprocessorDirective);
@@ -150,14 +150,14 @@ TEST_CASE("Tokenizer.PreprocessorDirective", "[tokenizer]")
 
 TEST_CASE("Tokenizer.PreprocessorContinuation", "[tokenizer]")
 {
-    auto result = Tokenizer::Tokenize("#define FOO \\\nbar\nint x;");
+    auto result = CppLanguage{}.Tokenize("#define FOO \\\nbar\nint x;");
     REQUIRE(result.has_value());
     CHECK((*result)[0].type == TokenType::PreprocessorDirective);
 }
 
 TEST_CASE("Tokenizer.Operators", "[tokenizer]")
 {
-    auto result = Tokenizer::Tokenize("+ - * / % = == != < > <= >= && || ! & | ^ ~ << >> ++ -- += -=");
+    auto result = CppLanguage{}.Tokenize("+ - * / % = == != < > <= >= && || ! & | ^ ~ << >> ++ -- += -=");
     REQUIRE(result.has_value());
 
     auto const& t = *result;
@@ -190,7 +190,7 @@ TEST_CASE("Tokenizer.Operators", "[tokenizer]")
 
 TEST_CASE("Tokenizer.ThreeCharOperators", "[tokenizer]")
 {
-    auto result = Tokenizer::Tokenize("<=> <<= >>= ->* ...");
+    auto result = CppLanguage{}.Tokenize("<=> <<= >>= ->* ...");
     REQUIRE(result.has_value());
 
     CHECK((*result)[0].type == TokenType::Spaceship);
@@ -202,7 +202,7 @@ TEST_CASE("Tokenizer.ThreeCharOperators", "[tokenizer]")
 
 TEST_CASE("Tokenizer.Punctuation", "[tokenizer]")
 {
-    auto result = Tokenizer::Tokenize("( ) [ ] { } ; : :: , . -> .* ?");
+    auto result = CppLanguage{}.Tokenize("( ) [ ] { } ; : :: , . -> .* ?");
     REQUIRE(result.has_value());
 
     auto const& t = *result;
@@ -224,7 +224,7 @@ TEST_CASE("Tokenizer.Punctuation", "[tokenizer]")
 
 TEST_CASE("Tokenizer.SourceLocationTracking", "[tokenizer]")
 {
-    auto result = Tokenizer::Tokenize("int\nx;\n  y;", "test.cpp");
+    auto result = CppLanguage{}.Tokenize("int\nx;\n  y;", "test.cpp");
     REQUIRE(result.has_value());
 
     auto const& t = *result;
@@ -239,19 +239,19 @@ TEST_CASE("Tokenizer.SourceLocationTracking", "[tokenizer]")
 
 TEST_CASE("Tokenizer.UnterminatedString", "[tokenizer]")
 {
-    auto result = Tokenizer::Tokenize("\"unterminated");
+    auto result = CppLanguage{}.Tokenize("\"unterminated");
     CHECK(!result.has_value());
 }
 
 TEST_CASE("Tokenizer.UnterminatedBlockComment", "[tokenizer]")
 {
-    auto result = Tokenizer::Tokenize("/* unterminated");
+    auto result = CppLanguage{}.Tokenize("/* unterminated");
     CHECK(!result.has_value());
 }
 
 TEST_CASE("Tokenizer.RealWorldSnippet", "[tokenizer]")
 {
-    auto result = Tokenizer::Tokenize(R"cpp(
+    auto result = CppLanguage{}.Tokenize(R"cpp(
 void foo(int x) {
     if (x > 0) {
         return;

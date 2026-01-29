@@ -27,6 +27,9 @@ add_executable(CodeDupTest
     ReporterTest.cpp
     ScopeFilterTest.cpp
     IntegrationTest.cpp
+    LanguageRegistryTest.cpp
+    CSharpTokenizerTest.cpp
+    CSharpCodeBlockTest.cpp
 )
 
 # GitDiffParser and GitFileFilter live in src/cli/ — compile their sources and expose headers to the test.

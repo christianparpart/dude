@@ -5,9 +5,10 @@ add_library(codedup STATIC
     DiffFilter.cpp
     Encoding.cpp
     Token.cpp
-    Tokenizer.cpp
     TokenNormalizer.cpp
-    CodeBlock.cpp
+    LanguageRegistry.cpp
+    Languages/CppLanguage.cpp
+    Languages/CSharpLanguage.cpp
     CloneDetector.cpp
     IntraFunctionDetector.cpp
     FileScanner.cpp

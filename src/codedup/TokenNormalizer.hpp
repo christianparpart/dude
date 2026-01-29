@@ -13,6 +13,8 @@
 namespace codedup
 {
 
+class Language;
+
 /// @brief Normalized token ID used for clone detection.
 using NormalizedTokenId = uint32_t;
 
@@ -43,7 +45,7 @@ struct TokenDictionary
 /// @brief Normalizes tokens into integer sequences for Type-2 clone detection.
 ///
 /// Normalization rules:
-/// - Comments and preprocessor directives are stripped.
+/// - Comments and preprocessor directives are stripped (or language-specific stripping when provided).
 /// - Each keyword and operator maps to a unique fixed ID.
 /// - All identifiers map to a single generic ID.
 /// - All numeric, string, and char literals map to their respective generic IDs.
@@ -56,8 +58,10 @@ public:
     /// collapse to their respective generic IDs. This produces identical sequences for
     /// Type-2 (renamed) clones.
     /// @param tokens The original token sequence.
+    /// @param language Optional language for custom token stripping. If nullptr, uses default C++ behavior.
     /// @return A vector of normalized tokens (comments and preprocessor stripped).
-    [[nodiscard]] auto Normalize(std::vector<Token> const& tokens) -> std::vector<NormalizedToken>;
+    [[nodiscard]] auto Normalize(std::vector<Token> const& tokens, Language const* language = nullptr)
+        -> std::vector<NormalizedToken>;
 
     /// @brief Normalizes a sequence of tokens (text-preserving mode).
     ///
@@ -65,8 +69,10 @@ public:
     /// identifier or literal text receives its own distinct ID. This allows computing
     /// a textual similarity score that distinguishes renamed identifiers.
     /// @param tokens The original token sequence.
+    /// @param language Optional language for custom token stripping. If nullptr, uses default C++ behavior.
     /// @return A vector of normalized tokens with text-preserving IDs.
-    [[nodiscard]] auto NormalizeTextPreserving(std::vector<Token> const& tokens) -> std::vector<NormalizedToken>;
+    [[nodiscard]] auto NormalizeTextPreserving(std::vector<Token> const& tokens, Language const* language = nullptr)
+        -> std::vector<NormalizedToken>;
 
     /// @brief Returns the token dictionary built during normalization.
     [[nodiscard]] auto Dictionary() const -> TokenDictionary const& { return _dictionary; }
@@ -77,6 +83,9 @@ private:
 
     [[nodiscard]] static auto AssignId(TokenType type) -> NormalizedTokenId;
     [[nodiscard]] auto AssignTextPreservingId(Token const& token) -> NormalizedTokenId;
+
+    /// @brief Default stripping check: comments, preprocessor directives, and EOF.
+    [[nodiscard]] static auto DefaultShouldStrip(TokenType type) -> bool;
 };
 
 } // namespace codedup

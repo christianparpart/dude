@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <codedup/Languages/CppLanguage.hpp>
 #include <codedup/TokenNormalizer.hpp>
-#include <codedup/Tokenizer.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -9,8 +9,9 @@ using namespace codedup;
 TEST_CASE("TokenNormalizer.IdentifierNormalization", "[normalizer]")
 {
     // Different identifier names should produce the same normalized ID
-    auto tokens1 = Tokenizer::Tokenize("int foo = 42;");
-    auto tokens2 = Tokenizer::Tokenize("int bar = 42;");
+    CppLanguage const cpp;
+    auto tokens1 = cpp.Tokenize("int foo = 42;");
+    auto tokens2 = cpp.Tokenize("int bar = 42;");
     REQUIRE(tokens1.has_value());
     REQUIRE(tokens2.has_value());
 
@@ -27,7 +28,7 @@ TEST_CASE("TokenNormalizer.IdentifierNormalization", "[normalizer]")
 
 TEST_CASE("TokenNormalizer.KeywordsAreUnique", "[normalizer]")
 {
-    auto tokens = Tokenizer::Tokenize("if else for while return");
+    auto tokens = CppLanguage{}.Tokenize("if else for while return");
     REQUIRE(tokens.has_value());
 
     TokenNormalizer normalizer;
@@ -46,8 +47,9 @@ TEST_CASE("TokenNormalizer.KeywordsAreUnique", "[normalizer]")
 TEST_CASE("TokenNormalizer.LiteralNormalization", "[normalizer]")
 {
     // Different numeric literal values should produce the same normalized ID
-    auto tokens1 = Tokenizer::Tokenize("42");
-    auto tokens2 = Tokenizer::Tokenize("99");
+    CppLanguage const cpp;
+    auto tokens1 = cpp.Tokenize("42");
+    auto tokens2 = cpp.Tokenize("99");
     REQUIRE(tokens1.has_value());
     REQUIRE(tokens2.has_value());
 
@@ -64,8 +66,9 @@ TEST_CASE("TokenNormalizer.LiteralNormalization", "[normalizer]")
 
 TEST_CASE("TokenNormalizer.StringLiteralNormalization", "[normalizer]")
 {
-    auto tokens1 = Tokenizer::Tokenize(R"("hello")");
-    auto tokens2 = Tokenizer::Tokenize(R"("world")");
+    CppLanguage const cpp;
+    auto tokens1 = cpp.Tokenize(R"("hello")");
+    auto tokens2 = cpp.Tokenize(R"("world")");
     REQUIRE(tokens1.has_value());
     REQUIRE(tokens2.has_value());
 
@@ -81,7 +84,7 @@ TEST_CASE("TokenNormalizer.StringLiteralNormalization", "[normalizer]")
 
 TEST_CASE("TokenNormalizer.CommentStripping", "[normalizer]")
 {
-    auto tokens = Tokenizer::Tokenize("int x; // comment\nint y; /* block */");
+    auto tokens = CppLanguage{}.Tokenize("int x; // comment\nint y; /* block */");
     REQUIRE(tokens.has_value());
 
     TokenNormalizer normalizer;
@@ -97,7 +100,7 @@ TEST_CASE("TokenNormalizer.CommentStripping", "[normalizer]")
 
 TEST_CASE("TokenNormalizer.PreprocessorStripping", "[normalizer]")
 {
-    auto tokens = Tokenizer::Tokenize("#include <vector>\nint x;");
+    auto tokens = CppLanguage{}.Tokenize("#include <vector>\nint x;");
     REQUIRE(tokens.has_value());
 
     TokenNormalizer normalizer;
@@ -113,8 +116,9 @@ TEST_CASE("TokenNormalizer.PreprocessorStripping", "[normalizer]")
 TEST_CASE("TokenNormalizer.StructuralEquivalence", "[normalizer]")
 {
     // Two structurally identical functions with different names should produce identical normalized sequences
-    auto tokens1 = Tokenizer::Tokenize("void foo(int x) { return x + 1; }");
-    auto tokens2 = Tokenizer::Tokenize("void bar(int y) { return y + 1; }");
+    CppLanguage const cpp;
+    auto tokens1 = cpp.Tokenize("void foo(int x) { return x + 1; }");
+    auto tokens2 = cpp.Tokenize("void bar(int y) { return y + 1; }");
     REQUIRE(tokens1.has_value());
     REQUIRE(tokens2.has_value());
 
@@ -130,7 +134,7 @@ TEST_CASE("TokenNormalizer.StructuralEquivalence", "[normalizer]")
 
 TEST_CASE("TokenNormalizer.BackReference", "[normalizer]")
 {
-    auto tokens = Tokenizer::Tokenize("int x = 5;");
+    auto tokens = CppLanguage{}.Tokenize("int x = 5;");
     REQUIRE(tokens.has_value());
 
     TokenNormalizer normalizer;
@@ -150,7 +154,7 @@ TEST_CASE("TokenNormalizer.BackReference", "[normalizer]")
 TEST_CASE("TokenNormalizer.TextPreserving.DifferentIdentifiersGetDifferentIds", "[normalizer]")
 {
     // In text-preserving mode, "foo" and "bar" should get different IDs
-    auto tokens = Tokenizer::Tokenize("int foo = bar;");
+    auto tokens = CppLanguage{}.Tokenize("int foo = bar;");
     REQUIRE(tokens.has_value());
 
     TokenNormalizer normalizer;
@@ -176,7 +180,7 @@ TEST_CASE("TokenNormalizer.TextPreserving.DifferentIdentifiersGetDifferentIds", 
 TEST_CASE("TokenNormalizer.TextPreserving.SameIdentifierGetsSameId", "[normalizer]")
 {
     // In text-preserving mode, two occurrences of "foo" should get the same ID
-    auto tokens = Tokenizer::Tokenize("int foo = foo;");
+    auto tokens = CppLanguage{}.Tokenize("int foo = foo;");
     REQUIRE(tokens.has_value());
 
     TokenNormalizer normalizer;
@@ -196,7 +200,7 @@ TEST_CASE("TokenNormalizer.TextPreserving.SameIdentifierGetsSameId", "[normalize
 TEST_CASE("TokenNormalizer.TextPreserving.KeywordsMatchStructuralIds", "[normalizer]")
 {
     // Keywords should get the same IDs in both modes
-    auto tokens = Tokenizer::Tokenize("if else for while return");
+    auto tokens = CppLanguage{}.Tokenize("if else for while return");
     REQUIRE(tokens.has_value());
 
     TokenNormalizer normalizer;
@@ -211,7 +215,7 @@ TEST_CASE("TokenNormalizer.TextPreserving.KeywordsMatchStructuralIds", "[normali
 TEST_CASE("TokenNormalizer.TextPreserving.DifferentLiteralsGetDifferentIds", "[normalizer]")
 {
     // Different numeric literal values should get different text-preserving IDs
-    auto tokens = Tokenizer::Tokenize("42 + 99");
+    auto tokens = CppLanguage{}.Tokenize("42 + 99");
     REQUIRE(tokens.has_value());
 
     TokenNormalizer normalizer;
@@ -235,8 +239,9 @@ TEST_CASE("TokenNormalizer.TextPreserving.RenamedFunctionsDiffer", "[normalizer]
     // identical structural IDs but different text-preserving IDs.
     // Both files must be processed by the same normalizer (as in production usage)
     // so that different identifier texts get different IDs from the shared dictionary.
-    auto tokens1 = Tokenizer::Tokenize("void foo(int x) { return x + 1; }");
-    auto tokens2 = Tokenizer::Tokenize("void bar(int y) { return y + 1; }");
+    CppLanguage const cpp;
+    auto tokens1 = cpp.Tokenize("void foo(int x) { return x + 1; }");
+    auto tokens2 = cpp.Tokenize("void bar(int y) { return y + 1; }");
     REQUIRE(tokens1.has_value());
     REQUIRE(tokens2.has_value());
 

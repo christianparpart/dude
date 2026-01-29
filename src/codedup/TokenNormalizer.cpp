@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <codedup/Language.hpp>
 #include <codedup/TokenNormalizer.hpp>
 
 #include <ranges>
@@ -7,7 +8,8 @@ namespace codedup
 {
 
 // NOLINTNEXTLINE(readability-convert-member-functions-to-static)
-auto TokenNormalizer::Normalize(std::vector<Token> const& tokens) -> std::vector<NormalizedToken>
+auto TokenNormalizer::Normalize(std::vector<Token> const& tokens, Language const* language)
+    -> std::vector<NormalizedToken>
 {
     std::vector<NormalizedToken> result;
     result.reserve(tokens.size());
@@ -16,12 +18,9 @@ auto TokenNormalizer::Normalize(std::vector<Token> const& tokens) -> std::vector
     {
         auto const& token = tokens[i];
 
-        // Strip comments and preprocessor directives
-        if (IsComment(token.type) || token.type == TokenType::PreprocessorDirective ||
-            token.type == TokenType::EndOfFile)
-        {
+        // Strip tokens based on language or default behavior
+        if (language ? language->ShouldStripToken(token.type) : DefaultShouldStrip(token.type))
             continue;
-        }
 
         auto const id = AssignId(token.type);
         result.push_back(NormalizedToken{.id = id, .originalIndex = i});
@@ -30,7 +29,8 @@ auto TokenNormalizer::Normalize(std::vector<Token> const& tokens) -> std::vector
     return result;
 }
 
-auto TokenNormalizer::NormalizeTextPreserving(std::vector<Token> const& tokens) -> std::vector<NormalizedToken>
+auto TokenNormalizer::NormalizeTextPreserving(std::vector<Token> const& tokens, Language const* language)
+    -> std::vector<NormalizedToken>
 {
     std::vector<NormalizedToken> result;
     result.reserve(tokens.size());
@@ -39,18 +39,20 @@ auto TokenNormalizer::NormalizeTextPreserving(std::vector<Token> const& tokens) 
     {
         auto const& token = tokens[i];
 
-        // Strip comments and preprocessor directives (same as structural mode)
-        if (IsComment(token.type) || token.type == TokenType::PreprocessorDirective ||
-            token.type == TokenType::EndOfFile)
-        {
+        // Strip tokens based on language or default behavior
+        if (language ? language->ShouldStripToken(token.type) : DefaultShouldStrip(token.type))
             continue;
-        }
 
         auto const id = AssignTextPreservingId(token);
         result.push_back(NormalizedToken{.id = id, .originalIndex = i});
     }
 
     return result;
+}
+
+auto TokenNormalizer::DefaultShouldStrip(TokenType type) -> bool
+{
+    return IsComment(type) || type == TokenType::PreprocessorDirective || type == TokenType::EndOfFile;
 }
 
 auto TokenNormalizer::AssignTextPreservingId(Token const& token) -> NormalizedTokenId
