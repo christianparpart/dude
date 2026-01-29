@@ -55,6 +55,7 @@ struct CliOptions
     bool respectGitignore = true;                                   ///< Respect .gitignore when scanning files.
     bool showHelp = false;                                          ///< Show help text.
     bool showVersion = false;                                       ///< Show version.
+    bool showExamples = false;                                      ///< Show usage examples.
     std::string diffBase;                                           ///< Git ref to diff against (enables diff mode).
 };
 
@@ -80,7 +81,94 @@ void PrintUsage(FILE* out)
                       "  --no-gitignore              Include gitignored files in analysis\n"
                       "  -v, --verbose               Show progress during scanning\n"
                       "  -h, --help                  Show help\n"
-                      "  --version                   Show version");
+                      "  --version                   Show version\n"
+                      "  --show-examples             Show usage examples");
+}
+
+/// @brief Prints categorized usage examples to stdout.
+void PrintExamples()
+{
+    std::println("Usage Examples for codedupdetector\n"
+                 "==================================\n"
+                 "\n"
+                 "Basic Usage\n"
+                 "-----------\n"
+                 "  # Scan a directory with default settings\n"
+                 "  codedupdetector /path/to/project\n"
+                 "\n"
+                 "  # Scan with verbose output\n"
+                 "  codedupdetector -v /path/to/project\n"
+                 "\n"
+                 "Threshold & Sensitivity Tuning\n"
+                 "------------------------------\n"
+                 "  # High threshold: only near-identical clones\n"
+                 "  codedupdetector -t 0.95 /path/to/project\n"
+                 "\n"
+                 "  # Low threshold: find loose similarities\n"
+                 "  codedupdetector -t 0.60 /path/to/project\n"
+                 "\n"
+                 "  # Stricter identifier matching (higher text sensitivity)\n"
+                 "  codedupdetector --text-sensitivity 0.7 /path/to/project\n"
+                 "\n"
+                 "  # Ignore identifier names entirely (structural only)\n"
+                 "  codedupdetector --text-sensitivity 0.0 /path/to/project\n"
+                 "\n"
+                 "Scope Control\n"
+                 "-------------\n"
+                 "  # Only detect inter-file clones\n"
+                 "  codedupdetector -s inter-file /path/to/project\n"
+                 "\n"
+                 "  # Only detect intra-function copy-paste\n"
+                 "  codedupdetector -s intra-function /path/to/project\n"
+                 "\n"
+                 "  # Combine scopes\n"
+                 "  codedupdetector -s inter-file,intra-function /path/to/project\n"
+                 "\n"
+                 "File Filtering\n"
+                 "--------------\n"
+                 "  # Scan only C++ headers and source files\n"
+                 "  codedupdetector -e .hpp,.cpp /path/to/project\n"
+                 "\n"
+                 "  # Scan only C# files\n"
+                 "  codedupdetector -e .cs /path/to/project\n"
+                 "\n"
+                 "  # Glob-based filename filter\n"
+                 "  codedupdetector -g '*Controller*' /path/to/project\n"
+                 "\n"
+                 "  # Multiple glob patterns\n"
+                 "  codedupdetector -g '*Controller*' -g '*Service*' /path/to/project\n"
+                 "\n"
+                 "  # Include gitignored files in analysis\n"
+                 "  codedupdetector --no-gitignore /path/to/project\n"
+                 "\n"
+                 "Output Control\n"
+                 "--------------\n"
+                 "  # Disable colors (useful for piping or CI logs)\n"
+                 "  codedupdetector --no-color /path/to/project\n"
+                 "\n"
+                 "  # Suppress source code snippets\n"
+                 "  codedupdetector --no-source /path/to/project\n"
+                 "\n"
+                 "  # Machine-readable output (no color, no source)\n"
+                 "  codedupdetector --no-color --no-source /path/to/project\n"
+                 "\n"
+                 "  # Set color theme explicitly\n"
+                 "  codedupdetector --theme dark /path/to/project\n"
+                 "\n"
+                 "CI / Git Integration\n"
+                 "--------------------\n"
+                 "  # Diff mode: only check changed code vs. a branch\n"
+                 "  codedupdetector --diff-base origin/master /path/to/project\n"
+                 "\n"
+                 "  # Diff mode with strict threshold for CI gates\n"
+                 "  codedupdetector --diff-base origin/master -t 0.90 /path/to/project\n"
+                 "\n"
+                 "Combining Options\n"
+                 "-----------------\n"
+                 "  # Full CI pipeline: diff mode, strict threshold, machine-readable,\n"
+                 "  # inter-file scope only\n"
+                 "  codedupdetector --diff-base origin/main -t 0.90 --no-color \\\n"
+                 "      --no-source -s inter-file /path/to/project");
 }
 
 // ---------------------------------------------------------------------------
@@ -216,6 +304,11 @@ auto ProcessArg(int argc, char* argv[], int& i, CliOptions& opts)
         opts.showVersion = true;
         return opts;
     }
+    if (arg == "--show-examples")
+    {
+        opts.showExamples = true;
+        return opts;
+    }
     if (arg == "-t" || arg == "--threshold")
         return ParseDoubleOption(argc, argv, i, "--threshold", 0.0, 1.0, "Threshold must be between 0.0 and 1.0")
             .transform(
@@ -344,12 +437,12 @@ auto ParseArgs(int argc, char* argv[]) -> std::expected<CliOptions, std::string>
             // Only return early for errors, --help, or --version.
             if (!result->has_value())
                 return std::unexpected(std::move(result->error()));
-            if (opts.showHelp || opts.showVersion)
+            if (opts.showHelp || opts.showVersion || opts.showExamples)
                 return opts;
         }
     }
 
-    if (!opts.showHelp && !opts.showVersion && opts.directory.empty())
+    if (!opts.showHelp && !opts.showVersion && !opts.showExamples && opts.directory.empty())
         return std::unexpected("No directory specified");
 
     return opts;
@@ -603,6 +696,12 @@ int main(int argc, char* argv[])
     if (opts.showVersion)
     {
         std::println("codedupdetector {}", versionString);
+        return 0;
+    }
+
+    if (opts.showExamples)
+    {
+        PrintExamples();
         return 0;
     }
 
