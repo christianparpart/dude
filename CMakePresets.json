@@ -1,0 +1,174 @@
+{
+    "version": 6,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 25,
+        "patch": 0
+    },
+    "configurePresets": [
+        {
+            "name": "base",
+            "hidden": true,
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+            }
+        },
+        {
+            "name": "linux-clang-debug",
+            "inherits": "base",
+            "displayName": "Linux Clang Debug",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_C_COMPILER": "clang",
+                "CMAKE_CXX_COMPILER": "clang++"
+            }
+        },
+        {
+            "name": "linux-clnag-debug",
+            "inherits": "linux-clang-debug",
+            "displayName": "Linux Clang Debug (alias)"
+        },
+        {
+            "name": "linux-clang-release",
+            "inherits": "base",
+            "displayName": "Linux Clang Release",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_C_COMPILER": "clang",
+                "CMAKE_CXX_COMPILER": "clang++"
+            }
+        },
+        {
+            "name": "linux-clnag-release",
+            "inherits": "linux-clang-release",
+            "displayName": "Linux Clang Release (alias)"
+        },
+        {
+            "name": "linux-clang-release-native",
+            "inherits": "linux-clang-release",
+            "displayName": "Linux Clang Release (native arch)",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_C_COMPILER": "clang",
+                "CMAKE_CXX_COMPILER": "clang++",
+                "ENABLE_NATIVE_ARCH": "ON"
+            }
+        },
+        {
+            "name": "linux-clang-coverage",
+            "inherits": "base",
+            "displayName": "Linux Clang Coverage",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_C_COMPILER": "clang",
+                "CMAKE_CXX_COMPILER": "clang++",
+                "ENABLE_COVERAGE": "ON"
+            }
+        },
+        {
+            "name": "linux-clang-asan",
+            "inherits": "base",
+            "displayName": "Linux Clang AddressSanitizer",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_C_COMPILER": "clang",
+                "CMAKE_CXX_COMPILER": "clang++",
+                "ENABLE_ASAN": "ON",
+                "ENABLE_UBSAN": "ON"
+            }
+        },
+        {
+            "name": "linux-gcc-debug",
+            "inherits": "base",
+            "displayName": "Linux GCC Debug",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_C_COMPILER": "gcc",
+                "CMAKE_CXX_COMPILER": "g++"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "linux-clang-debug",
+            "configurePreset": "linux-clang-debug"
+        },
+        {
+            "name": "linux-clnag-debug",
+            "configurePreset": "linux-clnag-debug"
+        },
+        {
+            "name": "linux-clang-release",
+            "configurePreset": "linux-clang-release"
+        },
+        {
+            "name": "linux-clnag-release",
+            "configurePreset": "linux-clnag-release"
+        },
+        {
+            "name": "linux-clang-release-native",
+            "configurePreset": "linux-clang-release-native"
+        },
+        {
+            "name": "linux-clang-coverage",
+            "configurePreset": "linux-clang-coverage"
+        },
+        {
+            "name": "linux-gcc-debug",
+            "configurePreset": "linux-gcc-debug"
+        }
+    ],
+    "testPresets": [
+        {
+            "name": "linux-clang-debug",
+            "configurePreset": "linux-clang-debug",
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "linux-clnag-debug",
+            "configurePreset": "linux-clnag-debug",
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "linux-clang-release",
+            "configurePreset": "linux-clang-release",
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "linux-clnag-release",
+            "configurePreset": "linux-clnag-release",
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "linux-clang-release-native",
+            "configurePreset": "linux-clang-release-native",
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "linux-clang-coverage",
+            "configurePreset": "linux-clang-coverage",
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "linux-gcc-debug",
+            "configurePreset": "linux-gcc-debug",
+            "output": {
+                "outputOnFailure": true
+            }
+        }
+    ]
+}

@@ -1,0 +1,42 @@
+# Misc
+version.txt
+
+# Build directories
+build/
+out/
+cmake-build-*/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.cache/
+
+# Compiled
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.exe
+
+# Coverage
+*.gcda
+*.gcno
+*.gcov
+lcov/
+coverage/
+
+# CMake
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+
+# OS
+.DS_Store
+Thumbs.db

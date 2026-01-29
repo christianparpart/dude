@@ -1,0 +1,10 @@
+add_executable(codedupdetector
+    GitDiffParser.cpp
+    main.cpp
+)
+target_link_libraries(codedupdetector PRIVATE codedup)
+
+set_pedantic_compiler_warnings(codedupdetector)
+enable_sanitizers(codedupdetector)
+
+install(TARGETS codedupdetector RUNTIME DESTINATION bin)
