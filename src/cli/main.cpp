@@ -2,6 +2,7 @@
 
 #include "GitDiffParser.hpp"
 #include "GitFileFilter.hpp"
+#include <fnmatch.h>
 
 #include <codedup/CloneDetector.hpp>
 #include <codedup/CodeBlock.hpp>
@@ -44,6 +45,7 @@ struct CliOptions
     bool showSource = true;                                         ///< Whether to show source snippets.
     codedup::ColorTheme theme = codedup::ColorTheme::Auto;          ///< Color theme.
     std::vector<std::string> extensions;                            ///< File extensions to scan.
+    std::vector<std::string> globPatterns;                          ///< Filename glob patterns to include.
     codedup::InputEncoding encoding = codedup::InputEncoding::Auto; ///< Input file encoding.
     bool verbose = false;                                           ///< Show progress.
     bool detectIntraClones = true;                                  ///< Detect intra-function clones.
@@ -67,6 +69,7 @@ void PrintUsage(FILE* out)
                  "  --no-source                 Don't print source code snippets\n"
                  "  --theme <dark|light|auto>   Color theme (default: auto)\n"
                  "  -e, --extensions <list>     Comma-separated extensions (default: .cpp,.cxx,.cc,.c,.h,.hpp,.hxx)\n"
+                 "  -g, --glob <pattern>        Filename glob filter (may be repeated, e.g., -g '*Fnord*')\n"
                  "  --encoding <enc>            Input encoding: auto, utf8, windows-1252 (default: auto)\n"
                  "  --gitignore                 Respect .gitignore when scanning (default)\n"
                  "  --no-gitignore              Include gitignored files in analysis\n"
@@ -269,6 +272,14 @@ auto ProcessArg(int argc, char* argv[], int& i, CliOptions& opts)
                     opts.extensions = std::move(v);
                     return opts;
                 });
+    if (arg == "-g" || arg == "--glob")
+        return ParseStringOption(argc, argv, i, "--glob")
+            .transform(
+                [&](std::string v) -> CliOptions
+                {
+                    opts.globPatterns.push_back(std::move(v));
+                    return opts;
+                });
     if (arg == "--encoding")
         return ParseEncodingOption(argc, argv, i)
             .transform(
@@ -411,7 +422,32 @@ auto ScanFiles(CliOptions const& opts, codedup::PerformanceTiming& timing)
     auto const gitFilter =
         opts.respectGitignore ? cli::GitFileFilter::CreateFilter(opts.directory, opts.verbose) : std::nullopt;
 
-    auto const filesResult = codedup::FileScanner::Scan(opts.directory, extensions, gitFilter);
+    // Build an optional glob-based filename filter.
+    auto const globFilter =
+        opts.globPatterns.empty()
+            ? std::optional<codedup::FileFilter>(std::nullopt)
+            : std::optional<codedup::FileFilter>(
+                  [patterns = opts.globPatterns](std::filesystem::path const& path) -> bool
+                  {
+                      auto const filename = path.filename().string();
+                      return std::ranges::any_of(patterns, [&filename](std::string const& pattern)
+                                                 { return fnmatch(pattern.c_str(), filename.c_str(), 0) == 0; });
+                  });
+
+    // Compose all filters into a single predicate.
+    auto const composedFilter = (gitFilter || globFilter)
+                                    ? std::optional<codedup::FileFilter>(
+                                          [gitFilter, globFilter](std::filesystem::path const& path) -> bool
+                                          {
+                                              if (gitFilter && !(*gitFilter)(path))
+                                                  return false;
+                                              if (globFilter && !(*globFilter)(path))
+                                                  return false;
+                                              return true;
+                                          })
+                                    : std::optional<codedup::FileFilter>(std::nullopt);
+
+    auto const filesResult = codedup::FileScanner::Scan(opts.directory, extensions, composedFilter);
     timing.scanning = Clock::now() - scanStart;
     if (!filesResult)
     {

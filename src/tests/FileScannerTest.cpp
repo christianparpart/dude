@@ -1,10 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <fnmatch.h>
+
 #include <codedup/FileScanner.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <ranges>
+#include <string>
+#include <vector>
 
 using namespace codedup;
 
@@ -135,6 +141,45 @@ TEST_CASE("FileScanner.WithNulloptFilter", "[scanner]")
 
     // Passing std::nullopt should include all files (same as no filter).
     auto result = FileScanner::Scan(dir.Path(), FileScanner::DefaultExtensions(), std::nullopt);
+    REQUIRE(result.has_value());
+    CHECK(result->size() == 2);
+}
+
+TEST_CASE("FileScanner.WithGlobFilter", "[scanner]")
+{
+    TempDir dir;
+    dir.CreateFile("BitProbe.cpp");
+    dir.CreateFile("DlgBitWpkZus.cpp");
+    dir.CreateFile("MainWindow.cpp");
+    dir.CreateFile("Helper.hpp");
+
+    // Glob filter that matches filenames containing "Bit".
+    auto const filter = codedup::FileFilter([](std::filesystem::path const& path) -> bool
+                                            { return fnmatch("*Bit*", path.filename().string().c_str(), 0) == 0; });
+
+    auto result = FileScanner::Scan(dir.Path(), FileScanner::DefaultExtensions(), filter);
+    REQUIRE(result.has_value());
+    CHECK(result->size() == 2);
+}
+
+TEST_CASE("FileScanner.WithMultipleGlobPatterns", "[scanner]")
+{
+    TempDir dir;
+    dir.CreateFile("BitProbe.cpp");
+    dir.CreateFile("ProbeTest.hpp");
+    dir.CreateFile("MainWindow.cpp");
+
+    // Glob filter with OR semantics: matches "*Bit*" or "*Probe*".
+    auto const patterns = std::vector<std::string>{"*Bit*", "*Probe*"};
+    auto const filter = codedup::FileFilter(
+        [patterns](std::filesystem::path const& path) -> bool
+        {
+            auto const filename = path.filename().string();
+            return std::ranges::any_of(patterns, [&filename](std::string const& pattern)
+                                       { return fnmatch(pattern.c_str(), filename.c_str(), 0) == 0; });
+        });
+
+    auto result = FileScanner::Scan(dir.Path(), FileScanner::DefaultExtensions(), filter);
     REQUIRE(result.has_value());
     CHECK(result->size() == 2);
 }
