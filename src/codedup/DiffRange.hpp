@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <filesystem>
 #include <vector>
@@ -30,7 +31,7 @@ using DiffResult = std::vector<FileChanges>;
 /// @param blockStart Start line of the code block (1-based, inclusive).
 /// @param blockEnd End line of the code block (1-based, inclusive).
 /// @return True if the ranges overlap.
-[[nodiscard]] constexpr auto overlaps(LineRange const& changed, uint32_t blockStart, uint32_t blockEnd) -> bool
+[[nodiscard]] constexpr auto Overlaps(LineRange const& changed, uint32_t blockStart, uint32_t blockEnd) -> bool
 {
     return changed.startLine <= blockEnd && changed.endLine >= blockStart;
 }
@@ -40,14 +41,10 @@ using DiffResult = std::vector<FileChanges>;
 /// @param startLine Start line of the code block (1-based, inclusive).
 /// @param endLine End line of the code block (1-based, inclusive).
 /// @return True if any changed range overlaps with [startLine, endLine].
-[[nodiscard]] inline auto fileHasChangesAt(FileChanges const& changes, uint32_t startLine, uint32_t endLine) -> bool
+[[nodiscard]] inline auto FileHasChangesAt(FileChanges const& changes, uint32_t startLine, uint32_t endLine) -> bool
 {
-    for (auto const& range : changes.changedRanges)
-    {
-        if (overlaps(range, startLine, endLine))
-            return true;
-    }
-    return false;
+    return std::ranges::any_of(changes.changedRanges,
+                               [&](auto const& range) { return Overlaps(range, startLine, endLine); });
 }
 
 } // namespace codedup

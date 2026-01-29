@@ -34,19 +34,19 @@ struct PairHash
 class UnionFind
 {
 public:
-    explicit UnionFind(size_t n) : _parent(n), _rank(n, 0) { std::iota(_parent.begin(), _parent.end(), size_t{0}); }
+    explicit UnionFind(size_t n) : _parent(n), _rank(n, 0) { std::ranges::iota(_parent, size_t{0}); }
 
-    [[nodiscard]] auto find(size_t x) -> size_t
+    [[nodiscard]] auto Find(size_t x) -> size_t
     {
         if (_parent[x] != x)
-            _parent[x] = find(_parent[x]);
+            _parent[x] = Find(_parent[x]);
         return _parent[x];
     }
 
-    void unite(size_t x, size_t y)
+    void Unite(size_t x, size_t y)
     {
-        auto const rx = find(x);
-        auto const ry = find(y);
+        auto const rx = Find(x);
+        auto const ry = Find(y);
         if (rx == ry)
             return;
         if (_rank[rx] < _rank[ry])
@@ -68,7 +68,7 @@ private:
 /// @brief Finds the maximum token ID in a sequence for flat PM table sizing.
 /// @param b The token sequence to scan.
 /// @return The maximum NormalizedTokenId value found, or 0 if empty.
-[[nodiscard]] auto findMaxId(std::span<NormalizedTokenId const> b) -> NormalizedTokenId
+[[nodiscard]] auto FindMaxId(std::span<NormalizedTokenId const> b) -> NormalizedTokenId
 {
     NormalizedTokenId maxId = 0;
     for (auto const id : b)
@@ -85,7 +85,7 @@ struct CandidatePair
 
 } // namespace
 
-auto CloneDetector::detect(std::vector<CodeBlock> const& blocks) -> std::vector<CloneGroup>
+auto CloneDetector::Detect(std::vector<CodeBlock> const& blocks) -> std::vector<CloneGroup>
 {
     if (blocks.size() < 2)
         return {};
@@ -95,7 +95,7 @@ auto CloneDetector::detect(std::vector<CodeBlock> const& blocks) -> std::vector<
 
     for (auto const bi : std::views::iota(size_t{0}, blocks.size()))
     {
-        auto const fingerprints = computeFingerprints(blocks[bi].normalizedIds);
+        auto const fingerprints = ComputeFingerprints(blocks[bi].normalizedIds);
         std::unordered_set<uint64_t> seen; // Deduplicate within a single block
         for (auto const fp : fingerprints)
         {
@@ -132,7 +132,7 @@ auto CloneDetector::detect(std::vector<CodeBlock> const& blocks) -> std::vector<
             continue;
 
         // Optimization 1: O(1) length-ratio pre-filter
-        if (!lengthsCompatible(blocks[pair.first].normalizedIds.size(), blocks[pair.second].normalizedIds.size(),
+        if (!LengthsCompatible(blocks[pair.first].normalizedIds.size(), blocks[pair.second].normalizedIds.size(),
                                _config.similarityThreshold))
             continue;
 
@@ -140,7 +140,7 @@ auto CloneDetector::detect(std::vector<CodeBlock> const& blocks) -> std::vector<
     }
 
     // Optimization 5: Multi-threaded similarity computation
-    auto const numThreads = std::max(1u, std::thread::hardware_concurrency());
+    auto const numThreads = std::max(1U, std::thread::hardware_concurrency());
     auto const candidateCount = candidates.size();
 
     std::vector<std::vector<ClonePair>> perThreadResults(numThreads);
@@ -158,7 +158,7 @@ auto CloneDetector::detect(std::vector<CodeBlock> const& blocks) -> std::vector<
             auto const& blockA = blocks[candidate.blockA];
             auto const& blockB = blocks[candidate.blockB];
             auto const similarity =
-                computeBlendedSimilarity(blockA.normalizedIds, blockB.normalizedIds, blockA.textPreservingIds,
+                ComputeBlendedSimilarity(blockA.normalizedIds, blockB.normalizedIds, blockA.textPreservingIds,
                                          blockB.textPreservingIds, _config.textSensitivity);
             if (similarity >= _config.similarityThreshold)
             {
@@ -181,7 +181,7 @@ auto CloneDetector::detect(std::vector<CodeBlock> const& blocks) -> std::vector<
         // Launch worker threads for indices 1..numThreads-1, main thread handles index 0
         std::vector<std::jthread> threads;
         threads.reserve(numThreads - 1);
-        for (auto const t : std::views::iota(1u, numThreads))
+        for (auto const t : std::views::iota(1U, numThreads))
             threads.emplace_back([&, t] { computeRange(t, numThreads); });
 
         computeRange(0, numThreads);
@@ -202,13 +202,13 @@ auto CloneDetector::detect(std::vector<CodeBlock> const& blocks) -> std::vector<
     // Grouping: Union-Find to form connected components
     UnionFind uf(blocks.size());
     for (auto const& cp : clonePairs)
-        uf.unite(cp.blockA, cp.blockB);
+        uf.Unite(cp.blockA, cp.blockB);
 
     // Collect groups
     std::unordered_map<size_t, std::vector<size_t>> groupMap;
     for (auto const& cp : clonePairs)
     {
-        auto const root = uf.find(cp.blockA);
+        auto const root = uf.Find(cp.blockA);
         // Collect unique block indices per group
         groupMap[root]; // ensure entry exists
     }
@@ -223,7 +223,7 @@ auto CloneDetector::detect(std::vector<CodeBlock> const& blocks) -> std::vector<
 
     for (auto const block : participatingBlocks)
     {
-        auto const root = uf.find(block);
+        auto const root = uf.Find(block);
         groupMap[root].push_back(block);
     }
 
@@ -244,7 +244,7 @@ auto CloneDetector::detect(std::vector<CodeBlock> const& blocks) -> std::vector<
         size_t pairCount = 0;
         for (auto const& cp : clonePairs)
         {
-            if (uf.find(cp.blockA) == root)
+            if (uf.Find(cp.blockA) == root)
             {
                 totalSim += cp.similarity;
                 ++pairCount;
@@ -269,7 +269,7 @@ auto CloneDetector::detect(std::vector<CodeBlock> const& blocks) -> std::vector<
     return groups;
 }
 
-auto CloneDetector::computeLcsAlignment(std::span<NormalizedTokenId const> a, std::span<NormalizedTokenId const> b)
+auto CloneDetector::ComputeLcsAlignment(std::span<NormalizedTokenId const> a, std::span<NormalizedTokenId const> b)
     -> LcsAlignment
 {
     auto const m = a.size();
@@ -322,9 +322,9 @@ auto CloneDetector::computeLcsAlignment(std::span<NormalizedTokenId const> a, st
     return result;
 }
 
-auto CloneDetector::computeFingerprints(std::vector<NormalizedTokenId> const& ids) const -> std::vector<uint64_t>
+auto CloneDetector::ComputeFingerprints(std::vector<NormalizedTokenId> const& ids) const -> std::vector<uint64_t>
 {
-    return computeRollingFingerprints(ids, _config.hashWindowSize);
+    return ComputeRollingFingerprints(ids, _config.hashWindowSize);
 }
 
 // ============================================================================================
@@ -379,7 +379,7 @@ struct BitVector256
     std::array<uint64_t, 4> words = {};
 
     /// @brief Sets bit at position `pos` (0-indexed).
-    constexpr void setBit(size_t pos) { words[pos / 64] |= (uint64_t{1} << (pos % 64)); }
+    constexpr void SetBit(size_t pos) { words[pos / 64] |= (uint64_t{1} << (pos % 64)); }
 
     /// @brief Bitwise OR -- combines candidate positions (M | PM[c]).
     [[nodiscard]] constexpr auto operator|(BitVector256 const& rhs) const -> BitVector256
@@ -434,7 +434,7 @@ struct BitVector256
     /// Implements M << 1 for the LCS recurrence. The shift-out bit from each word
     /// becomes the shift-in bit for the next word, maintaining the logical continuity
     /// of the bitvector across 64-bit boundaries.
-    [[nodiscard]] constexpr auto shiftLeft1() const -> BitVector256
+    [[nodiscard]] constexpr auto ShiftLeft1() const -> BitVector256
     {
         BitVector256 result;
         uint64_t carry = 0;
@@ -448,7 +448,7 @@ struct BitVector256
 
     /// @brief Population count -- total set bits across all words.
     /// Returns the LCS length after the algorithm completes.
-    [[nodiscard]] constexpr auto popcount() const -> size_t
+    [[nodiscard]] constexpr auto Popcount() const -> size_t
     {
         size_t count = 0;
         for (auto const w : words)
@@ -469,19 +469,19 @@ public:
     explicit DynamicBitVector(size_t numWords) : _words(numWords, 0) {}
 
     /// @brief Sets bit at position `pos` (0-indexed).
-    void setBit(size_t pos) { _words[pos / 64] |= (uint64_t{1} << (pos % 64)); }
+    void SetBit(size_t pos) { _words[pos / 64] |= (uint64_t{1} << (pos % 64)); }
 
     /// @brief Returns a mutable reference to word at index `w`.
-    [[nodiscard]] auto word(size_t w) -> uint64_t& { return _words[w]; }
+    [[nodiscard]] auto Word(size_t w) -> uint64_t& { return _words[w]; }
 
     /// @brief Returns a const reference to word at index `w`.
-    [[nodiscard]] auto word(size_t w) const -> uint64_t const& { return _words[w]; }
+    [[nodiscard]] auto Word(size_t w) const -> uint64_t const& { return _words[w]; }
 
     /// @brief Returns the number of 64-bit words.
-    [[nodiscard]] auto numWords() const -> size_t { return _words.size(); }
+    [[nodiscard]] auto NumWords() const -> size_t { return _words.size(); }
 
     /// @brief Population count -- total set bits across all words.
-    [[nodiscard]] auto popcount() const -> size_t
+    [[nodiscard]] auto Popcount() const -> size_t
     {
         size_t count = 0;
         for (auto const w : _words)
@@ -502,13 +502,13 @@ private:
 /// @param a First sequence (processed element-by-element).
 /// @param b Second sequence (encoded into PM bitvectors, must have size <= 64).
 /// @return LCS length.
-[[nodiscard]] auto lcsLengthBitParallel64(std::span<NormalizedTokenId const> a, std::span<NormalizedTokenId const> b)
+[[nodiscard]] auto LcsLengthBitParallel64(std::span<NormalizedTokenId const> a, std::span<NormalizedTokenId const> b)
     -> size_t
 {
     auto const n = b.size();
 
     // Flat PM table: indexed by token ID for O(1) lookups
-    auto const maxId = findMaxId(b);
+    auto const maxId = FindMaxId(b);
     std::vector<uint64_t> pm(static_cast<size_t>(maxId) + 1, 0);
     for (auto const j : std::views::iota(size_t{0}, n))
         pm[b[j]] |= (uint64_t{1} << j);
@@ -537,16 +537,16 @@ private:
 /// @param a First sequence (processed element-by-element).
 /// @param b Second sequence (encoded into PM bitvectors, must have size <= 256).
 /// @return LCS length.
-[[nodiscard]] auto lcsLengthBitParallel256(std::span<NormalizedTokenId const> a, std::span<NormalizedTokenId const> b)
+[[nodiscard]] auto LcsLengthBitParallel256(std::span<NormalizedTokenId const> a, std::span<NormalizedTokenId const> b)
     -> size_t
 {
     auto const n = b.size();
 
     // Flat PM table: indexed by token ID for O(1) lookups
-    auto const maxId = findMaxId(b);
+    auto const maxId = FindMaxId(b);
     std::vector<BitVector256> pm(static_cast<size_t>(maxId) + 1);
     for (auto const j : std::views::iota(size_t{0}, n))
-        pm[b[j]].setBit(j);
+        pm[b[j]].SetBit(j);
 
     BitVector256 M{}; // Match bitvector
 
@@ -560,10 +560,10 @@ private:
         auto const& pmVal = (ai <= maxId) ? pm[ai] : zero;
 
         auto const X = M | pmVal;
-        M = X & ((X - (M.shiftLeft1() | one)) ^ X);
+        M = X & ((X - (M.ShiftLeft1() | one)) ^ X);
     }
 
-    return M.popcount();
+    return M.Popcount();
 }
 
 /// @brief Computes LCS length using the dynamic-width bit-parallel algorithm for n > 256.
@@ -574,14 +574,14 @@ private:
 /// @param a First sequence (processed element-by-element).
 /// @param b Second sequence (encoded into PM bitvectors).
 /// @return LCS length.
-[[nodiscard]] auto lcsLengthBitParallelDynamic(std::span<NormalizedTokenId const> a,
+[[nodiscard]] auto LcsLengthBitParallelDynamic(std::span<NormalizedTokenId const> a,
                                                std::span<NormalizedTokenId const> b) -> size_t
 {
     auto const n = b.size();
     auto const W = (n + 63) / 64; // Number of 64-bit words
 
     // Flat 2D PM table: pm[tokenId * W + word]
-    auto const maxId = findMaxId(b);
+    auto const maxId = FindMaxId(b);
     auto const pmTableSize = (static_cast<size_t>(maxId) + 1) * W;
     std::vector<uint64_t> pm(pmTableSize, 0);
     for (auto const j : std::views::iota(size_t{0}, n))
@@ -603,7 +603,7 @@ private:
 
         for (size_t w = 0; w < W; ++w)
         {
-            auto const mw = M.word(w);
+            auto const mw = M.Word(w);
             auto const pmw = pmRow ? pmRow[w] : uint64_t{0};
 
             auto const X = mw | pmw;
@@ -616,16 +616,16 @@ private:
             auto const sub = X - shifted - borrowSub;
             borrowSub = (X < shifted || (borrowSub != 0 && X == shifted)) ? 1ULL : 0ULL;
 
-            M.word(w) = X & (sub ^ X);
+            M.Word(w) = X & (sub ^ X);
         }
     }
 
-    return M.popcount();
+    return M.Popcount();
 }
 
 } // anonymous namespace
 
-auto CloneDetector::computeSimilarity(std::vector<NormalizedTokenId> const& a, std::vector<NormalizedTokenId> const& b)
+auto CloneDetector::ComputeSimilarity(std::vector<NormalizedTokenId> const& a, std::vector<NormalizedTokenId> const& b)
     -> double
 {
     if (a.empty() || b.empty())
@@ -643,17 +643,17 @@ auto CloneDetector::computeSimilarity(std::vector<NormalizedTokenId> const& a, s
     // Tiered dispatch based on the shorter sequence length
     size_t lcsLength = 0;
     if (shortLen <= 64)
-        lcsLength = lcsLengthBitParallel64(seqA, seqB);
+        lcsLength = LcsLengthBitParallel64(seqA, seqB);
     else if (shortLen <= 256)
-        lcsLength = lcsLengthBitParallel256(seqA, seqB);
+        lcsLength = LcsLengthBitParallel256(seqA, seqB);
     else
-        lcsLength = lcsLengthBitParallelDynamic(seqA, seqB);
+        lcsLength = LcsLengthBitParallelDynamic(seqA, seqB);
 
     // Dice coefficient: 2 * |LCS| / (|A| + |B|)
     return 2.0 * static_cast<double>(lcsLength) / static_cast<double>(m + n);
 }
 
-auto CloneDetector::computeSimilarityClassic(std::vector<NormalizedTokenId> const& a,
+auto CloneDetector::ComputeSimilarityClassic(std::vector<NormalizedTokenId> const& a,
                                              std::vector<NormalizedTokenId> const& b) -> double
 {
     if (a.empty() || b.empty())
@@ -685,19 +685,19 @@ auto CloneDetector::computeSimilarityClassic(std::vector<NormalizedTokenId> cons
     return 2.0 * static_cast<double>(lcsLength) / static_cast<double>(m + n);
 }
 
-auto CloneDetector::computeBlendedSimilarity(std::vector<NormalizedTokenId> const& structuralA,
+auto CloneDetector::ComputeBlendedSimilarity(std::vector<NormalizedTokenId> const& structuralA,
                                              std::vector<NormalizedTokenId> const& structuralB,
                                              std::vector<NormalizedTokenId> const& textPreservingA,
                                              std::vector<NormalizedTokenId> const& textPreservingB,
                                              double textSensitivity) -> double
 {
-    auto const structuralSim = computeSimilarity(structuralA, structuralB);
+    auto const structuralSim = ComputeSimilarity(structuralA, structuralB);
 
     // Short-circuit: no text sensitivity or text-preserving IDs not available
     if (textSensitivity <= 0.0 || textPreservingA.empty() || textPreservingB.empty())
         return structuralSim;
 
-    auto const textualSim = computeSimilarity(textPreservingA, textPreservingB);
+    auto const textualSim = ComputeSimilarity(textPreservingA, textPreservingB);
     return (1.0 - textSensitivity) * structuralSim + textSensitivity * textualSim;
 }
 

@@ -8,7 +8,7 @@
 namespace codedup
 {
 
-auto DiffFilter::findChangedBlocks(std::vector<CodeBlock> const& blocks, DiffResult const& diff,
+auto DiffFilter::FindChangedBlocks(std::vector<CodeBlock> const& blocks, DiffResult const& diff,
                                    std::filesystem::path const& projectRoot) -> std::unordered_set<size_t>
 {
     std::unordered_set<size_t> changedIndices;
@@ -45,7 +45,7 @@ auto DiffFilter::findChangedBlocks(std::vector<CodeBlock> const& blocks, DiffRes
 
             for (auto const& range : *cfc.changedRanges)
             {
-                if (overlaps(range, blockStart, blockEnd))
+                if (Overlaps(range, blockStart, blockEnd))
                 {
                     changedIndices.insert(blockIdx);
                     goto nextBlock; // NOLINT -- double break
@@ -58,7 +58,7 @@ auto DiffFilter::findChangedBlocks(std::vector<CodeBlock> const& blocks, DiffRes
     return changedIndices;
 }
 
-auto DiffFilter::filterCloneGroups(std::vector<CloneGroup> const& groups,
+auto DiffFilter::FilterCloneGroups(std::vector<CloneGroup> const& groups,
                                    std::unordered_set<size_t> const& changedBlocks) -> std::vector<CloneGroup>
 {
     std::vector<CloneGroup> filtered;
@@ -72,7 +72,7 @@ auto DiffFilter::filterCloneGroups(std::vector<CloneGroup> const& groups,
     return filtered;
 }
 
-auto DiffFilter::filterIntraResults(std::vector<IntraCloneResult> const& results,
+auto DiffFilter::FilterIntraResults(std::vector<IntraCloneResult> const& results,
                                     std::unordered_set<size_t> const& changedBlocks) -> std::vector<IntraCloneResult>
 {
     std::vector<IntraCloneResult> filtered;

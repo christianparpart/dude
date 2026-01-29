@@ -4,7 +4,7 @@
 namespace codedup
 {
 
-auto tokenTypeName(TokenType type) -> std::string_view
+auto TokenTypeName(TokenType type) -> std::string_view
 {
     switch (type)
     {
@@ -294,23 +294,23 @@ auto tokenTypeName(TokenType type) -> std::string_view
     return "Unknown";
 }
 
-auto isKeyword(TokenType type) -> bool
+auto IsKeyword(TokenType type) -> bool
 {
     auto const val = static_cast<uint16_t>(type);
     return val >= static_cast<uint16_t>(TokenType::Alignas) && val <= static_cast<uint16_t>(TokenType::While);
 }
 
-auto isComment(TokenType type) -> bool
+auto IsComment(TokenType type) -> bool
 {
     return type == TokenType::LineComment || type == TokenType::BlockComment;
 }
 
-auto isLiteral(TokenType type) -> bool
+auto IsLiteral(TokenType type) -> bool
 {
     return type == TokenType::NumericLiteral || type == TokenType::StringLiteral || type == TokenType::CharLiteral;
 }
 
-auto isOperatorOrPunctuation(TokenType type) -> bool
+auto IsOperatorOrPunctuation(TokenType type) -> bool
 {
     auto const val = static_cast<uint16_t>(type);
     return val >= static_cast<uint16_t>(TokenType::LeftParen) && val <= static_cast<uint16_t>(TokenType::HashHash);

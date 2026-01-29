@@ -6,7 +6,7 @@
 namespace codedup
 {
 
-auto FileScanner::scan(std::filesystem::path const& directory, std::vector<std::string> const& extensions)
+auto FileScanner::Scan(std::filesystem::path const& directory, std::vector<std::string> const& extensions)
     -> std::expected<std::vector<std::filesystem::path>, FileScanError>
 {
     if (!std::filesystem::exists(directory))
@@ -50,7 +50,7 @@ auto FileScanner::scan(std::filesystem::path const& directory, std::vector<std::
     return result;
 }
 
-auto FileScanner::defaultExtensions() -> std::vector<std::string> const&
+auto FileScanner::DefaultExtensions() -> std::vector<std::string> const&
 {
     static std::vector<std::string> const extensions = {
         ".cpp", ".cxx", ".cc", ".c", ".h", ".hpp", ".hxx",

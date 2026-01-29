@@ -24,7 +24,7 @@ struct NormalizedToken
 };
 
 /// @brief Generic placeholder IDs used during normalization.
-enum class GenericId : NormalizedTokenId
+enum class GenericId : uint16_t
 {
     Identifier = 1000,     ///< Generic ID for all identifiers.
     NumericLiteral = 1001, ///< Generic ID for all numeric literals.
@@ -57,7 +57,7 @@ public:
     /// Type-2 (renamed) clones.
     /// @param tokens The original token sequence.
     /// @return A vector of normalized tokens (comments and preprocessor stripped).
-    [[nodiscard]] auto normalize(std::vector<Token> const& tokens) -> std::vector<NormalizedToken>;
+    [[nodiscard]] auto Normalize(std::vector<Token> const& tokens) -> std::vector<NormalizedToken>;
 
     /// @brief Normalizes a sequence of tokens (text-preserving mode).
     ///
@@ -66,17 +66,17 @@ public:
     /// a textual similarity score that distinguishes renamed identifiers.
     /// @param tokens The original token sequence.
     /// @return A vector of normalized tokens with text-preserving IDs.
-    [[nodiscard]] auto normalizeTextPreserving(std::vector<Token> const& tokens) -> std::vector<NormalizedToken>;
+    [[nodiscard]] auto NormalizeTextPreserving(std::vector<Token> const& tokens) -> std::vector<NormalizedToken>;
 
     /// @brief Returns the token dictionary built during normalization.
-    [[nodiscard]] auto dictionary() const -> TokenDictionary const& { return _dictionary; }
+    [[nodiscard]] auto Dictionary() const -> TokenDictionary const& { return _dictionary; }
 
 private:
     TokenDictionary _dictionary;
     TokenDictionary _textPreservingDictionary;
 
-    [[nodiscard]] auto assignId(TokenType type) -> NormalizedTokenId;
-    [[nodiscard]] auto assignTextPreservingId(Token const& token) -> NormalizedTokenId;
+    [[nodiscard]] static auto AssignId(TokenType type) -> NormalizedTokenId;
+    [[nodiscard]] auto AssignTextPreservingId(Token const& token) -> NormalizedTokenId;
 };
 
 } // namespace codedup

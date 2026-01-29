@@ -13,7 +13,7 @@ namespace
 {
 
 /// @brief Runs the full pipeline on source code strings and returns clone groups.
-auto runPipeline(std::vector<std::string> const& sources, double threshold = 0.80, size_t minTokens = 5)
+auto RunPipeline(std::vector<std::string> const& sources, double threshold = 0.80, size_t minTokens = 5)
     -> std::pair<std::vector<CodeBlock>, std::vector<CloneGroup>>
 {
     TokenNormalizer normalizer;
@@ -23,19 +23,19 @@ auto runPipeline(std::vector<std::string> const& sources, double threshold = 0.8
 
     for (auto const& source : sources)
     {
-        auto tokens = Tokenizer::tokenize(source);
+        auto tokens = Tokenizer::Tokenize(source);
         if (!tokens)
             continue;
 
-        auto normalized = normalizer.normalize(*tokens);
-        auto blocks = extractor.extract(*tokens, normalized);
+        auto normalized = normalizer.Normalize(*tokens);
+        auto blocks = extractor.Extract(*tokens, normalized);
 
         for (auto& block : blocks)
             allBlocks.push_back(std::move(block));
     }
 
     CloneDetector detector({.similarityThreshold = threshold, .minTokens = minTokens});
-    auto groups = detector.detect(allBlocks);
+    auto groups = detector.Detect(allBlocks);
 
     return {std::move(allBlocks), std::move(groups)};
 }
@@ -67,7 +67,7 @@ void handleValue(int value) {
 )cpp",
     };
 
-    auto [blocks, groups] = runPipeline(sources);
+    auto [blocks, groups] = RunPipeline(sources);
 
     REQUIRE(!blocks.empty());
     REQUIRE(groups.size() == 1);
@@ -106,7 +106,7 @@ int fibonacci(int n) {
 )cpp",
     };
 
-    auto [blocks, groups] = runPipeline(sources, 0.90);
+    auto [blocks, groups] = RunPipeline(sources, 0.90);
 
     // These are structurally different functions — no clones expected
     CHECK(groups.empty());
@@ -157,14 +157,14 @@ double calculateB(double num) {
 )cpp",
     };
 
-    auto [blocks, groups] = runPipeline(sources);
-    CHECK(groups.size() >= 1); // At least one clone group
+    auto [blocks, groups] = RunPipeline(sources);
+    CHECK(!groups.empty()); // At least one clone group
 }
 
 TEST_CASE("Integration.EndToEndPipeline", "[integration]")
 {
     // Verify the full pipeline produces reasonable output for a known duplicate
-    auto const source1 = R"cpp(
+    auto const* const source1 = R"cpp(
 int add(int a, int b) {
     int result = a + b;
     if (result < 0) {
@@ -174,7 +174,7 @@ int add(int a, int b) {
 }
 )cpp";
 
-    auto const source2 = R"cpp(
+    auto const* const source2 = R"cpp(
 int sum(int x, int y) {
     int value = x + y;
     if (value < 0) {
@@ -184,18 +184,22 @@ int sum(int x, int y) {
 }
 )cpp";
 
-    auto tokens1 = Tokenizer::tokenize(source1);
-    auto tokens2 = Tokenizer::tokenize(source2);
+    auto tokens1 = Tokenizer::Tokenize(source1);
+    auto tokens2 = Tokenizer::Tokenize(source2);
     REQUIRE(tokens1.has_value());
     REQUIRE(tokens2.has_value());
 
-    TokenNormalizer n1, n2;
-    auto norm1 = n1.normalize(*tokens1);
-    auto norm2 = n2.normalize(*tokens2);
+    TokenNormalizer n1;
+    TokenNormalizer n2;
+    auto norm1 = n1.Normalize(*tokens1);
+    auto norm2 = n2.Normalize(*tokens2);
 
     // The normalized sequences should be identical (Type-2 clone)
     // Extract just the IDs and compare
-    std::vector<NormalizedTokenId> ids1, ids2;
+    std::vector<NormalizedTokenId> ids1;
+    ids1.reserve(norm1.size());
+    std::vector<NormalizedTokenId> ids2;
+    ids2.reserve(norm2.size());
     for (auto const& nt : norm1)
         ids1.push_back(nt.id);
     for (auto const& nt : norm2)
@@ -212,7 +216,7 @@ namespace
 {
 
 /// @brief Runs the full pipeline with text sensitivity support.
-auto runPipelineWithTextSensitivity(std::vector<std::string> const& sources, double threshold = 0.80,
+auto RunPipelineWithTextSensitivity(std::vector<std::string> const& sources, double threshold = 0.80,
                                     size_t minTokens = 5, double textSensitivity = 0.3)
     -> std::pair<std::vector<CodeBlock>, std::vector<CloneGroup>>
 {
@@ -223,13 +227,13 @@ auto runPipelineWithTextSensitivity(std::vector<std::string> const& sources, dou
 
     for (auto const& source : sources)
     {
-        auto tokens = Tokenizer::tokenize(source);
+        auto tokens = Tokenizer::Tokenize(source);
         if (!tokens)
             continue;
 
-        auto normalized = normalizer.normalize(*tokens);
-        auto textPreserving = normalizer.normalizeTextPreserving(*tokens);
-        auto blocks = extractor.extract(*tokens, normalized, textPreserving);
+        auto normalized = normalizer.Normalize(*tokens);
+        auto textPreserving = normalizer.NormalizeTextPreserving(*tokens);
+        auto blocks = extractor.Extract(*tokens, normalized, textPreserving);
 
         for (auto& block : blocks)
             allBlocks.push_back(std::move(block));
@@ -240,7 +244,7 @@ auto runPipelineWithTextSensitivity(std::vector<std::string> const& sources, dou
         .minTokens = minTokens,
         .textSensitivity = textSensitivity,
     });
-    auto groups = detector.detect(allBlocks);
+    auto groups = detector.Detect(allBlocks);
 
     return {std::move(allBlocks), std::move(groups)};
 }
@@ -274,12 +278,12 @@ void handleValue(int value) {
     };
 
     // Without text sensitivity: clones detected at threshold 0.95
-    auto [blocks0, groups0] = runPipelineWithTextSensitivity(sources, 0.95, 5, 0.0);
+    auto [blocks0, groups0] = RunPipelineWithTextSensitivity(sources, 0.95, 5, 0.0);
     REQUIRE(groups0.size() == 1);
     CHECK_THAT(groups0[0].avgSimilarity, Catch::Matchers::WithinAbs(1.0, 0.01));
 
     // With text sensitivity 0.3: blended similarity drops below 0.95 for renamed clones
-    auto [blocks1, groups1] = runPipelineWithTextSensitivity(sources, 0.95, 5, 0.3);
+    auto [blocks1, groups1] = RunPipelineWithTextSensitivity(sources, 0.95, 5, 0.3);
     CHECK(groups1.empty());
 }
 
@@ -310,7 +314,7 @@ void processData2(int input) {
     };
 
     // With text sensitivity: identical code still passes
-    auto [blocks, groups] = runPipelineWithTextSensitivity(sources, 0.95, 5, 0.5);
+    auto [blocks, groups] = RunPipelineWithTextSensitivity(sources, 0.95, 5, 0.5);
     REQUIRE(groups.size() == 1);
 }
 
@@ -338,8 +342,8 @@ void bar(int y) {
 )cpp",
     };
 
-    auto [blocksOld, groupsOld] = runPipeline(sources, 0.80, 5);
-    auto [blocksNew, groupsNew] = runPipelineWithTextSensitivity(sources, 0.80, 5, 0.0);
+    auto [blocksOld, groupsOld] = RunPipeline(sources, 0.80, 5);
+    auto [blocksNew, groupsNew] = RunPipelineWithTextSensitivity(sources, 0.80, 5, 0.0);
 
     CHECK(groupsOld.size() == groupsNew.size());
     if (!groupsOld.empty() && !groupsNew.empty())

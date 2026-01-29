@@ -10,24 +10,24 @@ using namespace codedup;
 namespace
 {
 
-auto extractBlocks(std::string_view source, size_t minTokens = 5) -> std::vector<CodeBlock>
+auto ExtractBlocks(std::string_view source, size_t minTokens = 5) -> std::vector<CodeBlock>
 {
-    auto tokens = Tokenizer::tokenize(source);
+    auto tokens = Tokenizer::Tokenize(source);
     if (!tokens)
         return {};
 
     TokenNormalizer normalizer;
-    auto normalized = normalizer.normalize(*tokens);
+    auto normalized = normalizer.Normalize(*tokens);
 
     CodeBlockExtractor extractor({.minTokens = minTokens});
-    return extractor.extract(*tokens, normalized);
+    return extractor.Extract(*tokens, normalized);
 }
 
 } // namespace
 
 TEST_CASE("CodeBlock.SimpleFunction", "[codeblock]")
 {
-    auto blocks = extractBlocks(R"cpp(
+    auto blocks = ExtractBlocks(R"cpp(
 void foo(int x) {
     if (x > 0) {
         return;
@@ -43,7 +43,7 @@ void foo(int x) {
 
 TEST_CASE("CodeBlock.MultipleFunctions", "[codeblock]")
 {
-    auto blocks = extractBlocks(R"cpp(
+    auto blocks = ExtractBlocks(R"cpp(
 void foo(int x) {
     int a = x + 1;
     int b = a + 2;
@@ -64,7 +64,7 @@ void bar(int y) {
 
 TEST_CASE("CodeBlock.NestedBraces", "[codeblock]")
 {
-    auto blocks = extractBlocks(R"cpp(
+    auto blocks = ExtractBlocks(R"cpp(
 void foo() {
     if (true) {
         for (int i = 0; i < 10; ++i) {
@@ -81,13 +81,13 @@ void foo() {
 TEST_CASE("CodeBlock.MinTokenFiltering", "[codeblock]")
 {
     // With a high minTokens, short functions should be filtered out
-    auto blocks = extractBlocks("void tiny() { return; }", 100);
+    auto blocks = ExtractBlocks("void tiny() { return; }", 100);
     CHECK(blocks.empty());
 }
 
 TEST_CASE("CodeBlock.QualifiedName", "[codeblock]")
 {
-    auto blocks = extractBlocks(R"cpp(
+    auto blocks = ExtractBlocks(R"cpp(
 void MyClass::method(int x) {
     int a = x + 1;
     int b = a * 2;
@@ -101,7 +101,7 @@ void MyClass::method(int x) {
 
 TEST_CASE("CodeBlock.NormalizedIds", "[codeblock]")
 {
-    auto blocks = extractBlocks(R"cpp(
+    auto blocks = ExtractBlocks(R"cpp(
 void foo(int x) {
     int a = x + 1;
     int b = a + 2;

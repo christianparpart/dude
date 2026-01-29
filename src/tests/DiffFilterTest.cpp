@@ -15,7 +15,7 @@ namespace
 {
 
 /// @brief Creates a minimal CodeBlock with the given file path and line range.
-auto makeTestBlock(std::filesystem::path const& filePath, uint32_t startLine, uint32_t endLine,
+auto MakeTestBlock(std::filesystem::path const& filePath, uint32_t startLine, uint32_t endLine,
                    std::string const& name = "test") -> CodeBlock
 {
     return CodeBlock{
@@ -35,16 +35,16 @@ TEST_CASE("DiffFilter.FindChangedBlocks.BasicOverlap", "[difffilter]")
 {
     auto const projectRoot = std::filesystem::path("/project");
     std::vector<CodeBlock> blocks = {
-        makeTestBlock("/project/src/foo.cpp", 10, 30, "foo"),
-        makeTestBlock("/project/src/bar.cpp", 5, 15, "bar"),
-        makeTestBlock("/project/src/baz.cpp", 100, 200, "baz"),
+        MakeTestBlock("/project/src/foo.cpp", 10, 30, "foo"),
+        MakeTestBlock("/project/src/bar.cpp", 5, 15, "bar"),
+        MakeTestBlock("/project/src/baz.cpp", 100, 200, "baz"),
     };
 
     DiffResult diff = {
         {.filePath = "src/foo.cpp", .changedRanges = {{.startLine = 20, .endLine = 25}}},
     };
 
-    auto const changed = DiffFilter::findChangedBlocks(blocks, diff, projectRoot);
+    auto const changed = DiffFilter::FindChangedBlocks(blocks, diff, projectRoot);
     CHECK(changed.size() == 1);
     CHECK(changed.contains(0)); // foo overlaps
 }
@@ -53,9 +53,9 @@ TEST_CASE("DiffFilter.FindChangedBlocks.MultipleFiles", "[difffilter]")
 {
     auto const projectRoot = std::filesystem::path("/project");
     std::vector<CodeBlock> blocks = {
-        makeTestBlock("/project/src/a.cpp", 10, 30, "a"),
-        makeTestBlock("/project/src/b.cpp", 5, 15, "b"),
-        makeTestBlock("/project/src/c.cpp", 100, 200, "c"),
+        MakeTestBlock("/project/src/a.cpp", 10, 30, "a"),
+        MakeTestBlock("/project/src/b.cpp", 5, 15, "b"),
+        MakeTestBlock("/project/src/c.cpp", 100, 200, "c"),
     };
 
     DiffResult diff = {
@@ -63,7 +63,7 @@ TEST_CASE("DiffFilter.FindChangedBlocks.MultipleFiles", "[difffilter]")
         {.filePath = "src/b.cpp", .changedRanges = {{.startLine = 10, .endLine = 12}}},
     };
 
-    auto const changed = DiffFilter::findChangedBlocks(blocks, diff, projectRoot);
+    auto const changed = DiffFilter::FindChangedBlocks(blocks, diff, projectRoot);
     CHECK(changed.size() == 2);
     CHECK(changed.contains(0));
     CHECK(changed.contains(1));
@@ -74,14 +74,14 @@ TEST_CASE("DiffFilter.FindChangedBlocks.NoneChanged", "[difffilter]")
 {
     auto const projectRoot = std::filesystem::path("/project");
     std::vector<CodeBlock> blocks = {
-        makeTestBlock("/project/src/foo.cpp", 10, 30, "foo"),
+        MakeTestBlock("/project/src/foo.cpp", 10, 30, "foo"),
     };
 
     DiffResult diff = {
         {.filePath = "src/foo.cpp", .changedRanges = {{.startLine = 50, .endLine = 60}}},
     };
 
-    auto const changed = DiffFilter::findChangedBlocks(blocks, diff, projectRoot);
+    auto const changed = DiffFilter::FindChangedBlocks(blocks, diff, projectRoot);
     CHECK(changed.empty());
 }
 
@@ -89,8 +89,8 @@ TEST_CASE("DiffFilter.FindChangedBlocks.AllChanged", "[difffilter]")
 {
     auto const projectRoot = std::filesystem::path("/project");
     std::vector<CodeBlock> blocks = {
-        makeTestBlock("/project/src/foo.cpp", 1, 100, "foo"),
-        makeTestBlock("/project/src/foo.cpp", 200, 300, "bar"),
+        MakeTestBlock("/project/src/foo.cpp", 1, 100, "foo"),
+        MakeTestBlock("/project/src/foo.cpp", 200, 300, "bar"),
     };
 
     DiffResult diff = {
@@ -98,7 +98,7 @@ TEST_CASE("DiffFilter.FindChangedBlocks.AllChanged", "[difffilter]")
          .changedRanges = {{.startLine = 50, .endLine = 55}, {.startLine = 250, .endLine = 260}}},
     };
 
-    auto const changed = DiffFilter::findChangedBlocks(blocks, diff, projectRoot);
+    auto const changed = DiffFilter::FindChangedBlocks(blocks, diff, projectRoot);
     CHECK(changed.size() == 2);
 }
 
@@ -111,7 +111,7 @@ TEST_CASE("DiffFilter.FilterCloneGroups.KeepGroupWithChangedBlock", "[difffilter
 
     std::unordered_set<size_t> changedBlocks = {1}; // Only block 1 is changed.
 
-    auto const filtered = DiffFilter::filterCloneGroups(groups, changedBlocks);
+    auto const filtered = DiffFilter::FilterCloneGroups(groups, changedBlocks);
     REQUIRE(filtered.size() == 1);
     CHECK(filtered[0].blockIndices == std::vector<size_t>{0, 1, 2});
 }
@@ -124,7 +124,7 @@ TEST_CASE("DiffFilter.FilterCloneGroups.RemoveGroupWithNoChangedBlocks", "[difff
 
     std::unordered_set<size_t> changedBlocks = {5}; // No match.
 
-    auto const filtered = DiffFilter::filterCloneGroups(groups, changedBlocks);
+    auto const filtered = DiffFilter::FilterCloneGroups(groups, changedBlocks);
     CHECK(filtered.empty());
 }
 
@@ -137,7 +137,7 @@ TEST_CASE("DiffFilter.FilterCloneGroups.AllGroupsKept", "[difffilter]")
 
     std::unordered_set<size_t> changedBlocks = {0, 3};
 
-    auto const filtered = DiffFilter::filterCloneGroups(groups, changedBlocks);
+    auto const filtered = DiffFilter::FilterCloneGroups(groups, changedBlocks);
     CHECK(filtered.size() == 2);
 }
 
@@ -151,7 +151,7 @@ TEST_CASE("DiffFilter.FilterIntraResults.KeepChangedBlock", "[difffilter]")
 
     std::unordered_set<size_t> changedBlocks = {1};
 
-    auto const filtered = DiffFilter::filterIntraResults(results, changedBlocks);
+    auto const filtered = DiffFilter::FilterIntraResults(results, changedBlocks);
     REQUIRE(filtered.size() == 1);
     CHECK(filtered[0].blockIndex == 1);
 }
@@ -164,6 +164,6 @@ TEST_CASE("DiffFilter.FilterIntraResults.NoneChanged", "[difffilter]")
 
     std::unordered_set<size_t> changedBlocks = {};
 
-    auto const filtered = DiffFilter::filterIntraResults(results, changedBlocks);
+    auto const filtered = DiffFilter::FilterIntraResults(results, changedBlocks);
     CHECK(filtered.empty());
 }

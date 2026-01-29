@@ -27,12 +27,12 @@ public:
     /// @param directory The root directory to scan.
     /// @param extensions List of file extensions to include (e.g., ".cpp", ".hpp").
     /// @return A sorted vector of matching file paths, or a FileScanError.
-    [[nodiscard]] static auto scan(std::filesystem::path const& directory,
-                                   std::vector<std::string> const& extensions = defaultExtensions())
+    [[nodiscard]] static auto Scan(std::filesystem::path const& directory,
+                                   std::vector<std::string> const& extensions = DefaultExtensions())
         -> std::expected<std::vector<std::filesystem::path>, FileScanError>;
 
     /// @brief Returns the default set of C++ file extensions.
-    [[nodiscard]] static auto defaultExtensions() -> std::vector<std::string> const&;
+    [[nodiscard]] static auto DefaultExtensions() -> std::vector<std::string> const&;
 };
 
 } // namespace codedup

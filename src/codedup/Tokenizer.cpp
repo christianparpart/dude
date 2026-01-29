@@ -5,6 +5,8 @@
 #include <array>
 #include <format>
 #include <fstream>
+#include <optional>
+#include <span>
 #include <sstream>
 #include <utility>
 
@@ -22,123 +24,167 @@ struct KeywordEntry
 
 // Sorted array of keywords for binary search lookup.
 constexpr auto keywords = std::to_array<KeywordEntry>({
-    {"alignas", TokenType::Alignas},
-    {"alignof", TokenType::Alignof},
-    {"auto", TokenType::Auto},
-    {"bool", TokenType::Bool},
-    {"break", TokenType::Break},
-    {"case", TokenType::Case},
-    {"catch", TokenType::Catch},
-    {"char", TokenType::Char},
-    {"char16_t", TokenType::Char16T},
-    {"char32_t", TokenType::Char32T},
-    {"char8_t", TokenType::Char8T},
-    {"class", TokenType::Class},
-    {"co_await", TokenType::CoAwait},
-    {"co_return", TokenType::CoReturn},
-    {"co_yield", TokenType::CoYield},
-    {"concept", TokenType::Concept},
-    {"const", TokenType::Const},
-    {"consteval", TokenType::Consteval},
-    {"constexpr", TokenType::Constexpr},
-    {"constinit", TokenType::Constinit},
-    {"continue", TokenType::Continue},
-    {"decltype", TokenType::Decltype},
-    {"default", TokenType::Default},
-    {"delete", TokenType::Delete},
-    {"do", TokenType::Do},
-    {"double", TokenType::Double},
-    {"dynamic_cast", TokenType::DynamicCast},
-    {"else", TokenType::Else},
-    {"enum", TokenType::Enum},
-    {"explicit", TokenType::Explicit},
-    {"export", TokenType::Export},
-    {"extern", TokenType::Extern},
-    {"false", TokenType::False},
-    {"float", TokenType::Float},
-    {"for", TokenType::For},
-    {"friend", TokenType::Friend},
-    {"goto", TokenType::Goto},
-    {"if", TokenType::If},
-    {"inline", TokenType::Inline},
-    {"int", TokenType::Int},
-    {"long", TokenType::Long},
-    {"mutable", TokenType::Mutable},
-    {"namespace", TokenType::Namespace},
-    {"new", TokenType::New},
-    {"noexcept", TokenType::Noexcept},
-    {"nullptr", TokenType::Nullptr},
-    {"operator", TokenType::Operator},
-    {"override", TokenType::Override},
-    {"private", TokenType::Private},
-    {"protected", TokenType::Protected},
-    {"public", TokenType::Public},
-    {"register", TokenType::Register},
-    {"reinterpret_cast", TokenType::ReinterpretCast},
-    {"requires", TokenType::Requires},
-    {"return", TokenType::Return},
-    {"short", TokenType::Short},
-    {"signed", TokenType::Signed},
-    {"sizeof", TokenType::Sizeof},
-    {"static", TokenType::Static},
-    {"static_assert", TokenType::StaticAssert},
-    {"static_cast", TokenType::StaticCast},
-    {"struct", TokenType::Struct},
-    {"switch", TokenType::Switch},
-    {"template", TokenType::Template},
-    {"this", TokenType::This},
-    {"thread_local", TokenType::ThreadLocal},
-    {"throw", TokenType::Throw},
-    {"true", TokenType::True},
-    {"try", TokenType::Try},
-    {"typedef", TokenType::Typedef},
-    {"typeid", TokenType::Typeid},
-    {"typename", TokenType::Typename},
-    {"union", TokenType::Union},
-    {"unsigned", TokenType::Unsigned},
-    {"using", TokenType::Using},
-    {"virtual", TokenType::Virtual},
-    {"void", TokenType::Void},
-    {"volatile", TokenType::Volatile},
-    {"wchar_t", TokenType::WcharT},
-    {"while", TokenType::While},
+    {.text = "alignas", .type = TokenType::Alignas},
+    {.text = "alignof", .type = TokenType::Alignof},
+    {.text = "auto", .type = TokenType::Auto},
+    {.text = "bool", .type = TokenType::Bool},
+    {.text = "break", .type = TokenType::Break},
+    {.text = "case", .type = TokenType::Case},
+    {.text = "catch", .type = TokenType::Catch},
+    {.text = "char", .type = TokenType::Char},
+    {.text = "char16_t", .type = TokenType::Char16T},
+    {.text = "char32_t", .type = TokenType::Char32T},
+    {.text = "char8_t", .type = TokenType::Char8T},
+    {.text = "class", .type = TokenType::Class},
+    {.text = "co_await", .type = TokenType::CoAwait},
+    {.text = "co_return", .type = TokenType::CoReturn},
+    {.text = "co_yield", .type = TokenType::CoYield},
+    {.text = "concept", .type = TokenType::Concept},
+    {.text = "const", .type = TokenType::Const},
+    {.text = "consteval", .type = TokenType::Consteval},
+    {.text = "constexpr", .type = TokenType::Constexpr},
+    {.text = "constinit", .type = TokenType::Constinit},
+    {.text = "continue", .type = TokenType::Continue},
+    {.text = "decltype", .type = TokenType::Decltype},
+    {.text = "default", .type = TokenType::Default},
+    {.text = "delete", .type = TokenType::Delete},
+    {.text = "do", .type = TokenType::Do},
+    {.text = "double", .type = TokenType::Double},
+    {.text = "dynamic_cast", .type = TokenType::DynamicCast},
+    {.text = "else", .type = TokenType::Else},
+    {.text = "enum", .type = TokenType::Enum},
+    {.text = "explicit", .type = TokenType::Explicit},
+    {.text = "export", .type = TokenType::Export},
+    {.text = "extern", .type = TokenType::Extern},
+    {.text = "false", .type = TokenType::False},
+    {.text = "float", .type = TokenType::Float},
+    {.text = "for", .type = TokenType::For},
+    {.text = "friend", .type = TokenType::Friend},
+    {.text = "goto", .type = TokenType::Goto},
+    {.text = "if", .type = TokenType::If},
+    {.text = "inline", .type = TokenType::Inline},
+    {.text = "int", .type = TokenType::Int},
+    {.text = "long", .type = TokenType::Long},
+    {.text = "mutable", .type = TokenType::Mutable},
+    {.text = "namespace", .type = TokenType::Namespace},
+    {.text = "new", .type = TokenType::New},
+    {.text = "noexcept", .type = TokenType::Noexcept},
+    {.text = "nullptr", .type = TokenType::Nullptr},
+    {.text = "operator", .type = TokenType::Operator},
+    {.text = "override", .type = TokenType::Override},
+    {.text = "private", .type = TokenType::Private},
+    {.text = "protected", .type = TokenType::Protected},
+    {.text = "public", .type = TokenType::Public},
+    {.text = "register", .type = TokenType::Register},
+    {.text = "reinterpret_cast", .type = TokenType::ReinterpretCast},
+    {.text = "requires", .type = TokenType::Requires},
+    {.text = "return", .type = TokenType::Return},
+    {.text = "short", .type = TokenType::Short},
+    {.text = "signed", .type = TokenType::Signed},
+    {.text = "sizeof", .type = TokenType::Sizeof},
+    {.text = "static", .type = TokenType::Static},
+    {.text = "static_assert", .type = TokenType::StaticAssert},
+    {.text = "static_cast", .type = TokenType::StaticCast},
+    {.text = "struct", .type = TokenType::Struct},
+    {.text = "switch", .type = TokenType::Switch},
+    {.text = "template", .type = TokenType::Template},
+    {.text = "this", .type = TokenType::This},
+    {.text = "thread_local", .type = TokenType::ThreadLocal},
+    {.text = "throw", .type = TokenType::Throw},
+    {.text = "true", .type = TokenType::True},
+    {.text = "try", .type = TokenType::Try},
+    {.text = "typedef", .type = TokenType::Typedef},
+    {.text = "typeid", .type = TokenType::Typeid},
+    {.text = "typename", .type = TokenType::Typename},
+    {.text = "union", .type = TokenType::Union},
+    {.text = "unsigned", .type = TokenType::Unsigned},
+    {.text = "using", .type = TokenType::Using},
+    {.text = "virtual", .type = TokenType::Virtual},
+    {.text = "void", .type = TokenType::Void},
+    {.text = "volatile", .type = TokenType::Volatile},
+    {.text = "wchar_t", .type = TokenType::WcharT},
+    {.text = "while", .type = TokenType::While},
+});
+
+/// @brief Entry mapping an operator string to its TokenType.
+struct OperatorEntry
+{
+    std::string_view text;
+    TokenType type;
+};
+
+/// @brief Sorted array of three-character operators for binary search lookup.
+constexpr auto threeCharOperators = std::to_array<OperatorEntry>({
+    {.text = "->*", .type = TokenType::ArrowStar},
+    {.text = "...", .type = TokenType::Ellipsis},
+    {.text = "<<=", .type = TokenType::LessLessEqual},
+    {.text = "<=>", .type = TokenType::Spaceship},
+    {.text = ">>=", .type = TokenType::GreaterGreaterEqual},
+});
+
+/// @brief Sorted array of two-character operators for binary search lookup.
+constexpr auto twoCharOperators = std::to_array<OperatorEntry>({
+    {.text = "!=", .type = TokenType::ExclaimEqual},   {.text = "##", .type = TokenType::HashHash},
+    {.text = "%=", .type = TokenType::PercentEqual},   {.text = "&&", .type = TokenType::AmpAmp},
+    {.text = "&=", .type = TokenType::AmpEqual},       {.text = "*=", .type = TokenType::StarEqual},
+    {.text = "++", .type = TokenType::PlusPlus},       {.text = "+=", .type = TokenType::PlusEqual},
+    {.text = "--", .type = TokenType::MinusMinus},     {.text = "-=", .type = TokenType::MinusEqual},
+    {.text = "->", .type = TokenType::Arrow},          {.text = ".*", .type = TokenType::DotStar},
+    {.text = "/=", .type = TokenType::SlashEqual},     {.text = "::", .type = TokenType::ColonColon},
+    {.text = "<<", .type = TokenType::LessLess},       {.text = "<=", .type = TokenType::LessEqual},
+    {.text = "==", .type = TokenType::EqualEqual},     {.text = ">=", .type = TokenType::GreaterEqual},
+    {.text = ">>", .type = TokenType::GreaterGreater}, {.text = "^=", .type = TokenType::CaretEqual},
+    {.text = "|=", .type = TokenType::PipeEqual},      {.text = "||", .type = TokenType::PipePipe},
 });
 
 /// @brief Looks up a keyword by text using binary search.
-[[nodiscard]] auto lookupKeyword(std::string_view text) -> TokenType
+[[nodiscard]] auto LookupKeyword(std::string_view text) -> TokenType
 {
-    auto const it = std::ranges::lower_bound(keywords, text, {}, &KeywordEntry::text);
+    auto const* const it = std::ranges::lower_bound(keywords, text, {}, &KeywordEntry::text);
     if (it != keywords.end() && it->text == text)
         return it->type;
     return TokenType::Identifier;
 }
 
-[[nodiscard]] auto isIdentifierStart(char ch) -> bool
+/// @brief Looks up a multi-character operator by text using binary search.
+/// @param table The sorted array of operator entries to search.
+/// @param text The operator text to look up.
+/// @return The corresponding TokenType, or std::nullopt if not found.
+[[nodiscard]] auto LookupOperator(std::span<const OperatorEntry> table, std::string_view text)
+    -> std::optional<TokenType>
+{
+    auto const it = std::ranges::lower_bound(table, text, {}, &OperatorEntry::text);
+    if (it != table.end() && it->text == text)
+        return it->type;
+    return std::nullopt;
+}
+
+[[nodiscard]] auto IsIdentifierStart(char ch) -> bool
 {
     return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_';
 }
 
-[[nodiscard]] auto isIdentifierContinue(char ch) -> bool
+[[nodiscard]] auto IsIdentifierContinue(char ch) -> bool
 {
-    return isIdentifierStart(ch) || (ch >= '0' && ch <= '9');
+    return IsIdentifierStart(ch) || (ch >= '0' && ch <= '9');
 }
 
-[[nodiscard]] auto isDigit(char ch) -> bool
+[[nodiscard]] auto IsDigit(char ch) -> bool
 {
     return ch >= '0' && ch <= '9';
 }
 
-[[nodiscard]] auto isHexDigit(char ch) -> bool
+[[nodiscard]] auto IsHexDigit(char ch) -> bool
 {
-    return isDigit(ch) || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F');
+    return IsDigit(ch) || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F');
 }
 
-[[nodiscard]] auto isBinDigit(char ch) -> bool
+[[nodiscard]] auto IsBinDigit(char ch) -> bool
 {
     return ch == '0' || ch == '1';
 }
 
-[[nodiscard]] auto isOctDigit(char ch) -> bool
+[[nodiscard]] auto IsOctDigit(char ch) -> bool
 {
     return ch >= '0' && ch <= '7';
 }
@@ -151,24 +197,24 @@ public:
     {
     }
 
-    [[nodiscard]] auto tokenize() -> std::expected<std::vector<Token>, TokenizerError>
+    [[nodiscard]] auto Tokenize() -> std::expected<std::vector<Token>, TokenizerError>
     {
         std::vector<Token> tokens;
         tokens.reserve(_source.size() / 4); // rough estimate
 
-        while (!atEnd())
+        while (!AtEnd())
         {
-            skipWhitespace();
-            if (atEnd())
+            SkipWhitespace();
+            if (AtEnd())
                 break;
 
-            auto token = nextToken();
+            auto token = NextToken();
             if (!token)
                 return std::unexpected(std::move(token.error()));
             tokens.push_back(std::move(*token));
         }
 
-        tokens.push_back(Token{.type = TokenType::EndOfFile, .text = {}, .location = currentLocation()});
+        tokens.push_back(Token{.type = TokenType::EndOfFile, .text = {}, .location = CurrentLocation()});
         return tokens;
     }
 
@@ -179,16 +225,16 @@ private:
     uint32_t _line = 1;
     uint32_t _column = 1;
 
-    [[nodiscard]] auto atEnd() const -> bool { return _pos >= _source.size(); }
+    [[nodiscard]] auto AtEnd() const -> bool { return _pos >= _source.size(); }
 
-    [[nodiscard]] auto peek() const -> char
+    [[nodiscard]] auto Peek() const -> char
     {
-        if (atEnd())
+        if (AtEnd())
             return '\0';
         return _source[_pos];
     }
 
-    [[nodiscard]] auto peekAt(size_t offset) const -> char
+    [[nodiscard]] auto PeekAt(size_t offset) const -> char
     {
         auto const idx = _pos + offset;
         if (idx >= _source.size())
@@ -196,7 +242,7 @@ private:
         return _source[idx];
     }
 
-    auto advance() -> char
+    auto Advance() -> char
     {
         auto const ch = _source[_pos++];
         if (ch == '\n')
@@ -211,82 +257,82 @@ private:
         return ch;
     }
 
-    void skipWhitespace()
+    void SkipWhitespace()
     {
-        while (!atEnd())
+        while (!AtEnd())
         {
-            auto const ch = peek();
+            auto const ch = Peek();
             if (ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n')
-                advance();
+                Advance();
             else
                 break;
         }
     }
 
-    [[nodiscard]] auto currentLocation() const -> SourceLocation
+    [[nodiscard]] auto CurrentLocation() const -> SourceLocation
     {
         return {.filePath = _filePath, .line = _line, .column = _column};
     }
 
-    [[nodiscard]] auto nextToken() -> std::expected<Token, TokenizerError>
+    [[nodiscard]] auto NextToken() -> std::expected<Token, TokenizerError>
     {
-        auto const loc = currentLocation();
-        auto const ch = peek();
+        auto const loc = CurrentLocation();
+        auto const ch = Peek();
 
         // Preprocessor directives
-        if (ch == '#' && (loc.column == 1 || isStartOfLine()))
-            return scanPreprocessorDirective(loc);
+        if (ch == '#' && (loc.column == 1 || IsStartOfLine()))
+            return ScanPreprocessorDirective(loc);
 
         // Comments
-        if (ch == '/' && peekAt(1) == '/')
-            return scanLineComment(loc);
-        if (ch == '/' && peekAt(1) == '*')
-            return scanBlockComment(loc);
+        if (ch == '/' && PeekAt(1) == '/')
+            return ScanLineComment(loc);
+        if (ch == '/' && PeekAt(1) == '*')
+            return ScanBlockComment(loc);
 
         // String and char literals
         if (ch == '"')
-            return scanStringLiteral(loc);
+            return ScanStringLiteral(loc);
         if (ch == '\'')
-            return scanCharLiteral(loc);
+            return ScanCharLiteral(loc);
 
         // Raw string literals: R"delim(...)delim"
-        if (ch == 'R' && peekAt(1) == '"')
-            return scanRawStringLiteral(loc);
+        if (ch == 'R' && PeekAt(1) == '"')
+            return ScanRawStringLiteral(loc);
 
         // Identifiers and keywords (also handles prefixed strings like u8"...", L'...')
-        if (isIdentifierStart(ch))
+        if (IsIdentifierStart(ch))
         {
             // Check for string literal prefixes: u8, u, U, L
-            if ((ch == 'u' || ch == 'U' || ch == 'L') && peekAt(1) == '"')
-                return scanStringLiteral(loc, true);
-            if ((ch == 'u' || ch == 'U' || ch == 'L') && peekAt(1) == '\'')
-                return scanCharLiteral(loc, true);
-            if (ch == 'u' && peekAt(1) == '8' && peekAt(2) == '"')
-                return scanStringLiteral(loc, true);
-            if (ch == 'u' && peekAt(1) == '8' && peekAt(2) == '\'')
-                return scanCharLiteral(loc, true);
+            if ((ch == 'u' || ch == 'U' || ch == 'L') && PeekAt(1) == '"')
+                return ScanStringLiteral(loc, true);
+            if ((ch == 'u' || ch == 'U' || ch == 'L') && PeekAt(1) == '\'')
+                return ScanCharLiteral(loc, true);
+            if (ch == 'u' && PeekAt(1) == '8' && PeekAt(2) == '"')
+                return ScanStringLiteral(loc, true);
+            if (ch == 'u' && PeekAt(1) == '8' && PeekAt(2) == '\'')
+                return ScanCharLiteral(loc, true);
             // Check for prefixed raw strings: u8R"(...)", uR"(...)", etc.
-            if ((ch == 'u' || ch == 'U' || ch == 'L') && peekAt(1) == 'R' && peekAt(2) == '"')
-                return scanRawStringLiteral(loc, true);
-            if (ch == 'u' && peekAt(1) == '8' && peekAt(2) == 'R' && peekAt(3) == '"')
-                return scanRawStringLiteral(loc, true);
+            if ((ch == 'u' || ch == 'U' || ch == 'L') && PeekAt(1) == 'R' && PeekAt(2) == '"')
+                return ScanRawStringLiteral(loc, true);
+            if (ch == 'u' && PeekAt(1) == '8' && PeekAt(2) == 'R' && PeekAt(3) == '"')
+                return ScanRawStringLiteral(loc, true);
 
-            return scanIdentifierOrKeyword(loc);
+            return ScanIdentifierOrKeyword(loc);
         }
 
         // Numeric literals
-        if (isDigit(ch))
-            return scanNumericLiteral(loc);
+        if (IsDigit(ch))
+            return ScanNumericLiteral(loc);
 
         // Dot can start a numeric literal (.5) or be an operator
-        if (ch == '.' && isDigit(peekAt(1)))
-            return scanNumericLiteral(loc);
+        if (ch == '.' && IsDigit(PeekAt(1)))
+            return ScanNumericLiteral(loc);
 
         // Operators and punctuation
-        return scanOperator(loc);
+        return ScanOperator(loc);
     }
 
-    [[nodiscard]] auto isStartOfLine() const -> bool
+    [[nodiscard]] auto IsStartOfLine() const -> bool
     {
         // Check if only whitespace precedes current position on this line
         for (auto i = _pos; i > 0; --i)
@@ -300,24 +346,24 @@ private:
         return true; // Start of file
     }
 
-    [[nodiscard]] auto scanPreprocessorDirective(SourceLocation const& loc) -> std::expected<Token, TokenizerError>
+    [[nodiscard]] auto ScanPreprocessorDirective(SourceLocation const& loc) -> std::expected<Token, TokenizerError>
     {
         auto const start = _pos;
-        advance(); // skip '#'
+        Advance(); // skip '#'
 
         // Read until end of line, handling backslash continuation
-        while (!atEnd())
+        while (!AtEnd())
         {
-            auto const c = peek();
-            if (c == '\\' && peekAt(1) == '\n')
+            auto const c = Peek();
+            if (c == '\\' && PeekAt(1) == '\n')
             {
-                advance(); // backslash
-                advance(); // newline
+                Advance(); // backslash
+                Advance(); // newline
                 continue;
             }
             if (c == '\n')
                 break;
-            advance();
+            Advance();
         }
 
         return Token{.type = TokenType::PreprocessorDirective,
@@ -325,42 +371,42 @@ private:
                      .location = loc};
     }
 
-    [[nodiscard]] auto scanLineComment(SourceLocation const& loc) -> std::expected<Token, TokenizerError>
+    [[nodiscard]] auto ScanLineComment(SourceLocation const& loc) -> std::expected<Token, TokenizerError>
     {
         auto const start = _pos;
-        advance(); // first /
-        advance(); // second /
+        Advance(); // first /
+        Advance(); // second /
 
-        while (!atEnd() && peek() != '\n')
-            advance();
+        while (!AtEnd() && Peek() != '\n')
+            Advance();
 
         return Token{
             .type = TokenType::LineComment, .text = std::string(_source.substr(start, _pos - start)), .location = loc};
     }
 
-    [[nodiscard]] auto scanBlockComment(SourceLocation const& loc) -> std::expected<Token, TokenizerError>
+    [[nodiscard]] auto ScanBlockComment(SourceLocation const& loc) -> std::expected<Token, TokenizerError>
     {
         auto const start = _pos;
-        advance(); // /
-        advance(); // *
+        Advance(); // /
+        Advance(); // *
 
-        while (!atEnd())
+        while (!AtEnd())
         {
-            if (peek() == '*' && peekAt(1) == '/')
+            if (Peek() == '*' && PeekAt(1) == '/')
             {
-                advance(); // *
-                advance(); // /
+                Advance(); // *
+                Advance(); // /
                 return Token{.type = TokenType::BlockComment,
                              .text = std::string(_source.substr(start, _pos - start)),
                              .location = loc};
             }
-            advance();
+            Advance();
         }
 
         return std::unexpected(TokenizerError{.message = "Unterminated block comment", .location = loc});
     }
 
-    [[nodiscard]] auto scanStringLiteral(SourceLocation const& loc, bool hasPrefix = false)
+    [[nodiscard]] auto ScanStringLiteral(SourceLocation const& loc, bool hasPrefix = false)
         -> std::expected<Token, TokenizerError>
     {
         auto const start = _pos;
@@ -368,45 +414,45 @@ private:
         // Skip prefix (u, U, L, u8)
         if (hasPrefix)
         {
-            if (peek() == 'u' && peekAt(1) == '8')
+            if (Peek() == 'u' && PeekAt(1) == '8')
             {
-                advance();
-                advance();
+                Advance();
+                Advance();
             }
             else
             {
-                advance();
+                Advance();
             }
         }
 
-        advance(); // opening quote
+        Advance(); // opening quote
 
-        while (!atEnd())
+        while (!AtEnd())
         {
-            auto const c = peek();
+            auto const c = Peek();
             if (c == '\\')
             {
-                advance(); // backslash
-                if (!atEnd())
-                    advance(); // escaped char
+                Advance(); // backslash
+                if (!AtEnd())
+                    Advance(); // escaped char
                 continue;
             }
             if (c == '"')
             {
-                advance(); // closing quote
+                Advance(); // closing quote
                 return Token{.type = TokenType::StringLiteral,
                              .text = std::string(_source.substr(start, _pos - start)),
                              .location = loc};
             }
             if (c == '\n')
                 break; // Unterminated
-            advance();
+            Advance();
         }
 
         return std::unexpected(TokenizerError{.message = "Unterminated string literal", .location = loc});
     }
 
-    [[nodiscard]] auto scanRawStringLiteral(SourceLocation const& loc, bool hasPrefix = false)
+    [[nodiscard]] auto ScanRawStringLiteral(SourceLocation const& loc, bool hasPrefix = false)
         -> std::expected<Token, TokenizerError>
     {
         auto const start = _pos;
@@ -414,371 +460,256 @@ private:
         // Skip prefix
         if (hasPrefix)
         {
-            if (peek() == 'u' && peekAt(1) == '8')
+            if (Peek() == 'u' && PeekAt(1) == '8')
             {
-                advance();
-                advance();
+                Advance();
+                Advance();
             }
             else
             {
-                advance(); // u, U, or L
+                Advance(); // u, U, or L
             }
         }
 
-        advance(); // R
-        advance(); // opening "
+        Advance(); // R
+        Advance(); // opening "
 
         // Read delimiter (up to 16 chars before '(')
         std::string delimiter;
-        while (!atEnd() && peek() != '(')
+        while (!AtEnd() && Peek() != '(')
         {
-            delimiter += advance();
+            delimiter += Advance();
             if (delimiter.size() > 16)
                 return std::unexpected(TokenizerError{.message = "Raw string delimiter too long", .location = loc});
         }
 
-        if (atEnd())
+        if (AtEnd())
             return std::unexpected(TokenizerError{.message = "Unterminated raw string literal", .location = loc});
 
-        advance(); // (
+        Advance(); // (
 
         // Build closing sequence: )delimiter"
         auto const closing = ")" + delimiter + "\"";
 
-        while (!atEnd())
+        while (!AtEnd())
         {
             if (_pos + closing.size() <= _source.size() && _source.substr(_pos, closing.size()) == closing)
             {
                 for (size_t i = 0; i < closing.size(); ++i)
-                    advance();
+                    Advance();
                 return Token{.type = TokenType::StringLiteral,
                              .text = std::string(_source.substr(start, _pos - start)),
                              .location = loc};
             }
-            advance();
+            Advance();
         }
 
         return std::unexpected(TokenizerError{.message = "Unterminated raw string literal", .location = loc});
     }
 
-    [[nodiscard]] auto scanCharLiteral(SourceLocation const& loc, bool hasPrefix = false)
+    [[nodiscard]] auto ScanCharLiteral(SourceLocation const& loc, bool hasPrefix = false)
         -> std::expected<Token, TokenizerError>
     {
         auto const start = _pos;
 
         if (hasPrefix)
         {
-            if (peek() == 'u' && peekAt(1) == '8')
+            if (Peek() == 'u' && PeekAt(1) == '8')
             {
-                advance();
-                advance();
+                Advance();
+                Advance();
             }
             else
             {
-                advance();
+                Advance();
             }
         }
 
-        advance(); // opening quote
+        Advance(); // opening quote
 
-        while (!atEnd())
+        while (!AtEnd())
         {
-            auto const c = peek();
+            auto const c = Peek();
             if (c == '\\')
             {
-                advance();
-                if (!atEnd())
-                    advance();
+                Advance();
+                if (!AtEnd())
+                    Advance();
                 continue;
             }
             if (c == '\'')
             {
-                advance(); // closing quote
+                Advance(); // closing quote
                 return Token{.type = TokenType::CharLiteral,
                              .text = std::string(_source.substr(start, _pos - start)),
                              .location = loc};
             }
             if (c == '\n')
                 break;
-            advance();
+            Advance();
         }
 
         return std::unexpected(TokenizerError{.message = "Unterminated character literal", .location = loc});
     }
 
-    [[nodiscard]] auto scanIdentifierOrKeyword(SourceLocation const& loc) -> std::expected<Token, TokenizerError>
+    [[nodiscard]] auto ScanIdentifierOrKeyword(SourceLocation const& loc) -> std::expected<Token, TokenizerError>
     {
         auto const start = _pos;
-        while (!atEnd() && isIdentifierContinue(peek()))
-            advance();
+        while (!AtEnd() && IsIdentifierContinue(Peek()))
+            Advance();
 
         auto const text = _source.substr(start, _pos - start);
-        auto const type = lookupKeyword(text);
+        auto const type = LookupKeyword(text);
 
         return Token{.type = type, .text = std::string(text), .location = loc};
     }
 
-    [[nodiscard]] auto scanNumericLiteral(SourceLocation const& loc) -> std::expected<Token, TokenizerError>
+    /// @brief Scans hexadecimal digit sequence after the '0x' or '0X' prefix.
+    ///
+    /// Consumes the '0' and 'x'/'X' prefix, then all hex digits and digit separators.
+    void ScanHexDigits()
+    {
+        Advance(); // 0
+        Advance(); // x or X
+        while (!AtEnd() && (IsHexDigit(Peek()) || Peek() == '\''))
+            Advance();
+    }
+
+    /// @brief Scans binary digit sequence after the '0b' or '0B' prefix.
+    ///
+    /// Consumes the '0' and 'b'/'B' prefix, then all binary digits and digit separators.
+    void ScanBinaryDigits()
+    {
+        Advance(); // 0
+        Advance(); // b or B
+        while (!AtEnd() && (IsBinDigit(Peek()) || Peek() == '\''))
+            Advance();
+    }
+
+    /// @brief Scans octal digit sequence after the leading '0'.
+    ///
+    /// Consumes the leading '0', then all octal digits and digit separators.
+    void ScanOctalDigits()
+    {
+        Advance(); // 0
+        while (!AtEnd() && (IsOctDigit(Peek()) || Peek() == '\''))
+            Advance();
+    }
+
+    /// @brief Scans a decimal number including optional fractional and exponent parts.
+    /// @param start The starting position of the numeric literal (used to validate fractional detection).
+    ///
+    /// Consumes decimal digits with digit separators, an optional fractional part (dot followed by digits),
+    /// and an optional exponent part (e/E with optional sign and digits).
+    void ScanDecimalWithFractionalAndExponent(size_t start)
+    {
+        // Decimal integer digits
+        while (!AtEnd() && (IsDigit(Peek()) || Peek() == '\''))
+            Advance();
+
+        // Fractional part
+        if (Peek() == '.' && (IsDigit(PeekAt(1)) || PeekAt(1) == 'e' || PeekAt(1) == 'E'))
+        {
+            Advance(); // .
+            while (!AtEnd() && (IsDigit(Peek()) || Peek() == '\''))
+                Advance();
+        }
+        else if (Peek() == '.' && _pos > start && IsDigit(_source[start]))
+        {
+            // Might be a decimal point at end like 1.
+            // Only consume if it looks numeric (not member access)
+            if (IsDigit(PeekAt(1)) || PeekAt(1) == 'e' || PeekAt(1) == 'E' || PeekAt(1) == 'f' || PeekAt(1) == 'F' ||
+                PeekAt(1) == 'l' || PeekAt(1) == 'L')
+            {
+                Advance(); // .
+                while (!AtEnd() && (IsDigit(Peek()) || Peek() == '\''))
+                    Advance();
+            }
+        }
+
+        // Exponent part
+        if (Peek() == 'e' || Peek() == 'E')
+        {
+            Advance();
+            if (Peek() == '+' || Peek() == '-')
+                Advance();
+            while (!AtEnd() && (IsDigit(Peek()) || Peek() == '\''))
+                Advance();
+        }
+    }
+
+    /// @brief Scans integer and floating-point type suffixes.
+    ///
+    /// Consumes suffix characters: u, U, l, L, ll, LL, ul, UL, ull, ULL, f, F, z, Z.
+    void ScanNumericSuffix()
+    {
+        while (!AtEnd() && (Peek() == 'u' || Peek() == 'U' || Peek() == 'l' || Peek() == 'L' || Peek() == 'f' ||
+                            Peek() == 'F' || Peek() == 'z' || Peek() == 'Z'))
+        {
+            Advance();
+        }
+    }
+
+    /// @brief Scans a complete numeric literal (integer or floating-point).
+    /// @param loc The source location where the literal starts.
+    /// @return The numeric literal token, or an error if the literal is malformed.
+    ///
+    /// Handles hexadecimal (0x), binary (0b), octal (0), and decimal literals,
+    /// including fractional parts, exponents, and type suffixes.
+    [[nodiscard]] auto ScanNumericLiteral(SourceLocation const& loc) -> std::expected<Token, TokenizerError>
     {
         auto const start = _pos;
 
-        if (peek() == '0' && (peekAt(1) == 'x' || peekAt(1) == 'X'))
-        {
-            advance(); // 0
-            advance(); // x
-            while (!atEnd() && (isHexDigit(peek()) || peek() == '\''))
-                advance();
-        }
-        else if (peek() == '0' && (peekAt(1) == 'b' || peekAt(1) == 'B'))
-        {
-            advance(); // 0
-            advance(); // b
-            while (!atEnd() && (isBinDigit(peek()) || peek() == '\''))
-                advance();
-        }
-        else if (peek() == '0' && isOctDigit(peekAt(1)))
-        {
-            advance(); // 0
-            while (!atEnd() && (isOctDigit(peek()) || peek() == '\''))
-                advance();
-        }
+        if (Peek() == '0' && (PeekAt(1) == 'x' || PeekAt(1) == 'X'))
+            ScanHexDigits();
+        else if (Peek() == '0' && (PeekAt(1) == 'b' || PeekAt(1) == 'B'))
+            ScanBinaryDigits();
+        else if (Peek() == '0' && IsOctDigit(PeekAt(1)))
+            ScanOctalDigits();
         else
-        {
-            // Decimal integer or floating-point
-            while (!atEnd() && (isDigit(peek()) || peek() == '\''))
-                advance();
+            ScanDecimalWithFractionalAndExponent(start);
 
-            // Fractional part
-            if (peek() == '.' && (isDigit(peekAt(1)) || peekAt(1) == 'e' || peekAt(1) == 'E'))
-            {
-                advance(); // .
-                while (!atEnd() && (isDigit(peek()) || peek() == '\''))
-                    advance();
-            }
-            else if (peek() == '.' && _pos > start && isDigit(_source[start]))
-            {
-                // Might be a decimal point at end like 1.
-                // Only consume if it looks numeric (not member access)
-                if (isDigit(peekAt(1)) || peekAt(1) == 'e' || peekAt(1) == 'E' || peekAt(1) == 'f' ||
-                    peekAt(1) == 'F' || peekAt(1) == 'l' || peekAt(1) == 'L')
-                {
-                    advance(); // .
-                    while (!atEnd() && (isDigit(peek()) || peek() == '\''))
-                        advance();
-                }
-            }
-
-            // Exponent part
-            if (peek() == 'e' || peek() == 'E')
-            {
-                advance();
-                if (peek() == '+' || peek() == '-')
-                    advance();
-                while (!atEnd() && (isDigit(peek()) || peek() == '\''))
-                    advance();
-            }
-        }
-
-        // Integer/float suffixes: u, U, l, L, ll, LL, ul, UL, ull, ULL, f, F, z, Z
-        while (!atEnd() && (peek() == 'u' || peek() == 'U' || peek() == 'l' || peek() == 'L' || peek() == 'f' ||
-                            peek() == 'F' || peek() == 'z' || peek() == 'Z'))
-        {
-            advance();
-        }
+        ScanNumericSuffix();
 
         return Token{.type = TokenType::NumericLiteral,
                      .text = std::string(_source.substr(start, _pos - start)),
                      .location = loc};
     }
 
-    [[nodiscard]] auto scanOperator(SourceLocation const& loc) -> std::expected<Token, TokenizerError>
+    /// @brief Advances the scanner position by the given number of characters.
+    /// @param count The number of characters to advance.
+    void AdvanceBy(size_t count)
     {
-        auto const ch = peek();
+        for (size_t i = 0; i < count; ++i)
+            Advance();
+    }
 
-        // Three-character operators
-        if (_pos + 2 < _source.size())
-        {
-            auto const three = _source.substr(_pos, 3);
-            if (three == "<=>")
-            {
-                advance();
-                advance();
-                advance();
-                return Token{.type = TokenType::Spaceship, .text = "<=>", .location = loc};
-            }
-            if (three == "<<=")
-            {
-                advance();
-                advance();
-                advance();
-                return Token{.type = TokenType::LessLessEqual, .text = "<<=", .location = loc};
-            }
-            if (three == ">>=")
-            {
-                advance();
-                advance();
-                advance();
-                return Token{.type = TokenType::GreaterGreaterEqual, .text = ">>=", .location = loc};
-            }
-            if (three == "->*")
-            {
-                advance();
-                advance();
-                advance();
-                return Token{.type = TokenType::ArrowStar, .text = "->*", .location = loc};
-            }
-            if (three == "...")
-            {
-                advance();
-                advance();
-                advance();
-                return Token{.type = TokenType::Ellipsis, .text = "...", .location = loc};
-            }
-            if (three == "##" && false)
-            {
-            } // ##  is two chars, handled below
-        }
+    /// @brief Attempts to match and consume a multi-character operator from a lookup table.
+    /// @param table The sorted array of operator entries to search.
+    /// @param length The number of characters to match (must be 2 or 3).
+    /// @param loc The source location for the resulting token.
+    /// @return The operator token if matched, or std::nullopt if no match was found.
+    [[nodiscard]] auto TryMatchOperator(std::span<const OperatorEntry> table, size_t length, SourceLocation const& loc)
+        -> std::optional<Token>
+    {
+        if (_pos + length - 1 >= _source.size())
+            return std::nullopt;
 
-        // Two-character operators
-        if (_pos + 1 < _source.size())
-        {
-            auto const two = _source.substr(_pos, 2);
-            if (two == "::")
-            {
-                advance();
-                advance();
-                return Token{.type = TokenType::ColonColon, .text = "::", .location = loc};
-            }
-            if (two == "->")
-            {
-                advance();
-                advance();
-                return Token{.type = TokenType::Arrow, .text = "->", .location = loc};
-            }
-            if (two == ".*")
-            {
-                advance();
-                advance();
-                return Token{.type = TokenType::DotStar, .text = ".*", .location = loc};
-            }
-            if (two == "++")
-            {
-                advance();
-                advance();
-                return Token{.type = TokenType::PlusPlus, .text = "++", .location = loc};
-            }
-            if (two == "--")
-            {
-                advance();
-                advance();
-                return Token{.type = TokenType::MinusMinus, .text = "--", .location = loc};
-            }
-            if (two == "+=")
-            {
-                advance();
-                advance();
-                return Token{.type = TokenType::PlusEqual, .text = "+=", .location = loc};
-            }
-            if (two == "-=")
-            {
-                advance();
-                advance();
-                return Token{.type = TokenType::MinusEqual, .text = "-=", .location = loc};
-            }
-            if (two == "*=")
-            {
-                advance();
-                advance();
-                return Token{.type = TokenType::StarEqual, .text = "*=", .location = loc};
-            }
-            if (two == "/=")
-            {
-                advance();
-                advance();
-                return Token{.type = TokenType::SlashEqual, .text = "/=", .location = loc};
-            }
-            if (two == "%=")
-            {
-                advance();
-                advance();
-                return Token{.type = TokenType::PercentEqual, .text = "%=", .location = loc};
-            }
-            if (two == "&&")
-            {
-                advance();
-                advance();
-                return Token{.type = TokenType::AmpAmp, .text = "&&", .location = loc};
-            }
-            if (two == "||")
-            {
-                advance();
-                advance();
-                return Token{.type = TokenType::PipePipe, .text = "||", .location = loc};
-            }
-            if (two == "&=")
-            {
-                advance();
-                advance();
-                return Token{.type = TokenType::AmpEqual, .text = "&=", .location = loc};
-            }
-            if (two == "|=")
-            {
-                advance();
-                advance();
-                return Token{.type = TokenType::PipeEqual, .text = "|=", .location = loc};
-            }
-            if (two == "^=")
-            {
-                advance();
-                advance();
-                return Token{.type = TokenType::CaretEqual, .text = "^=", .location = loc};
-            }
-            if (two == "<<")
-            {
-                advance();
-                advance();
-                return Token{.type = TokenType::LessLess, .text = "<<", .location = loc};
-            }
-            if (two == ">>")
-            {
-                advance();
-                advance();
-                return Token{.type = TokenType::GreaterGreater, .text = ">>", .location = loc};
-            }
-            if (two == "<=")
-            {
-                advance();
-                advance();
-                return Token{.type = TokenType::LessEqual, .text = "<=", .location = loc};
-            }
-            if (two == ">=")
-            {
-                advance();
-                advance();
-                return Token{.type = TokenType::GreaterEqual, .text = ">=", .location = loc};
-            }
-            if (two == "==")
-            {
-                advance();
-                advance();
-                return Token{.type = TokenType::EqualEqual, .text = "==", .location = loc};
-            }
-            if (two == "!=")
-            {
-                advance();
-                advance();
-                return Token{.type = TokenType::ExclaimEqual, .text = "!=", .location = loc};
-            }
-            if (two == "##")
-            {
-                advance();
-                advance();
-                return Token{.type = TokenType::HashHash, .text = "##", .location = loc};
-            }
-        }
+        auto const text = _source.substr(_pos, length);
+        auto const type = LookupOperator(table, text);
+        if (!type)
+            return std::nullopt;
 
-        // Single-character operators
-        advance();
+        AdvanceBy(length);
+        return Token{.type = *type, .text = std::string(text), .location = loc};
+    }
+
+    /// @brief Scans a single-character operator or punctuation token.
+    /// @param ch The character that was already peeked at and advanced past.
+    /// @param loc The source location for the resulting token.
+    /// @return The single-character operator token.
+    [[nodiscard]] static auto ScanSingleCharOperator(char ch, SourceLocation const& loc) -> Token
+    {
         switch (ch)
         {
             case '(':
@@ -835,18 +766,41 @@ private:
                 return Token{.type = TokenType::Invalid, .text = std::string(1, ch), .location = loc};
         }
     }
+
+    /// @brief Scans an operator or punctuation token.
+    /// @param loc The source location where the operator starts.
+    /// @return The operator token, or an error if the character is unrecognized.
+    ///
+    /// Tries three-character operators first, then two-character operators (both via
+    /// binary search in sorted lookup tables), and finally falls back to single-character
+    /// operator matching via a switch statement.
+    [[nodiscard]] auto ScanOperator(SourceLocation const& loc) -> std::expected<Token, TokenizerError>
+    {
+        // Try three-character operators first
+        if (auto token = TryMatchOperator(threeCharOperators, 3, loc))
+            return std::move(*token);
+
+        // Try two-character operators
+        if (auto token = TryMatchOperator(twoCharOperators, 2, loc))
+            return std::move(*token);
+
+        // Single-character operators
+        auto const ch = Peek();
+        Advance();
+        return ScanSingleCharOperator(ch, loc);
+    }
 };
 
 } // namespace
 
-auto Tokenizer::tokenize(std::string_view source, std::filesystem::path const& filePath)
+auto Tokenizer::Tokenize(std::string_view source, std::filesystem::path const& filePath)
     -> std::expected<std::vector<Token>, TokenizerError>
 {
     Scanner scanner(source, filePath);
-    return scanner.tokenize();
+    return scanner.Tokenize();
 }
 
-auto Tokenizer::tokenizeFile(std::filesystem::path const& filePath, InputEncoding encoding)
+auto Tokenizer::TokenizeFile(std::filesystem::path const& filePath, InputEncoding encoding)
     -> std::expected<std::vector<Token>, TokenizerError>
 {
     std::ifstream file(filePath, std::ios::binary);
@@ -858,14 +812,14 @@ auto Tokenizer::tokenizeFile(std::filesystem::path const& filePath, InputEncodin
     ss << file.rdbuf();
     auto const rawContent = ss.str();
 
-    auto utf8Result = convertToUtf8(rawContent, encoding);
+    auto utf8Result = ConvertToUtf8(rawContent, encoding);
     if (!utf8Result)
         return std::unexpected(TokenizerError{
             .message = std::format("Encoding error in {}: {}", filePath.string(), utf8Result.error().message),
             .location = {.filePath = filePath, .line = 0, .column = 0}});
 
     auto const& utf8Content = *utf8Result;
-    return tokenize(utf8Content, filePath);
+    return Tokenize(utf8Content, filePath);
 }
 
 } // namespace codedup

@@ -19,10 +19,12 @@
 #include <expected>
 #include <filesystem>
 #include <iostream>
+#include <optional>
 #include <print>
 #include <ranges>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <vector>
 
 namespace
@@ -49,7 +51,7 @@ struct CliOptions
     std::string diffBase;                                           ///< Git ref to diff against (enables diff mode).
 };
 
-void printUsage(FILE* out)
+void PrintUsage(FILE* out)
 {
     std::println(out,
                  "Usage: codedupdetector [OPTIONS] <directory>\n"
@@ -71,133 +73,251 @@ void printUsage(FILE* out)
                  "  --version                   Show version");
 }
 
-auto parseArgs(int argc, char* argv[]) -> std::expected<CliOptions, std::string>
+// ---------------------------------------------------------------------------
+// ParseArgs helper functions
+// ---------------------------------------------------------------------------
+
+/// @brief Parses a double-valued option from the command-line argument list.
+/// @param argc Total argument count.
+/// @param argv Argument vector.
+/// @param i Current argument index (advanced past the value on success).
+/// @param name Display name of the option for error messages (e.g. "--threshold").
+/// @param min Minimum allowed value (inclusive).
+/// @param max Maximum allowed value (inclusive).
+/// @param rangeError Error message to use when the value is out of range.
+/// @return The parsed double value, or an error string.
+auto ParseDoubleOption(int argc, char* argv[], int& i, std::string_view name, double min, double max,
+                       std::string_view rangeError) -> std::expected<double, std::string>
+{
+    if (++i >= argc)
+        return std::unexpected(std::format("Missing value for {}", name));
+    auto const value = std::stod(argv[i]);
+    if (value < min || value > max)
+        return std::unexpected(std::string(rangeError));
+    return value;
+}
+
+/// @brief Parses a size_t-valued option from the command-line argument list.
+/// @param argc Total argument count.
+/// @param argv Argument vector.
+/// @param i Current argument index (advanced past the value on success).
+/// @param name Display name of the option for error messages.
+/// @return The parsed size_t value, or an error string.
+auto ParseSizeOption(int argc, char* argv[], int& i, std::string_view name) -> std::expected<size_t, std::string>
+{
+    if (++i >= argc)
+        return std::unexpected(std::format("Missing value for {}", name));
+    return static_cast<size_t>(std::stoul(argv[i]));
+}
+
+/// @brief Parses a string-valued option from the command-line argument list.
+/// @param argc Total argument count.
+/// @param argv Argument vector.
+/// @param i Current argument index (advanced past the value on success).
+/// @param name Display name of the option for error messages.
+/// @return The parsed string value, or an error string.
+auto ParseStringOption(int argc, char* argv[], int& i, std::string_view name) -> std::expected<std::string, std::string>
+{
+    if (++i >= argc)
+        return std::unexpected(std::format("Missing value for {}", name));
+    return std::string(argv[i]);
+}
+
+/// @brief Parses the --theme option value into a ColorTheme enum.
+/// @param argc Total argument count.
+/// @param argv Argument vector.
+/// @param i Current argument index (advanced past the value on success).
+/// @return The parsed ColorTheme value, or an error string.
+auto ParseThemeOption(int argc, char* argv[], int& i) -> std::expected<codedup::ColorTheme, std::string>
+{
+    if (++i >= argc)
+        return std::unexpected(std::string("Missing value for --theme"));
+    auto const val = std::string_view(argv[i]);
+    if (val == "dark")
+        return codedup::ColorTheme::Dark;
+    if (val == "light")
+        return codedup::ColorTheme::Light;
+    if (val == "auto")
+        return codedup::ColorTheme::Auto;
+    return std::unexpected(std::format("Unknown theme: {}", val));
+}
+
+/// @brief Parses a comma-separated list of file extensions from the command-line.
+/// @param argc Total argument count.
+/// @param argv Argument vector.
+/// @param i Current argument index (advanced past the value on success).
+/// @return A vector of extension strings (each prefixed with '.'), or an error string.
+auto ParseExtensionsOption(int argc, char* argv[], int& i) -> std::expected<std::vector<std::string>, std::string>
+{
+    if (++i >= argc)
+        return std::unexpected(std::string("Missing value for --extensions"));
+    auto const list = std::string(argv[i]);
+    std::vector<std::string> extensions;
+    size_t start = 0;
+    while (start < list.size())
+    {
+        auto const end = list.find(',', start);
+        auto ext = list.substr(start, end == std::string::npos ? end : end - start);
+        if (!ext.empty() && ext[0] != '.')
+            ext.insert(0, ".");
+        extensions.push_back(std::move(ext));
+        start = (end == std::string::npos) ? list.size() : end + 1;
+    }
+    return extensions;
+}
+
+/// @brief Parses the --encoding option value into an InputEncoding enum.
+/// @param argc Total argument count.
+/// @param argv Argument vector.
+/// @param i Current argument index (advanced past the value on success).
+/// @return The parsed InputEncoding value, or an error string.
+auto ParseEncodingOption(int argc, char* argv[], int& i) -> std::expected<codedup::InputEncoding, std::string>
+{
+    if (++i >= argc)
+        return std::unexpected(std::string("Missing value for --encoding"));
+    auto const encResult = codedup::ParseEncodingName(argv[i]);
+    if (!encResult)
+        return std::unexpected(encResult.error().message);
+    return *encResult;
+}
+
+/// @brief Processes a single command-line argument, updating the options struct.
+///
+/// Returns std::nullopt on success (continue parsing), or a CliOptions / error
+/// to return immediately from ParseArgs.
+///
+/// @param argc Total argument count.
+/// @param argv Argument vector.
+/// @param i Current argument index (may be advanced for options with values).
+/// @param opts The options struct to populate.
+/// @return std::nullopt to continue parsing, or a final result to return.
+auto ProcessArg(int argc, char* argv[], int& i, CliOptions& opts)
+    -> std::optional<std::expected<CliOptions, std::string>>
+{
+    auto const arg = std::string_view(argv[i]);
+
+    if (arg == "-h" || arg == "--help")
+    {
+        opts.showHelp = true;
+        return opts;
+    }
+    if (arg == "--version")
+    {
+        opts.showVersion = true;
+        return opts;
+    }
+    if (arg == "-t" || arg == "--threshold")
+        return ParseDoubleOption(argc, argv, i, "--threshold", 0.0, 1.0, "Threshold must be between 0.0 and 1.0")
+            .transform(
+                [&](double v) -> CliOptions
+                {
+                    opts.threshold = v;
+                    return opts;
+                });
+    if (arg == "-m" || arg == "--min-tokens")
+        return ParseSizeOption(argc, argv, i, "--min-tokens")
+            .transform(
+                [&](size_t v) -> CliOptions
+                {
+                    opts.minTokens = v;
+                    return opts;
+                });
+    if (arg == "--text-sensitivity")
+        return ParseDoubleOption(argc, argv, i, "--text-sensitivity", 0.0, 1.0,
+                                 "Text sensitivity must be between 0.0 and 1.0")
+            .transform(
+                [&](double v) -> CliOptions
+                {
+                    opts.textSensitivity = v;
+                    return opts;
+                });
+    if (arg == "--diff-base")
+        return ParseStringOption(argc, argv, i, "--diff-base")
+            .transform(
+                [&](std::string v) -> CliOptions
+                {
+                    opts.diffBase = std::move(v);
+                    return opts;
+                });
+    if (arg == "--no-color")
+    {
+        opts.useColor = false;
+        return std::nullopt;
+    }
+    if (arg == "--no-source")
+    {
+        opts.showSource = false;
+        return std::nullopt;
+    }
+    if (arg == "--theme")
+        return ParseThemeOption(argc, argv, i)
+            .transform(
+                [&](codedup::ColorTheme v) -> CliOptions
+                {
+                    opts.theme = v;
+                    return opts;
+                });
+    if (arg == "-e" || arg == "--extensions")
+        return ParseExtensionsOption(argc, argv, i)
+            .transform(
+                [&](std::vector<std::string> v) -> CliOptions
+                {
+                    opts.extensions = std::move(v);
+                    return opts;
+                });
+    if (arg == "--encoding")
+        return ParseEncodingOption(argc, argv, i)
+            .transform(
+                [&](codedup::InputEncoding v) -> CliOptions
+                {
+                    opts.encoding = v;
+                    return opts;
+                });
+    if (arg == "--intra")
+    {
+        opts.detectIntraClones = true;
+        return std::nullopt;
+    }
+    if (arg == "--no-intra")
+    {
+        opts.detectIntraClones = false;
+        return std::nullopt;
+    }
+    if (arg == "-v" || arg == "--verbose")
+    {
+        opts.verbose = true;
+        return std::nullopt;
+    }
+    if (arg.starts_with("-"))
+        return std::expected<CliOptions, std::string>(std::unexpected(std::format("Unknown option: {}", arg)));
+
+    // Positional argument: directory
+    if (!opts.directory.empty())
+        return std::expected<CliOptions, std::string>(std::unexpected(std::string("Multiple directories specified")));
+    opts.directory = arg;
+    return std::nullopt;
+}
+
+/// @brief Parses command-line arguments into a CliOptions struct.
+/// @param argc Argument count from main().
+/// @param argv Argument vector from main().
+/// @return Parsed options on success, or an error string.
+auto ParseArgs(int argc, char* argv[]) -> std::expected<CliOptions, std::string>
 {
     CliOptions opts;
 
     for (int i = 1; i < argc; ++i)
     {
-        auto const arg = std::string_view(argv[i]);
-
-        if (arg == "-h" || arg == "--help")
+        auto result = ProcessArg(argc, argv, i, opts);
+        if (result.has_value())
         {
-            opts.showHelp = true;
-            return opts;
+            // For value-bearing options that succeeded, we just continue parsing.
+            // Only return early for errors, --help, or --version.
+            if (!result->has_value())
+                return std::unexpected(std::move(result->error()));
+            if (opts.showHelp || opts.showVersion)
+                return opts;
         }
-        if (arg == "--version")
-        {
-            opts.showVersion = true;
-            return opts;
-        }
-        if (arg == "-t" || arg == "--threshold")
-        {
-            if (++i >= argc)
-                return std::unexpected("Missing value for --threshold");
-            opts.threshold = std::stod(argv[i]);
-            if (opts.threshold < 0.0 || opts.threshold > 1.0)
-                return std::unexpected("Threshold must be between 0.0 and 1.0");
-            continue;
-        }
-        if (arg == "-m" || arg == "--min-tokens")
-        {
-            if (++i >= argc)
-                return std::unexpected("Missing value for --min-tokens");
-            opts.minTokens = static_cast<size_t>(std::stoul(argv[i]));
-            continue;
-        }
-        if (arg == "--text-sensitivity")
-        {
-            if (++i >= argc)
-                return std::unexpected("Missing value for --text-sensitivity");
-            opts.textSensitivity = std::stod(argv[i]);
-            if (opts.textSensitivity < 0.0 || opts.textSensitivity > 1.0)
-                return std::unexpected("Text sensitivity must be between 0.0 and 1.0");
-            continue;
-        }
-        if (arg == "--diff-base")
-        {
-            if (++i >= argc)
-                return std::unexpected("Missing value for --diff-base");
-            opts.diffBase = argv[i];
-            continue;
-        }
-        if (arg == "--no-color")
-        {
-            opts.useColor = false;
-            continue;
-        }
-        if (arg == "--no-source")
-        {
-            opts.showSource = false;
-            continue;
-        }
-        if (arg == "--theme")
-        {
-            if (++i >= argc)
-                return std::unexpected("Missing value for --theme");
-            auto const val = std::string_view(argv[i]);
-            if (val == "dark")
-                opts.theme = codedup::ColorTheme::Dark;
-            else if (val == "light")
-                opts.theme = codedup::ColorTheme::Light;
-            else if (val == "auto")
-                opts.theme = codedup::ColorTheme::Auto;
-            else
-                return std::unexpected(std::format("Unknown theme: {}", val));
-            continue;
-        }
-        if (arg == "-e" || arg == "--extensions")
-        {
-            if (++i >= argc)
-                return std::unexpected("Missing value for --extensions");
-            // Parse comma-separated list
-            auto const list = std::string(argv[i]);
-            size_t start = 0;
-            while (start < list.size())
-            {
-                auto const end = list.find(',', start);
-                auto ext = list.substr(start, end == std::string::npos ? end : end - start);
-                if (!ext.empty() && ext[0] != '.')
-                    ext = "." + ext;
-                opts.extensions.push_back(std::move(ext));
-                start = (end == std::string::npos) ? list.size() : end + 1;
-            }
-            continue;
-        }
-        if (arg == "--encoding")
-        {
-            if (++i >= argc)
-                return std::unexpected("Missing value for --encoding");
-            auto const encResult = codedup::parseEncodingName(argv[i]);
-            if (!encResult)
-                return std::unexpected(encResult.error().message);
-            opts.encoding = *encResult;
-            continue;
-        }
-        if (arg == "--intra")
-        {
-            opts.detectIntraClones = true;
-            continue;
-        }
-        if (arg == "--no-intra")
-        {
-            opts.detectIntraClones = false;
-            continue;
-        }
-        if (arg == "-v" || arg == "--verbose")
-        {
-            opts.verbose = true;
-            continue;
-        }
-        if (arg.starts_with("-"))
-        {
-            return std::unexpected(std::format("Unknown option: {}", arg));
-        }
-
-        // Positional argument: directory
-        if (!opts.directory.empty())
-            return std::unexpected("Multiple directories specified");
-        opts.directory = arg;
     }
 
     if (!opts.showHelp && !opts.showVersion && opts.directory.empty())
@@ -206,90 +326,101 @@ auto parseArgs(int argc, char* argv[]) -> std::expected<CliOptions, std::string>
     return opts;
 }
 
-} // namespace
+// ---------------------------------------------------------------------------
+// main() pipeline stage helpers
+// ---------------------------------------------------------------------------
 
-int main(int argc, char* argv[])
+/// @brief Runs git diff setup when diff mode is active (step 0).
+///
+/// Executes git diff against the specified base ref and parses the output
+/// into structured diff data. Prints progress and results to stderr.
+///
+/// @param opts The parsed CLI options.
+/// @return The parsed diff result on success, or an exit code on failure.
+///         Returns an empty DiffResult if diff mode is not active.
+auto RunDiffSetup(CliOptions const& opts) -> std::expected<codedup::DiffResult, int>
 {
-    auto const optsResult = parseArgs(argc, argv);
-    if (!optsResult)
+    if (opts.diffBase.empty())
+        return codedup::DiffResult{};
+
+    if (opts.verbose)
+        std::println(stderr, "Running git diff against {}...", opts.diffBase);
+
+    auto const projectRoot = std::filesystem::weakly_canonical(opts.directory);
+    auto const diffOutput = cli::GitDiffParser::RunGitDiff(projectRoot, opts.diffBase);
+    if (!diffOutput)
     {
-        std::println(stderr, "Error: {}\n", optsResult.error());
-        printUsage(stderr);
-        return 2;
+        std::println(stderr, "Error: {}", diffOutput.error().message);
+        return std::unexpected(2);
     }
 
-    auto const& opts = *optsResult;
+    auto const& extensions = opts.extensions.empty() ? codedup::FileScanner::DefaultExtensions() : opts.extensions;
+    auto diffResult = cli::GitDiffParser::ParseDiffOutput(*diffOutput, extensions);
 
-    if (opts.showHelp)
+    if (diffResult.empty())
     {
-        printUsage(stdout);
-        return 0;
+        std::println("No C++ files changed relative to {}.", opts.diffBase);
+        return std::unexpected(0);
     }
 
-    if (opts.showVersion)
+    std::println(stderr, "Checking for duplication in changes relative to `{}`...", opts.diffBase);
+
+    if (opts.verbose)
     {
-        std::println("codedupdetector {}", versionString);
-        return 0;
+        for (auto const& fc : diffResult)
+            std::println(stderr, "  Changed: {} ({} hunks)", fc.filePath.string(), fc.changedRanges.size());
     }
 
-    auto const diffMode = !opts.diffBase.empty();
+    return diffResult;
+}
 
-    // Step 0: Parse git diff if in diff mode.
-    codedup::DiffResult diffResult;
-    if (diffMode)
-    {
-        if (opts.verbose)
-            std::println(stderr, "Running git diff against {}...", opts.diffBase);
-
-        auto const projectRoot = std::filesystem::weakly_canonical(opts.directory);
-        auto const diffOutput = cli::GitDiffParser::runGitDiff(projectRoot, opts.diffBase);
-        if (!diffOutput)
-        {
-            std::println(stderr, "Error: {}", diffOutput.error().message);
-            return 2;
-        }
-
-        auto const& extensions = opts.extensions.empty() ? codedup::FileScanner::defaultExtensions() : opts.extensions;
-        diffResult = cli::GitDiffParser::parseDiffOutput(*diffOutput, extensions);
-
-        if (diffResult.empty())
-        {
-            std::println("No C++ files changed relative to {}.", opts.diffBase);
-            return 0;
-        }
-
-        std::println(stderr, "Checking for duplication in changes relative to `{}`...", opts.diffBase);
-
-        if (opts.verbose)
-        {
-            for (auto const& fc : diffResult)
-                std::println(stderr, "  Changed: {} ({} hunks)", fc.filePath.string(), fc.changedRanges.size());
-        }
-    }
-
-    codedup::PerformanceTiming timing;
+/// @brief Scans the directory for source files (step 1).
+///
+/// Uses the extensions from CLI options or the default set.
+/// Records the scanning duration into the provided timing struct.
+///
+/// @param opts The parsed CLI options.
+/// @param timing Performance timing struct to record scan duration.
+/// @return A vector of source file paths on success, or an exit code on failure.
+auto ScanFiles(CliOptions const& opts, codedup::PerformanceTiming& timing)
+    -> std::expected<std::vector<std::filesystem::path>, int>
+{
     using Clock = std::chrono::steady_clock;
 
-    // Step 1: Scan files
     if (opts.verbose)
         std::println(stderr, "Scanning directory: {}", opts.directory.string());
 
     auto const scanStart = Clock::now();
-    auto const& extensions = opts.extensions.empty() ? codedup::FileScanner::defaultExtensions() : opts.extensions;
+    auto const& extensions = opts.extensions.empty() ? codedup::FileScanner::DefaultExtensions() : opts.extensions;
 
-    auto const filesResult = codedup::FileScanner::scan(opts.directory, extensions);
+    auto const filesResult = codedup::FileScanner::Scan(opts.directory, extensions);
     timing.scanning = Clock::now() - scanStart;
     if (!filesResult)
     {
         std::println(stderr, "Error: {}", filesResult.error().message);
-        return 2;
+        return std::unexpected(2);
     }
 
-    auto const& files = *filesResult;
     if (opts.verbose)
-        std::println(stderr, "Found {} source files", files.size());
+        std::println(stderr, "Found {} source files", filesResult->size());
 
-    // Step 2: Tokenize all files
+    return *filesResult;
+}
+
+/// @brief Tokenizes all source files (step 2).
+///
+/// Each file is tokenized independently. Files that fail to tokenize produce
+/// a warning on stderr and contribute an empty token vector.
+///
+/// @param files The source file paths to tokenize.
+/// @param opts The parsed CLI options (for encoding and verbosity).
+/// @param timing Performance timing struct to record tokenization duration.
+/// @return A vector of token vectors, one per file (in the same order as files).
+auto TokenizeFiles(std::vector<std::filesystem::path> const& files, CliOptions const& opts,
+                   codedup::PerformanceTiming& timing) -> std::vector<std::vector<codedup::Token>>
+{
+    using Clock = std::chrono::steady_clock;
+
     auto const tokenizeStart = Clock::now();
     std::vector<std::vector<codedup::Token>> allTokens;
     allTokens.reserve(files.size());
@@ -299,7 +430,7 @@ int main(int argc, char* argv[])
         if (opts.verbose)
             std::println(stderr, "Tokenizing: {}", file.string());
 
-        auto tokensResult = codedup::Tokenizer::tokenizeFile(file, opts.encoding);
+        auto tokensResult = codedup::Tokenizer::TokenizeFile(file, opts.encoding);
         if (!tokensResult)
         {
             std::println(stderr, "Warning: Failed to tokenize {}: {}", file.string(), tokensResult.error().message);
@@ -310,7 +441,26 @@ int main(int argc, char* argv[])
     }
     timing.tokenizing = Clock::now() - tokenizeStart;
 
-    // Step 3: Normalize and extract blocks
+    return allTokens;
+}
+
+/// @brief Normalizes tokens and extracts code blocks (step 3).
+///
+/// For each non-empty token vector, normalizes the tokens structurally (and
+/// optionally text-preserving) and extracts function-level code blocks.
+///
+/// @param allTokens Token vectors for all files.
+/// @param files Source file paths (for verbose output).
+/// @param opts The parsed CLI options (for minTokens, textSensitivity, verbosity).
+/// @param timing Performance timing struct to record normalization duration.
+/// @return A tuple of (all extracted code blocks, block-to-file-index mapping).
+auto ExtractBlocks(std::vector<std::vector<codedup::Token>> const& allTokens,
+                   std::vector<std::filesystem::path> const& files, CliOptions const& opts,
+                   codedup::PerformanceTiming& timing)
+    -> std::tuple<std::vector<codedup::CodeBlock>, std::vector<size_t>>
+{
+    using Clock = std::chrono::steady_clock;
+
     auto const normalizeStart = Clock::now();
     codedup::TokenNormalizer normalizer;
     codedup::CodeBlockExtractor extractor({.minTokens = opts.minTokens});
@@ -325,10 +475,10 @@ int main(int argc, char* argv[])
         if (allTokens[fi].empty())
             continue;
 
-        auto normalized = normalizer.normalize(allTokens[fi]);
-        auto textPreserving = useTextSensitivity ? normalizer.normalizeTextPreserving(allTokens[fi])
+        auto normalized = normalizer.Normalize(allTokens[fi]);
+        auto textPreserving = useTextSensitivity ? normalizer.NormalizeTextPreserving(allTokens[fi])
                                                  : std::vector<codedup::NormalizedToken>{};
-        auto blocks = extractor.extract(allTokens[fi], normalized, textPreserving);
+        auto blocks = extractor.Extract(allTokens[fi], normalized, textPreserving);
 
         if (opts.verbose && !blocks.empty())
             std::println(stderr, "  {} blocks from {}", blocks.size(), files[fi].string());
@@ -344,7 +494,60 @@ int main(int argc, char* argv[])
     if (opts.verbose)
         std::println(stderr, "Extracted {} code blocks total", allBlocks.size());
 
+    return {std::move(allBlocks), std::move(blockToFileIndex)};
+}
+
+} // namespace
+
+int main(int argc, char* argv[])
+{
+    auto const optsResult = ParseArgs(argc, argv);
+    if (!optsResult)
+    {
+        std::println(stderr, "Error: {}\n", optsResult.error());
+        PrintUsage(stderr);
+        return 2;
+    }
+
+    auto const& opts = *optsResult;
+
+    if (opts.showHelp)
+    {
+        PrintUsage(stdout);
+        return 0;
+    }
+
+    if (opts.showVersion)
+    {
+        std::println("codedupdetector {}", versionString);
+        return 0;
+    }
+
+    auto const diffMode = !opts.diffBase.empty();
+
+    // Step 0: Parse git diff if in diff mode.
+    auto const diffSetupResult = RunDiffSetup(opts);
+    if (!diffSetupResult)
+        return diffSetupResult.error();
+    auto const& diffResult = *diffSetupResult;
+
+    codedup::PerformanceTiming timing;
+
+    // Step 1: Scan files
+    auto const filesResult = ScanFiles(opts, timing);
+    if (!filesResult)
+        return filesResult.error();
+    auto const& files = *filesResult;
+
+    // Step 2: Tokenize all files
+    auto allTokens = TokenizeFiles(files, opts, timing);
+
+    // Step 3: Normalize and extract blocks
+    auto [allBlocks, blockToFileIndex] = ExtractBlocks(allTokens, files, opts, timing);
+
     // Step 4: Detect clones
+    using Clock = std::chrono::steady_clock;
+
     auto const detectStart = Clock::now();
     codedup::CloneDetector detector({
         .similarityThreshold = opts.threshold,
@@ -352,7 +555,7 @@ int main(int argc, char* argv[])
         .textSensitivity = opts.textSensitivity,
     });
 
-    auto groups = detector.detect(allBlocks);
+    auto groups = detector.Detect(allBlocks);
     timing.cloneDetection = Clock::now() - detectStart;
 
     std::ranges::sort(groups,
@@ -379,7 +582,7 @@ int main(int argc, char* argv[])
             .textSensitivity = opts.textSensitivity,
         });
 
-        intraResults = intraDetector.detect(allBlocks);
+        intraResults = intraDetector.Detect(allBlocks);
         timing.intraDetection = Clock::now() - intraStart;
 
         std::ranges::sort(intraResults,
@@ -407,13 +610,13 @@ int main(int argc, char* argv[])
     if (diffMode)
     {
         auto const projectRoot = std::filesystem::weakly_canonical(opts.directory);
-        auto const changedBlocks = codedup::DiffFilter::findChangedBlocks(allBlocks, diffResult, projectRoot);
+        auto const changedBlocks = codedup::DiffFilter::FindChangedBlocks(allBlocks, diffResult, projectRoot);
 
         if (opts.verbose)
             std::println(stderr, "Found {} code blocks overlapping with changed lines", changedBlocks.size());
 
-        groups = codedup::DiffFilter::filterCloneGroups(groups, changedBlocks);
-        intraResults = codedup::DiffFilter::filterIntraResults(intraResults, changedBlocks);
+        groups = codedup::DiffFilter::FilterCloneGroups(groups, changedBlocks);
+        intraResults = codedup::DiffFilter::FilterIntraResults(intraResults, changedBlocks);
     }
 
     // Step 5: Report results
@@ -424,10 +627,10 @@ int main(int argc, char* argv[])
     });
 
     std::string output;
-    reporter.report(output, groups, allBlocks, allTokens, blockToFileIndex);
+    reporter.Report(output, groups, allBlocks, allTokens, blockToFileIndex);
 
     if (!intraResults.empty())
-        reporter.reportIntraClones(output, intraResults, allBlocks, allTokens, blockToFileIndex);
+        reporter.ReportIntraClones(output, intraResults, allBlocks, allTokens, blockToFileIndex);
 
     size_t totalIntraPairs = 0;
     for (auto const& r : intraResults)
@@ -447,7 +650,7 @@ int main(int argc, char* argv[])
 
     auto const totalIntraFunctions = intraResults.size();
 
-    reporter.reportSummary(output, {
+    reporter.ReportSummary(output, {
                                        .totalFiles = files.size(),
                                        .totalBlocks = allBlocks.size(),
                                        .totalGroups = groups.size(),

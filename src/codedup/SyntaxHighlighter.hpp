@@ -11,7 +11,7 @@ namespace codedup
 {
 
 /// @brief Color theme selection for terminal output.
-enum class ColorTheme
+enum class ColorTheme : uint8_t
 {
     Dark,  ///< Optimized for dark terminal backgrounds.
     Light, ///< Optimized for light terminal backgrounds.
@@ -42,7 +42,7 @@ struct ThemeColors
 };
 
 /// @brief Returns the color scheme for the given theme.
-[[nodiscard]] inline auto themeColors(ColorTheme theme) -> ThemeColors
+[[nodiscard]] inline auto GetThemeColors(ColorTheme theme) -> ThemeColors
 {
     auto const resolvedTheme = [&]() -> ColorTheme
     {
@@ -66,43 +66,43 @@ struct ThemeColors
     if (resolvedTheme == ColorTheme::Dark)
     {
         return ThemeColors{
-            .keywords = {86, 156, 214},      // #569CD6 — bright blue
-            .identifiers = {156, 220, 254},  // #9CDCFE — light cyan
-            .strings = {206, 145, 120},      // #CE9178 — warm orange
-            .chars = {206, 145, 120},        // #CE9178 — warm orange
-            .numbers = {181, 206, 168},      // #B5CEA8 — light green
-            .comments = {106, 153, 85},      // #6A9955 — muted green
-            .preprocessor = {197, 134, 192}, // #C586C0 — purple
-            .operators = {212, 212, 212},    // #D4D4D4 — light gray
-            .punctuation = {212, 212, 212},  // #D4D4D4 — light gray
-            .defaultText = {212, 212, 212},  // #D4D4D4 — light gray
+            .keywords = {.r = 86, .g = 156, .b = 214},      // #569CD6 — bright blue
+            .identifiers = {.r = 156, .g = 220, .b = 254},  // #9CDCFE — light cyan
+            .strings = {.r = 206, .g = 145, .b = 120},      // #CE9178 — warm orange
+            .chars = {.r = 206, .g = 145, .b = 120},        // #CE9178 — warm orange
+            .numbers = {.r = 181, .g = 206, .b = 168},      // #B5CEA8 — light green
+            .comments = {.r = 106, .g = 153, .b = 85},      // #6A9955 — muted green
+            .preprocessor = {.r = 197, .g = 134, .b = 192}, // #C586C0 — purple
+            .operators = {.r = 212, .g = 212, .b = 212},    // #D4D4D4 — light gray
+            .punctuation = {.r = 212, .g = 212, .b = 212},  // #D4D4D4 — light gray
+            .defaultText = {.r = 212, .g = 212, .b = 212},  // #D4D4D4 — light gray
         };
     }
 
     // Light theme
     return ThemeColors{
-        .keywords = {0, 0, 255},       // #0000FF — dark blue
-        .identifiers = {0, 0, 0},      // #000000 — black
-        .strings = {163, 21, 21},      // #A31515 — dark red
-        .chars = {163, 21, 21},        // #A31515 — dark red
-        .numbers = {9, 134, 88},       // #098658 — dark magenta/green
-        .comments = {0, 128, 0},       // #008000 — dark green
-        .preprocessor = {175, 0, 219}, // #AF00DB — dark purple
-        .operators = {0, 0, 0},        // #000000 — black
-        .punctuation = {0, 0, 0},      // #000000 — black
-        .defaultText = {0, 0, 0},      // #000000 — black
+        .keywords = {.r = 0, .g = 0, .b = 255},       // #0000FF — dark blue
+        .identifiers = {.r = 0, .g = 0, .b = 0},      // #000000 — black
+        .strings = {.r = 163, .g = 21, .b = 21},      // #A31515 — dark red
+        .chars = {.r = 163, .g = 21, .b = 21},        // #A31515 — dark red
+        .numbers = {.r = 9, .g = 134, .b = 88},       // #098658 — dark magenta/green
+        .comments = {.r = 0, .g = 128, .b = 0},       // #008000 — dark green
+        .preprocessor = {.r = 175, .g = 0, .b = 219}, // #AF00DB — dark purple
+        .operators = {.r = 0, .g = 0, .b = 0},        // #000000 — black
+        .punctuation = {.r = 0, .g = 0, .b = 0},      // #000000 — black
+        .defaultText = {.r = 0, .g = 0, .b = 0},      // #000000 — black
     };
 }
 
 /// @brief Returns the ANSI truecolor escape sequence for the given token type and theme.
-[[nodiscard]] inline auto colorForTokenType(TokenType type, ColorTheme theme) -> std::string
+[[nodiscard]] inline auto ColorForTokenType(TokenType type, ColorTheme theme) -> std::string
 {
-    auto const colors = themeColors(theme);
+    auto const colors = GetThemeColors(theme);
 
     auto const colorToAnsi = [](RGB const& c) -> std::string
     { return std::format("\033[38;2;{};{};{}m", c.r, c.g, c.b); };
 
-    if (isKeyword(type))
+    if (IsKeyword(type))
         return colorToAnsi(colors.keywords);
     if (type == TokenType::Identifier)
         return colorToAnsi(colors.identifiers);
@@ -112,11 +112,11 @@ struct ThemeColors
         return colorToAnsi(colors.chars);
     if (type == TokenType::NumericLiteral)
         return colorToAnsi(colors.numbers);
-    if (isComment(type))
+    if (IsComment(type))
         return colorToAnsi(colors.comments);
     if (type == TokenType::PreprocessorDirective)
         return colorToAnsi(colors.preprocessor);
-    if (isOperatorOrPunctuation(type))
+    if (IsOperatorOrPunctuation(type))
         return colorToAnsi(colors.operators);
 
     return colorToAnsi(colors.defaultText);
@@ -129,7 +129,7 @@ struct ThemeColors
 /// the reset sequence at the end of each token clears both fg and bg.
 /// @param theme The active color theme.
 /// @return ANSI escape sequence for the background color.
-[[nodiscard]] inline auto diffHighlightBg(ColorTheme theme) -> std::string
+[[nodiscard]] inline auto DiffHighlightBg(ColorTheme theme) -> std::string
 {
     auto const resolvedTheme = [&]() -> ColorTheme
     {

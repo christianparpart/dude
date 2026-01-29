@@ -6,7 +6,8 @@
 namespace codedup
 {
 
-auto TokenNormalizer::normalize(std::vector<Token> const& tokens) -> std::vector<NormalizedToken>
+// NOLINTNEXTLINE(readability-convert-member-functions-to-static)
+auto TokenNormalizer::Normalize(std::vector<Token> const& tokens) -> std::vector<NormalizedToken>
 {
     std::vector<NormalizedToken> result;
     result.reserve(tokens.size());
@@ -16,20 +17,20 @@ auto TokenNormalizer::normalize(std::vector<Token> const& tokens) -> std::vector
         auto const& token = tokens[i];
 
         // Strip comments and preprocessor directives
-        if (isComment(token.type) || token.type == TokenType::PreprocessorDirective ||
+        if (IsComment(token.type) || token.type == TokenType::PreprocessorDirective ||
             token.type == TokenType::EndOfFile)
         {
             continue;
         }
 
-        auto const id = assignId(token.type);
+        auto const id = AssignId(token.type);
         result.push_back(NormalizedToken{.id = id, .originalIndex = i});
     }
 
     return result;
 }
 
-auto TokenNormalizer::normalizeTextPreserving(std::vector<Token> const& tokens) -> std::vector<NormalizedToken>
+auto TokenNormalizer::NormalizeTextPreserving(std::vector<Token> const& tokens) -> std::vector<NormalizedToken>
 {
     std::vector<NormalizedToken> result;
     result.reserve(tokens.size());
@@ -39,23 +40,23 @@ auto TokenNormalizer::normalizeTextPreserving(std::vector<Token> const& tokens) 
         auto const& token = tokens[i];
 
         // Strip comments and preprocessor directives (same as structural mode)
-        if (isComment(token.type) || token.type == TokenType::PreprocessorDirective ||
+        if (IsComment(token.type) || token.type == TokenType::PreprocessorDirective ||
             token.type == TokenType::EndOfFile)
         {
             continue;
         }
 
-        auto const id = assignTextPreservingId(token);
+        auto const id = AssignTextPreservingId(token);
         result.push_back(NormalizedToken{.id = id, .originalIndex = i});
     }
 
     return result;
 }
 
-auto TokenNormalizer::assignTextPreservingId(Token const& token) -> NormalizedTokenId
+auto TokenNormalizer::AssignTextPreservingId(Token const& token) -> NormalizedTokenId
 {
     // Keywords and operators get the same deterministic IDs as structural mode
-    if (token.type != TokenType::Identifier && !isLiteral(token.type))
+    if (token.type != TokenType::Identifier && !IsLiteral(token.type))
         return static_cast<NormalizedTokenId>(token.type);
 
     // For identifiers and literals, assign a unique ID per unique text
@@ -69,7 +70,7 @@ auto TokenNormalizer::assignTextPreservingId(Token const& token) -> NormalizedTo
     return it->second;
 }
 
-auto TokenNormalizer::assignId(TokenType type) -> NormalizedTokenId
+auto TokenNormalizer::AssignId(TokenType type) -> NormalizedTokenId
 {
     // Generic IDs for literals and identifiers
     switch (type)

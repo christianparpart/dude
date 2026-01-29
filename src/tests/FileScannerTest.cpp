@@ -22,7 +22,12 @@ public:
 
     ~TempDir() { std::filesystem::remove_all(_path); }
 
-    void createFile(std::filesystem::path const& relativePath) const
+    TempDir(TempDir const&) = delete;
+    TempDir& operator=(TempDir const&) = delete;
+    TempDir(TempDir&&) = delete;
+    TempDir& operator=(TempDir&&) = delete;
+
+    void CreateFile(std::filesystem::path const& relativePath) const
     {
         auto const fullPath = _path / relativePath;
         std::filesystem::create_directories(fullPath.parent_path());
@@ -30,7 +35,7 @@ public:
         ofs << "// test file\n";
     }
 
-    [[nodiscard]] auto path() const -> std::filesystem::path const& { return _path; }
+    [[nodiscard]] auto Path() const -> std::filesystem::path const& { return _path; }
 
 private:
     std::filesystem::path _path;
@@ -41,12 +46,12 @@ private:
 TEST_CASE("FileScanner.ExtensionFiltering", "[scanner]")
 {
     TempDir dir;
-    dir.createFile("test.cpp");
-    dir.createFile("test.hpp");
-    dir.createFile("test.txt");
-    dir.createFile("test.py");
+    dir.CreateFile("test.cpp");
+    dir.CreateFile("test.hpp");
+    dir.CreateFile("test.txt");
+    dir.CreateFile("test.py");
 
-    auto result = FileScanner::scan(dir.path());
+    auto result = FileScanner::Scan(dir.Path());
     REQUIRE(result.has_value());
 
     CHECK(result->size() == 2); // Only .cpp and .hpp
@@ -55,11 +60,11 @@ TEST_CASE("FileScanner.ExtensionFiltering", "[scanner]")
 TEST_CASE("FileScanner.RecursiveScanning", "[scanner]")
 {
     TempDir dir;
-    dir.createFile("a.cpp");
-    dir.createFile("sub/b.cpp");
-    dir.createFile("sub/deep/c.hpp");
+    dir.CreateFile("a.cpp");
+    dir.CreateFile("sub/b.cpp");
+    dir.CreateFile("sub/deep/c.hpp");
 
-    auto result = FileScanner::scan(dir.path());
+    auto result = FileScanner::Scan(dir.Path());
     REQUIRE(result.has_value());
 
     CHECK(result->size() == 3);
@@ -68,11 +73,11 @@ TEST_CASE("FileScanner.RecursiveScanning", "[scanner]")
 TEST_CASE("FileScanner.CustomExtensions", "[scanner]")
 {
     TempDir dir;
-    dir.createFile("test.cpp");
-    dir.createFile("test.py");
-    dir.createFile("test.rs");
+    dir.CreateFile("test.cpp");
+    dir.CreateFile("test.py");
+    dir.CreateFile("test.rs");
 
-    auto result = FileScanner::scan(dir.path(), {".py", ".rs"});
+    auto result = FileScanner::Scan(dir.Path(), {".py", ".rs"});
     REQUIRE(result.has_value());
 
     CHECK(result->size() == 2);
@@ -80,14 +85,14 @@ TEST_CASE("FileScanner.CustomExtensions", "[scanner]")
 
 TEST_CASE("FileScanner.NonExistentDirectory", "[scanner]")
 {
-    auto result = FileScanner::scan("/nonexistent/path/that/does/not/exist");
+    auto result = FileScanner::Scan("/nonexistent/path/that/does/not/exist");
     CHECK(!result.has_value());
 }
 
 TEST_CASE("FileScanner.EmptyDirectory", "[scanner]")
 {
     TempDir dir;
-    auto result = FileScanner::scan(dir.path());
+    auto result = FileScanner::Scan(dir.Path());
     REQUIRE(result.has_value());
     CHECK(result->empty());
 }
@@ -95,11 +100,11 @@ TEST_CASE("FileScanner.EmptyDirectory", "[scanner]")
 TEST_CASE("FileScanner.SortedResults", "[scanner]")
 {
     TempDir dir;
-    dir.createFile("c.cpp");
-    dir.createFile("a.cpp");
-    dir.createFile("b.cpp");
+    dir.CreateFile("c.cpp");
+    dir.CreateFile("a.cpp");
+    dir.CreateFile("b.cpp");
 
-    auto result = FileScanner::scan(dir.path());
+    auto result = FileScanner::Scan(dir.Path());
     REQUIRE(result.has_value());
     REQUIRE(result->size() == 3);
 

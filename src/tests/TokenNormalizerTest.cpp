@@ -9,15 +9,15 @@ using namespace codedup;
 TEST_CASE("TokenNormalizer.IdentifierNormalization", "[normalizer]")
 {
     // Different identifier names should produce the same normalized ID
-    auto tokens1 = Tokenizer::tokenize("int foo = 42;");
-    auto tokens2 = Tokenizer::tokenize("int bar = 42;");
+    auto tokens1 = Tokenizer::Tokenize("int foo = 42;");
+    auto tokens2 = Tokenizer::Tokenize("int bar = 42;");
     REQUIRE(tokens1.has_value());
     REQUIRE(tokens2.has_value());
 
     TokenNormalizer norm1;
     TokenNormalizer norm2;
-    auto const normalized1 = norm1.normalize(*tokens1);
-    auto const normalized2 = norm2.normalize(*tokens2);
+    auto const normalized1 = norm1.Normalize(*tokens1);
+    auto const normalized2 = norm2.Normalize(*tokens2);
 
     REQUIRE(normalized1.size() == normalized2.size());
 
@@ -27,11 +27,11 @@ TEST_CASE("TokenNormalizer.IdentifierNormalization", "[normalizer]")
 
 TEST_CASE("TokenNormalizer.KeywordsAreUnique", "[normalizer]")
 {
-    auto tokens = Tokenizer::tokenize("if else for while return");
+    auto tokens = Tokenizer::Tokenize("if else for while return");
     REQUIRE(tokens.has_value());
 
     TokenNormalizer normalizer;
-    auto const normalized = normalizer.normalize(*tokens);
+    auto const normalized = normalizer.Normalize(*tokens);
 
     // Each keyword should have a different ID
     for (size_t i = 0; i < normalized.size(); ++i)
@@ -46,14 +46,15 @@ TEST_CASE("TokenNormalizer.KeywordsAreUnique", "[normalizer]")
 TEST_CASE("TokenNormalizer.LiteralNormalization", "[normalizer]")
 {
     // Different numeric literal values should produce the same normalized ID
-    auto tokens1 = Tokenizer::tokenize("42");
-    auto tokens2 = Tokenizer::tokenize("99");
+    auto tokens1 = Tokenizer::Tokenize("42");
+    auto tokens2 = Tokenizer::Tokenize("99");
     REQUIRE(tokens1.has_value());
     REQUIRE(tokens2.has_value());
 
-    TokenNormalizer n1, n2;
-    auto const norm1 = n1.normalize(*tokens1);
-    auto const norm2 = n2.normalize(*tokens2);
+    TokenNormalizer n1;
+    TokenNormalizer n2;
+    auto const norm1 = n1.Normalize(*tokens1);
+    auto const norm2 = n2.Normalize(*tokens2);
 
     REQUIRE(norm1.size() == 1);
     REQUIRE(norm2.size() == 1);
@@ -63,14 +64,15 @@ TEST_CASE("TokenNormalizer.LiteralNormalization", "[normalizer]")
 
 TEST_CASE("TokenNormalizer.StringLiteralNormalization", "[normalizer]")
 {
-    auto tokens1 = Tokenizer::tokenize(R"("hello")");
-    auto tokens2 = Tokenizer::tokenize(R"("world")");
+    auto tokens1 = Tokenizer::Tokenize(R"("hello")");
+    auto tokens2 = Tokenizer::Tokenize(R"("world")");
     REQUIRE(tokens1.has_value());
     REQUIRE(tokens2.has_value());
 
-    TokenNormalizer n1, n2;
-    auto const norm1 = n1.normalize(*tokens1);
-    auto const norm2 = n2.normalize(*tokens2);
+    TokenNormalizer n1;
+    TokenNormalizer n2;
+    auto const norm1 = n1.Normalize(*tokens1);
+    auto const norm2 = n2.Normalize(*tokens2);
 
     REQUIRE(norm1.size() == 1);
     CHECK(norm1[0].id == norm2[0].id);
@@ -79,27 +81,27 @@ TEST_CASE("TokenNormalizer.StringLiteralNormalization", "[normalizer]")
 
 TEST_CASE("TokenNormalizer.CommentStripping", "[normalizer]")
 {
-    auto tokens = Tokenizer::tokenize("int x; // comment\nint y; /* block */");
+    auto tokens = Tokenizer::Tokenize("int x; // comment\nint y; /* block */");
     REQUIRE(tokens.has_value());
 
     TokenNormalizer normalizer;
-    auto const normalized = normalizer.normalize(*tokens);
+    auto const normalized = normalizer.Normalize(*tokens);
 
     // Comments should be stripped; only int x ; int y ;
     for (auto const& nt : normalized)
     {
         auto const& orig = (*tokens)[nt.originalIndex];
-        CHECK(!isComment(orig.type));
+        CHECK(!IsComment(orig.type));
     }
 }
 
 TEST_CASE("TokenNormalizer.PreprocessorStripping", "[normalizer]")
 {
-    auto tokens = Tokenizer::tokenize("#include <vector>\nint x;");
+    auto tokens = Tokenizer::Tokenize("#include <vector>\nint x;");
     REQUIRE(tokens.has_value());
 
     TokenNormalizer normalizer;
-    auto const normalized = normalizer.normalize(*tokens);
+    auto const normalized = normalizer.Normalize(*tokens);
 
     for (auto const& nt : normalized)
     {
@@ -111,14 +113,15 @@ TEST_CASE("TokenNormalizer.PreprocessorStripping", "[normalizer]")
 TEST_CASE("TokenNormalizer.StructuralEquivalence", "[normalizer]")
 {
     // Two structurally identical functions with different names should produce identical normalized sequences
-    auto tokens1 = Tokenizer::tokenize("void foo(int x) { return x + 1; }");
-    auto tokens2 = Tokenizer::tokenize("void bar(int y) { return y + 1; }");
+    auto tokens1 = Tokenizer::Tokenize("void foo(int x) { return x + 1; }");
+    auto tokens2 = Tokenizer::Tokenize("void bar(int y) { return y + 1; }");
     REQUIRE(tokens1.has_value());
     REQUIRE(tokens2.has_value());
 
-    TokenNormalizer n1, n2;
-    auto const norm1 = n1.normalize(*tokens1);
-    auto const norm2 = n2.normalize(*tokens2);
+    TokenNormalizer n1;
+    TokenNormalizer n2;
+    auto const norm1 = n1.Normalize(*tokens1);
+    auto const norm2 = n2.Normalize(*tokens2);
 
     REQUIRE(norm1.size() == norm2.size());
     for (size_t i = 0; i < norm1.size(); ++i)
@@ -127,11 +130,11 @@ TEST_CASE("TokenNormalizer.StructuralEquivalence", "[normalizer]")
 
 TEST_CASE("TokenNormalizer.BackReference", "[normalizer]")
 {
-    auto tokens = Tokenizer::tokenize("int x = 5;");
+    auto tokens = Tokenizer::Tokenize("int x = 5;");
     REQUIRE(tokens.has_value());
 
     TokenNormalizer normalizer;
-    auto const normalized = normalizer.normalize(*tokens);
+    auto const normalized = normalizer.Normalize(*tokens);
 
     // Each normalized token should reference a valid original token
     for (auto const& nt : normalized)
@@ -147,11 +150,11 @@ TEST_CASE("TokenNormalizer.BackReference", "[normalizer]")
 TEST_CASE("TokenNormalizer.TextPreserving.DifferentIdentifiersGetDifferentIds", "[normalizer]")
 {
     // In text-preserving mode, "foo" and "bar" should get different IDs
-    auto tokens = Tokenizer::tokenize("int foo = bar;");
+    auto tokens = Tokenizer::Tokenize("int foo = bar;");
     REQUIRE(tokens.has_value());
 
     TokenNormalizer normalizer;
-    auto const tp = normalizer.normalizeTextPreserving(*tokens);
+    auto const tp = normalizer.NormalizeTextPreserving(*tokens);
 
     // Tokens: int(keyword), foo(ident), =(op), bar(ident), ;(op)
     // Find the two identifier tokens
@@ -173,11 +176,11 @@ TEST_CASE("TokenNormalizer.TextPreserving.DifferentIdentifiersGetDifferentIds", 
 TEST_CASE("TokenNormalizer.TextPreserving.SameIdentifierGetsSameId", "[normalizer]")
 {
     // In text-preserving mode, two occurrences of "foo" should get the same ID
-    auto tokens = Tokenizer::tokenize("int foo = foo;");
+    auto tokens = Tokenizer::Tokenize("int foo = foo;");
     REQUIRE(tokens.has_value());
 
     TokenNormalizer normalizer;
-    auto const tp = normalizer.normalizeTextPreserving(*tokens);
+    auto const tp = normalizer.NormalizeTextPreserving(*tokens);
 
     std::vector<NormalizedTokenId> fooIds;
     for (auto const& nt : tp)
@@ -193,12 +196,12 @@ TEST_CASE("TokenNormalizer.TextPreserving.SameIdentifierGetsSameId", "[normalize
 TEST_CASE("TokenNormalizer.TextPreserving.KeywordsMatchStructuralIds", "[normalizer]")
 {
     // Keywords should get the same IDs in both modes
-    auto tokens = Tokenizer::tokenize("if else for while return");
+    auto tokens = Tokenizer::Tokenize("if else for while return");
     REQUIRE(tokens.has_value());
 
     TokenNormalizer normalizer;
-    auto const structural = normalizer.normalize(*tokens);
-    auto const textPreserving = normalizer.normalizeTextPreserving(*tokens);
+    auto const structural = normalizer.Normalize(*tokens);
+    auto const textPreserving = normalizer.NormalizeTextPreserving(*tokens);
 
     REQUIRE(structural.size() == textPreserving.size());
     for (size_t i = 0; i < structural.size(); ++i)
@@ -208,11 +211,11 @@ TEST_CASE("TokenNormalizer.TextPreserving.KeywordsMatchStructuralIds", "[normali
 TEST_CASE("TokenNormalizer.TextPreserving.DifferentLiteralsGetDifferentIds", "[normalizer]")
 {
     // Different numeric literal values should get different text-preserving IDs
-    auto tokens = Tokenizer::tokenize("42 + 99");
+    auto tokens = Tokenizer::Tokenize("42 + 99");
     REQUIRE(tokens.has_value());
 
     TokenNormalizer normalizer;
-    auto const tp = normalizer.normalizeTextPreserving(*tokens);
+    auto const tp = normalizer.NormalizeTextPreserving(*tokens);
 
     // Find the two literal tokens
     std::vector<NormalizedTokenId> litIds;
@@ -232,16 +235,16 @@ TEST_CASE("TokenNormalizer.TextPreserving.RenamedFunctionsDiffer", "[normalizer]
     // identical structural IDs but different text-preserving IDs.
     // Both files must be processed by the same normalizer (as in production usage)
     // so that different identifier texts get different IDs from the shared dictionary.
-    auto tokens1 = Tokenizer::tokenize("void foo(int x) { return x + 1; }");
-    auto tokens2 = Tokenizer::tokenize("void bar(int y) { return y + 1; }");
+    auto tokens1 = Tokenizer::Tokenize("void foo(int x) { return x + 1; }");
+    auto tokens2 = Tokenizer::Tokenize("void bar(int y) { return y + 1; }");
     REQUIRE(tokens1.has_value());
     REQUIRE(tokens2.has_value());
 
     TokenNormalizer normalizer;
-    auto const struct1 = normalizer.normalize(*tokens1);
-    auto const struct2 = normalizer.normalize(*tokens2);
-    auto const tp1 = normalizer.normalizeTextPreserving(*tokens1);
-    auto const tp2 = normalizer.normalizeTextPreserving(*tokens2);
+    auto const struct1 = normalizer.Normalize(*tokens1);
+    auto const struct2 = normalizer.Normalize(*tokens2);
+    auto const tp1 = normalizer.NormalizeTextPreserving(*tokens1);
+    auto const tp2 = normalizer.NormalizeTextPreserving(*tokens2);
 
     // Structural: identical
     REQUIRE(struct1.size() == struct2.size());

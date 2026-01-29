@@ -15,14 +15,14 @@ using namespace codedup;
 namespace
 {
 
-auto makeBlock(std::string_view source, std::string const& name = "test") -> CodeBlock
+auto MakeBlock(std::string_view source, std::string const& name = "test") -> CodeBlock
 {
-    auto tokens = Tokenizer::tokenize(source);
+    auto tokens = Tokenizer::Tokenize(source);
     if (!tokens)
         return {};
 
     TokenNormalizer normalizer;
-    auto normalized = normalizer.normalize(*tokens);
+    auto normalized = normalizer.Normalize(*tokens);
 
     std::vector<NormalizedTokenId> ids;
     ids.reserve(normalized.size());
@@ -43,11 +43,11 @@ auto makeBlock(std::string_view source, std::string const& name = "test") -> Cod
 
 TEST_CASE("CloneDetector.IdenticalBlocks", "[detector]")
 {
-    auto const block1 = makeBlock("void foo(int x) { int a = x + 1; int b = a * 2; int c = b - 3; return; }", "foo");
-    auto const block2 = makeBlock("void foo(int x) { int a = x + 1; int b = a * 2; int c = b - 3; return; }", "foo2");
+    auto const block1 = MakeBlock("void foo(int x) { int a = x + 1; int b = a * 2; int c = b - 3; return; }", "foo");
+    auto const block2 = MakeBlock("void foo(int x) { int a = x + 1; int b = a * 2; int c = b - 3; return; }", "foo2");
 
     CloneDetector detector({.similarityThreshold = 0.80, .minTokens = 5});
-    auto const groups = detector.detect({block1, block2});
+    auto const groups = detector.Detect({block1, block2});
 
     REQUIRE(groups.size() == 1);
     CHECK_THAT(groups[0].avgSimilarity, Catch::Matchers::WithinAbs(1.0, 0.01));
@@ -56,11 +56,11 @@ TEST_CASE("CloneDetector.IdenticalBlocks", "[detector]")
 TEST_CASE("CloneDetector.RenamedIdentifiers", "[detector]")
 {
     // Same structure, different names = Type-2 clone
-    auto const block1 = makeBlock("void foo(int x) { int a = x + 1; int b = a * 2; int c = b - 3; return; }", "foo");
-    auto const block2 = makeBlock("void bar(int y) { int p = y + 1; int q = p * 2; int r = q - 3; return; }", "bar");
+    auto const block1 = MakeBlock("void foo(int x) { int a = x + 1; int b = a * 2; int c = b - 3; return; }", "foo");
+    auto const block2 = MakeBlock("void bar(int y) { int p = y + 1; int q = p * 2; int r = q - 3; return; }", "bar");
 
     CloneDetector detector({.similarityThreshold = 0.80, .minTokens = 5});
-    auto const groups = detector.detect({block1, block2});
+    auto const groups = detector.Detect({block1, block2});
 
     REQUIRE(groups.size() == 1);
     CHECK_THAT(groups[0].avgSimilarity, Catch::Matchers::WithinAbs(1.0, 0.01));
@@ -68,24 +68,24 @@ TEST_CASE("CloneDetector.RenamedIdentifiers", "[detector]")
 
 TEST_CASE("CloneDetector.DifferentBlocks", "[detector]")
 {
-    auto const block1 = makeBlock("void foo(int x) { int a = x + 1; int b = a * 2; return; }", "foo");
+    auto const block1 = MakeBlock("void foo(int x) { int a = x + 1; int b = a * 2; return; }", "foo");
     auto const block2 =
-        makeBlock("void bar(double y) { if (y > 0) { for (int i = 0; i < 10; ++i) { y += i; } } }", "bar");
+        MakeBlock("void bar(double y) { if (y > 0) { for (int i = 0; i < 10; ++i) { y += i; } } }", "bar");
 
     CloneDetector detector({.similarityThreshold = 0.80, .minTokens = 5});
-    auto const groups = detector.detect({block1, block2});
+    auto const groups = detector.Detect({block1, block2});
 
     CHECK(groups.empty());
 }
 
 TEST_CASE("CloneDetector.ThreeWayGrouping", "[detector]")
 {
-    auto const block1 = makeBlock("void f1(int x) { int a = x + 1; int b = a * 2; int c = b - 3; return; }", "f1");
-    auto const block2 = makeBlock("void f2(int y) { int p = y + 1; int q = p * 2; int r = q - 3; return; }", "f2");
-    auto const block3 = makeBlock("void f3(int z) { int m = z + 1; int n = m * 2; int o = n - 3; return; }", "f3");
+    auto const block1 = MakeBlock("void f1(int x) { int a = x + 1; int b = a * 2; int c = b - 3; return; }", "f1");
+    auto const block2 = MakeBlock("void f2(int y) { int p = y + 1; int q = p * 2; int r = q - 3; return; }", "f2");
+    auto const block3 = MakeBlock("void f3(int z) { int m = z + 1; int n = m * 2; int o = n - 3; return; }", "f3");
 
     CloneDetector detector({.similarityThreshold = 0.80, .minTokens = 5});
-    auto const groups = detector.detect({block1, block2, block3});
+    auto const groups = detector.Detect({block1, block2, block3});
 
     REQUIRE(groups.size() == 1);
     CHECK(groups[0].blockIndices.size() == 3);
@@ -94,12 +94,12 @@ TEST_CASE("CloneDetector.ThreeWayGrouping", "[detector]")
 TEST_CASE("CloneDetector.ThresholdFiltering", "[detector]")
 {
     // Partially similar blocks should be filtered by high threshold
-    auto const block1 = makeBlock("void foo(int x) { int a = x + 1; int b = a * 2; return; }", "foo");
+    auto const block1 = MakeBlock("void foo(int x) { int a = x + 1; int b = a * 2; return; }", "foo");
     auto const block2 =
-        makeBlock("void bar(int y) { int a = y + 1; if (a > 0) { return; } int b = a * 3; int c = b + 4; }", "bar");
+        MakeBlock("void bar(int y) { int a = y + 1; if (a > 0) { return; } int b = a * 3; int c = b + 4; }", "bar");
 
     CloneDetector detector({.similarityThreshold = 0.99, .minTokens = 5});
-    auto const groups = detector.detect({block1, block2});
+    auto const groups = detector.Detect({block1, block2});
 
     CHECK(groups.empty());
 }
@@ -107,23 +107,23 @@ TEST_CASE("CloneDetector.ThresholdFiltering", "[detector]")
 TEST_CASE("CloneDetector.EmptyInput", "[detector]")
 {
     CloneDetector detector;
-    auto const groups = detector.detect({});
+    auto const groups = detector.Detect({});
     CHECK(groups.empty());
 }
 
 TEST_CASE("CloneDetector.SingleBlock", "[detector]")
 {
-    auto const block = makeBlock("void foo(int x) { int a = x + 1; int b = a * 2; return; }", "foo");
+    auto const block = MakeBlock("void foo(int x) { int a = x + 1; int b = a * 2; return; }", "foo");
 
     CloneDetector detector;
-    auto const groups = detector.detect({block});
+    auto const groups = detector.Detect({block});
     CHECK(groups.empty());
 }
 
 // ============================================================================================
 // Bit-Parallel LCS Correctness Tests
 // ============================================================================================
-// These tests verify that computeSimilarity (bit-parallel) matches computeSimilarityClassic
+// These tests verify that ComputeSimilarity (bit-parallel) matches ComputeSimilarityClassic
 // (two-row DP) at boundary sizes that exercise different tiers of the implementation:
 //   - n <= 64:  single uint64_t bitvector (Tier 1)
 //   - 65-256:   BitVector256 with carry propagation (Tier 2)
@@ -134,7 +134,7 @@ namespace
 {
 
 /// @brief Generates a sequence of NormalizedTokenId with values cycling through [1, alphabetSize].
-auto makeSequence(size_t length, uint32_t alphabetSize = 10) -> std::vector<NormalizedTokenId>
+auto MakeSequence(size_t length, uint32_t alphabetSize = 10) -> std::vector<NormalizedTokenId>
 {
     std::vector<NormalizedTokenId> seq(length);
     for (size_t i = 0; i < length; ++i)
@@ -143,10 +143,10 @@ auto makeSequence(size_t length, uint32_t alphabetSize = 10) -> std::vector<Norm
 }
 
 /// @brief Generates a shuffled sequence of NormalizedTokenId using a deterministic PRNG.
-auto makeShuffledSequence(size_t length, uint32_t alphabetSize = 10, uint32_t seed = 42)
+auto MakeShuffledSequence(size_t length, uint32_t alphabetSize = 10, uint32_t seed = 42)
     -> std::vector<NormalizedTokenId>
 {
-    auto seq = makeSequence(length, alphabetSize);
+    auto seq = MakeSequence(length, alphabetSize);
     std::mt19937 rng(seed);
     std::shuffle(seq.begin(), seq.end(), rng);
     return seq;
@@ -159,13 +159,13 @@ TEST_CASE("BitParallelLCS.EmptySequences", "[lcs]")
     std::vector<NormalizedTokenId> const empty;
     std::vector<NormalizedTokenId> const nonEmpty = {1, 2, 3};
 
-    CHECK(CloneDetector::computeSimilarity(empty, empty) == 0.0);
-    CHECK(CloneDetector::computeSimilarity(empty, nonEmpty) == 0.0);
-    CHECK(CloneDetector::computeSimilarity(nonEmpty, empty) == 0.0);
+    CHECK(CloneDetector::ComputeSimilarity(empty, empty) == 0.0);
+    CHECK(CloneDetector::ComputeSimilarity(empty, nonEmpty) == 0.0);
+    CHECK(CloneDetector::ComputeSimilarity(nonEmpty, empty) == 0.0);
 
-    CHECK(CloneDetector::computeSimilarityClassic(empty, empty) == 0.0);
-    CHECK(CloneDetector::computeSimilarityClassic(empty, nonEmpty) == 0.0);
-    CHECK(CloneDetector::computeSimilarityClassic(nonEmpty, empty) == 0.0);
+    CHECK(CloneDetector::ComputeSimilarityClassic(empty, empty) == 0.0);
+    CHECK(CloneDetector::ComputeSimilarityClassic(empty, nonEmpty) == 0.0);
+    CHECK(CloneDetector::ComputeSimilarityClassic(nonEmpty, empty) == 0.0);
 }
 
 TEST_CASE("BitParallelLCS.SingleElement", "[lcs]")
@@ -174,13 +174,13 @@ TEST_CASE("BitParallelLCS.SingleElement", "[lcs]")
     std::vector<NormalizedTokenId> const b = {1};
     std::vector<NormalizedTokenId> const c = {2};
 
-    auto const simAB = CloneDetector::computeSimilarity(a, b);
-    auto const simABClassic = CloneDetector::computeSimilarityClassic(a, b);
+    auto const simAB = CloneDetector::ComputeSimilarity(a, b);
+    auto const simABClassic = CloneDetector::ComputeSimilarityClassic(a, b);
     CHECK_THAT(simAB, Catch::Matchers::WithinAbs(simABClassic, 1e-10));
     CHECK_THAT(simAB, Catch::Matchers::WithinAbs(1.0, 1e-10));
 
-    auto const simAC = CloneDetector::computeSimilarity(a, c);
-    auto const simACClassic = CloneDetector::computeSimilarityClassic(a, c);
+    auto const simAC = CloneDetector::ComputeSimilarity(a, c);
+    auto const simACClassic = CloneDetector::ComputeSimilarityClassic(a, c);
     CHECK_THAT(simAC, Catch::Matchers::WithinAbs(simACClassic, 1e-10));
     CHECK_THAT(simAC, Catch::Matchers::WithinAbs(0.0, 1e-10));
 }
@@ -192,9 +192,9 @@ TEST_CASE("BitParallelLCS.IdenticalSequences", "[lcs]")
          {size_t{1}, size_t{63}, size_t{64}, size_t{65}, size_t{127}, size_t{128}, size_t{256}, size_t{257}})
     {
         CAPTURE(n);
-        auto const seq = makeSequence(n);
-        auto const sim = CloneDetector::computeSimilarity(seq, seq);
-        auto const simClassic = CloneDetector::computeSimilarityClassic(seq, seq);
+        auto const seq = MakeSequence(n);
+        auto const sim = CloneDetector::ComputeSimilarity(seq, seq);
+        auto const simClassic = CloneDetector::ComputeSimilarityClassic(seq, seq);
         CHECK_THAT(sim, Catch::Matchers::WithinAbs(simClassic, 1e-10));
         CHECK_THAT(sim, Catch::Matchers::WithinAbs(1.0, 1e-10));
     }
@@ -207,14 +207,15 @@ TEST_CASE("BitParallelLCS.CompletelyDifferent", "[lcs]")
     {
         CAPTURE(n);
         // a = [1, 2, ..., n], b = [n+1, n+2, ..., 2n] -- no overlap
-        std::vector<NormalizedTokenId> a(n), b(n);
+        std::vector<NormalizedTokenId> a(n);
+        std::vector<NormalizedTokenId> b(n);
         for (size_t i = 0; i < n; ++i)
         {
             a[i] = static_cast<NormalizedTokenId>(i + 1);
             b[i] = static_cast<NormalizedTokenId>(i + n + 1);
         }
-        auto const sim = CloneDetector::computeSimilarity(a, b);
-        auto const simClassic = CloneDetector::computeSimilarityClassic(a, b);
+        auto const sim = CloneDetector::ComputeSimilarity(a, b);
+        auto const simClassic = CloneDetector::ComputeSimilarityClassic(a, b);
         CHECK_THAT(sim, Catch::Matchers::WithinAbs(simClassic, 1e-10));
         CHECK_THAT(sim, Catch::Matchers::WithinAbs(0.0, 1e-10));
     }
@@ -227,10 +228,10 @@ TEST_CASE("BitParallelLCS.PartialOverlap", "[lcs]")
          {size_t{10}, size_t{63}, size_t{64}, size_t{65}, size_t{127}, size_t{128}, size_t{256}, size_t{257}})
     {
         CAPTURE(n);
-        auto const a = makeShuffledSequence(n, 10, 42);
-        auto const b = makeShuffledSequence(n, 10, 99);
-        auto const sim = CloneDetector::computeSimilarity(a, b);
-        auto const simClassic = CloneDetector::computeSimilarityClassic(a, b);
+        auto const a = MakeShuffledSequence(n, 10, 42);
+        auto const b = MakeShuffledSequence(n, 10, 99);
+        auto const sim = CloneDetector::ComputeSimilarity(a, b);
+        auto const simClassic = CloneDetector::ComputeSimilarityClassic(a, b);
         CHECK_THAT(sim, Catch::Matchers::WithinAbs(simClassic, 1e-10));
     }
 }
@@ -243,10 +244,10 @@ TEST_CASE("BitParallelLCS.AsymmetricLengths", "[lcs]")
           std::pair{size_t{256}, size_t{100}}, std::pair{size_t{64}, size_t{65}}, std::pair{size_t{300}, size_t{50}}})
     {
         CAPTURE(m, n);
-        auto const a = makeShuffledSequence(m, 15, 42);
-        auto const b = makeShuffledSequence(n, 15, 99);
-        auto const sim = CloneDetector::computeSimilarity(a, b);
-        auto const simClassic = CloneDetector::computeSimilarityClassic(a, b);
+        auto const a = MakeShuffledSequence(m, 15, 42);
+        auto const b = MakeShuffledSequence(n, 15, 99);
+        auto const sim = CloneDetector::ComputeSimilarity(a, b);
+        auto const simClassic = CloneDetector::ComputeSimilarityClassic(a, b);
         CHECK_THAT(sim, Catch::Matchers::WithinAbs(simClassic, 1e-10));
     }
 }
@@ -257,10 +258,10 @@ TEST_CASE("BitParallelLCS.SubsequenceAtBoundary", "[lcs]")
     for (auto const n : {size_t{32}, size_t{64}, size_t{128}, size_t{256}})
     {
         CAPTURE(n);
-        auto const full = makeSequence(n * 2, 20);
+        auto const full = MakeSequence(n * 2, 20);
         std::vector<NormalizedTokenId> const prefix(full.begin(), full.begin() + static_cast<ptrdiff_t>(n));
-        auto const sim = CloneDetector::computeSimilarity(prefix, full);
-        auto const simClassic = CloneDetector::computeSimilarityClassic(prefix, full);
+        auto const sim = CloneDetector::ComputeSimilarity(prefix, full);
+        auto const simClassic = CloneDetector::ComputeSimilarityClassic(prefix, full);
         CHECK_THAT(sim, Catch::Matchers::WithinAbs(simClassic, 1e-10));
     }
 }
@@ -276,42 +277,42 @@ TEST_CASE("CloneDetector.LengthRatioPrefilter", "[detector]")
 
     SECTION("Equal lengths always compatible")
     {
-        CHECK(CloneDetector::lengthsCompatible(100, 100, 0.95));
-        CHECK(CloneDetector::lengthsCompatible(100, 100, 1.00));
-        CHECK(CloneDetector::lengthsCompatible(1, 1, 0.95));
+        CHECK(CloneDetector::LengthsCompatible(100, 100, 0.95));
+        CHECK(CloneDetector::LengthsCompatible(100, 100, 1.00));
+        CHECK(CloneDetector::LengthsCompatible(1, 1, 0.95));
     }
 
     SECTION("Zero-length sequences are never compatible")
     {
-        CHECK_FALSE(CloneDetector::lengthsCompatible(0, 0, 0.80));
-        CHECK_FALSE(CloneDetector::lengthsCompatible(0, 100, 0.80));
-        CHECK_FALSE(CloneDetector::lengthsCompatible(100, 0, 0.80));
+        CHECK_FALSE(CloneDetector::LengthsCompatible(0, 0, 0.80));
+        CHECK_FALSE(CloneDetector::LengthsCompatible(0, 100, 0.80));
+        CHECK_FALSE(CloneDetector::LengthsCompatible(100, 0, 0.80));
     }
 
     SECTION("Threshold 0.95 boundary values")
     {
         // 2 * 95 / (95 + 100) = 190 / 195 = 0.97435... >= 0.95 -> compatible
-        CHECK(CloneDetector::lengthsCompatible(100, 95, 0.95));
-        CHECK(CloneDetector::lengthsCompatible(95, 100, 0.95));
+        CHECK(CloneDetector::LengthsCompatible(100, 95, 0.95));
+        CHECK(CloneDetector::LengthsCompatible(95, 100, 0.95));
 
         // 2 * 90 / (90 + 100) = 180 / 190 = 0.94736... < 0.95 -> not compatible
-        CHECK_FALSE(CloneDetector::lengthsCompatible(100, 90, 0.95));
-        CHECK_FALSE(CloneDetector::lengthsCompatible(90, 100, 0.95));
+        CHECK_FALSE(CloneDetector::LengthsCompatible(100, 90, 0.95));
+        CHECK_FALSE(CloneDetector::LengthsCompatible(90, 100, 0.95));
     }
 
     SECTION("Threshold 0.80 allows wider length differences")
     {
         // 2 * 80 / (80 + 100) = 160 / 180 = 0.888... >= 0.80 -> compatible
-        CHECK(CloneDetector::lengthsCompatible(100, 80, 0.80));
+        CHECK(CloneDetector::LengthsCompatible(100, 80, 0.80));
 
         // 2 * 60 / (60 + 100) = 120 / 160 = 0.75 < 0.80 -> not compatible
-        CHECK_FALSE(CloneDetector::lengthsCompatible(100, 60, 0.80));
+        CHECK_FALSE(CloneDetector::LengthsCompatible(100, 60, 0.80));
     }
 
     SECTION("Symmetry")
     {
-        CHECK(CloneDetector::lengthsCompatible(200, 190, 0.95) == CloneDetector::lengthsCompatible(190, 200, 0.95));
-        CHECK(CloneDetector::lengthsCompatible(500, 300, 0.80) == CloneDetector::lengthsCompatible(300, 500, 0.80));
+        CHECK(CloneDetector::LengthsCompatible(200, 190, 0.95) == CloneDetector::LengthsCompatible(190, 200, 0.95));
+        CHECK(CloneDetector::LengthsCompatible(500, 300, 0.80) == CloneDetector::LengthsCompatible(300, 500, 0.80));
     }
 }
 
@@ -321,15 +322,15 @@ TEST_CASE("CloneDetector.LengthRatioPrefilter", "[detector]")
 
 TEST_CASE("BitParallelLCS.DynamicWidth", "[lcs]")
 {
-    // Verify that computeSimilarity matches computeSimilarityClassic for sizes > 256,
+    // Verify that ComputeSimilarity matches ComputeSimilarityClassic for sizes > 256,
     // which exercise the new dynamic-width bit-parallel path.
     for (auto const n : {size_t{300}, size_t{500}, size_t{1000}})
     {
         CAPTURE(n);
-        auto const a = makeShuffledSequence(n, 15, 42);
-        auto const b = makeShuffledSequence(n, 15, 99);
-        auto const sim = CloneDetector::computeSimilarity(a, b);
-        auto const simClassic = CloneDetector::computeSimilarityClassic(a, b);
+        auto const a = MakeShuffledSequence(n, 15, 42);
+        auto const b = MakeShuffledSequence(n, 15, 99);
+        auto const sim = CloneDetector::ComputeSimilarity(a, b);
+        auto const simClassic = CloneDetector::ComputeSimilarityClassic(a, b);
         CHECK_THAT(sim, Catch::Matchers::WithinAbs(simClassic, 1e-10));
     }
 }
@@ -340,8 +341,8 @@ TEST_CASE("BitParallelLCS.DynamicWidthIdentical", "[lcs]")
     for (auto const n : {size_t{300}, size_t{500}, size_t{1000}})
     {
         CAPTURE(n);
-        auto const seq = makeSequence(n);
-        auto const sim = CloneDetector::computeSimilarity(seq, seq);
+        auto const seq = MakeSequence(n);
+        auto const sim = CloneDetector::ComputeSimilarity(seq, seq);
         CHECK_THAT(sim, Catch::Matchers::WithinAbs(1.0, 1e-10));
     }
 }
@@ -353,10 +354,10 @@ TEST_CASE("BitParallelLCS.DynamicWidthAsymmetric", "[lcs]")
                               std::pair{size_t{400}, size_t{1000}}})
     {
         CAPTURE(m, n);
-        auto const a = makeShuffledSequence(m, 15, 42);
-        auto const b = makeShuffledSequence(n, 15, 99);
-        auto const sim = CloneDetector::computeSimilarity(a, b);
-        auto const simClassic = CloneDetector::computeSimilarityClassic(a, b);
+        auto const a = MakeShuffledSequence(m, 15, 42);
+        auto const b = MakeShuffledSequence(n, 15, 99);
+        auto const sim = CloneDetector::ComputeSimilarity(a, b);
+        auto const simClassic = CloneDetector::ComputeSimilarityClassic(a, b);
         CHECK_THAT(sim, Catch::Matchers::WithinAbs(simClassic, 1e-10));
     }
 }
@@ -373,13 +374,13 @@ TEST_CASE("CloneDetector.MultithreadedConsistency", "[detector]")
     for (size_t i = 0; i < 20; ++i)
     {
         auto block =
-            makeBlock("void func(int x) { int a = x + 1; int b = a * 2; int c = b - 3; int d = c + 4; return; }",
+            MakeBlock("void func(int x) { int a = x + 1; int b = a * 2; int c = b - 3; int d = c + 4; return; }",
                       "func" + std::to_string(i));
         blocks.push_back(std::move(block));
     }
 
     CloneDetector detector({.similarityThreshold = 0.80, .minTokens = 5});
-    auto const groups = detector.detect(blocks);
+    auto const groups = detector.Detect(blocks);
 
     REQUIRE(groups.size() == 1);
     CHECK(groups[0].blockIndices.size() == 20);
@@ -404,7 +405,7 @@ TEST_CASE("CloneDetector.MultithreadedWorkDistributionEdgeCase", "[detector]")
     // 16 blocks with very similar structure produces C(16,2) = 120 candidate pairs
     for (size_t i = 0; i < 16; ++i)
     {
-        auto block = makeBlock("void func(int x) { int a = x + 1; int b = a * 2; int c = b - 3; int d = c + 4; "
+        auto block = MakeBlock("void func(int x) { int a = x + 1; int b = a * 2; int c = b - 3; int d = c + 4; "
                                "int e = d * 5; int f = e - 6; return; }",
                                "func" + std::to_string(i));
         blocks.push_back(std::move(block));
@@ -412,7 +413,7 @@ TEST_CASE("CloneDetector.MultithreadedWorkDistributionEdgeCase", "[detector]")
 
     // This must not crash -- the fix clamps start to candidateCount so empty ranges are safe
     CloneDetector detector({.similarityThreshold = 0.80, .minTokens = 5});
-    auto const groups = detector.detect(blocks);
+    auto const groups = detector.Detect(blocks);
 
     // All 16 blocks are identical clones, so they should form one group
     REQUIRE(groups.size() == 1);
@@ -430,15 +431,15 @@ namespace
 ///
 /// A shared normalizer must be used across blocks being compared, so that different
 /// identifier/literal texts get different IDs from the same dictionary.
-auto makeBlockWithTextPreserving(TokenNormalizer& normalizer, std::string_view source, std::string const& name = "test")
+auto MakeBlockWithTextPreserving(TokenNormalizer& normalizer, std::string_view source, std::string const& name = "test")
     -> CodeBlock
 {
-    auto tokens = Tokenizer::tokenize(source);
+    auto tokens = Tokenizer::Tokenize(source);
     if (!tokens)
         return {};
 
-    auto normalized = normalizer.normalize(*tokens);
-    auto textPreserving = normalizer.normalizeTextPreserving(*tokens);
+    auto normalized = normalizer.Normalize(*tokens);
+    auto textPreserving = normalizer.NormalizeTextPreserving(*tokens);
 
     std::vector<NormalizedTokenId> ids;
     ids.reserve(normalized.size());
@@ -466,14 +467,14 @@ TEST_CASE("CloneDetector.BlendedSimilarity.ZeroTextSensitivity", "[detector][ble
 {
     // With textSensitivity = 0, blended similarity equals structural similarity
     TokenNormalizer normalizer;
-    auto const a = makeBlockWithTextPreserving(
+    auto const a = MakeBlockWithTextPreserving(
         normalizer, "void foo(int x) { int a = x + 1; int b = a * 2; int c = b - 3; return; }", "foo");
-    auto const b = makeBlockWithTextPreserving(
+    auto const b = MakeBlockWithTextPreserving(
         normalizer, "void bar(int y) { int p = y + 1; int q = p * 2; int r = q - 3; return; }", "bar");
 
-    auto const structuralOnly = CloneDetector::computeBlendedSimilarity(a.normalizedIds, b.normalizedIds,
+    auto const structuralOnly = CloneDetector::ComputeBlendedSimilarity(a.normalizedIds, b.normalizedIds,
                                                                         a.textPreservingIds, b.textPreservingIds, 0.0);
-    auto const pureStructural = CloneDetector::computeSimilarity(a.normalizedIds, b.normalizedIds);
+    auto const pureStructural = CloneDetector::ComputeSimilarity(a.normalizedIds, b.normalizedIds);
     CHECK_THAT(structuralOnly, Catch::Matchers::WithinAbs(pureStructural, 1e-10));
 }
 
@@ -481,15 +482,15 @@ TEST_CASE("CloneDetector.BlendedSimilarity.IdenticalCode", "[detector][blended]"
 {
     // Identical code should give 1.0 regardless of text sensitivity
     TokenNormalizer normalizer;
-    auto const a = makeBlockWithTextPreserving(
+    auto const a = MakeBlockWithTextPreserving(
         normalizer, "void foo(int x) { int a = x + 1; int b = a * 2; int c = b - 3; return; }", "foo");
-    auto const b = makeBlockWithTextPreserving(
+    auto const b = MakeBlockWithTextPreserving(
         normalizer, "void foo(int x) { int a = x + 1; int b = a * 2; int c = b - 3; return; }", "foo2");
 
     for (auto const sensitivity : {0.0, 0.3, 0.5, 1.0})
     {
         CAPTURE(sensitivity);
-        auto const sim = CloneDetector::computeBlendedSimilarity(a.normalizedIds, b.normalizedIds, a.textPreservingIds,
+        auto const sim = CloneDetector::ComputeBlendedSimilarity(a.normalizedIds, b.normalizedIds, a.textPreservingIds,
                                                                  b.textPreservingIds, sensitivity);
         CHECK_THAT(sim, Catch::Matchers::WithinAbs(1.0, 0.01));
     }
@@ -499,16 +500,16 @@ TEST_CASE("CloneDetector.BlendedSimilarity.RenamedClones", "[detector][blended]"
 {
     // Renamed clones should have lower blended similarity with text sensitivity > 0
     TokenNormalizer normalizer;
-    auto const a = makeBlockWithTextPreserving(
+    auto const a = MakeBlockWithTextPreserving(
         normalizer, "void foo(int x) { int a = x + 1; int b = a * 2; int c = b - 3; return; }", "foo");
-    auto const b = makeBlockWithTextPreserving(
+    auto const b = MakeBlockWithTextPreserving(
         normalizer, "void bar(int y) { int p = y + 1; int q = p * 2; int r = q - 3; return; }", "bar");
 
-    auto const sim0 = CloneDetector::computeBlendedSimilarity(a.normalizedIds, b.normalizedIds, a.textPreservingIds,
+    auto const sim0 = CloneDetector::ComputeBlendedSimilarity(a.normalizedIds, b.normalizedIds, a.textPreservingIds,
                                                               b.textPreservingIds, 0.0);
-    auto const sim03 = CloneDetector::computeBlendedSimilarity(a.normalizedIds, b.normalizedIds, a.textPreservingIds,
+    auto const sim03 = CloneDetector::ComputeBlendedSimilarity(a.normalizedIds, b.normalizedIds, a.textPreservingIds,
                                                                b.textPreservingIds, 0.3);
-    auto const sim10 = CloneDetector::computeBlendedSimilarity(a.normalizedIds, b.normalizedIds, a.textPreservingIds,
+    auto const sim10 = CloneDetector::ComputeBlendedSimilarity(a.normalizedIds, b.normalizedIds, a.textPreservingIds,
                                                                b.textPreservingIds, 1.0);
 
     // structural sim = 1.0, textual sim < 1.0 for renamed code
@@ -521,12 +522,12 @@ TEST_CASE("CloneDetector.BlendedSimilarity.RenamedClones", "[detector][blended]"
 TEST_CASE("CloneDetector.BlendedSimilarity.EmptyTextPreserving", "[detector][blended]")
 {
     // When text-preserving IDs are empty, falls back to structural similarity
-    auto const a = makeBlock("void foo(int x) { int a = x + 1; int b = a * 2; int c = b - 3; return; }", "foo");
-    auto const b = makeBlock("void bar(int y) { int p = y + 1; int q = p * 2; int r = q - 3; return; }", "bar");
+    auto const a = MakeBlock("void foo(int x) { int a = x + 1; int b = a * 2; int c = b - 3; return; }", "foo");
+    auto const b = MakeBlock("void bar(int y) { int p = y + 1; int q = p * 2; int r = q - 3; return; }", "bar");
 
-    auto const sim = CloneDetector::computeBlendedSimilarity(a.normalizedIds, b.normalizedIds, a.textPreservingIds,
+    auto const sim = CloneDetector::ComputeBlendedSimilarity(a.normalizedIds, b.normalizedIds, a.textPreservingIds,
                                                              b.textPreservingIds, 0.5);
-    auto const pureStructural = CloneDetector::computeSimilarity(a.normalizedIds, b.normalizedIds);
+    auto const pureStructural = CloneDetector::ComputeSimilarity(a.normalizedIds, b.normalizedIds);
     CHECK_THAT(sim, Catch::Matchers::WithinAbs(pureStructural, 1e-10));
 }
 
@@ -534,19 +535,19 @@ TEST_CASE("CloneDetector.BlendedSimilarity.DetectWithTextSensitivity", "[detecto
 {
     // Renamed clones detected at textSensitivity=0 should be filtered at high sensitivity + threshold
     TokenNormalizer normalizer;
-    auto const a = makeBlockWithTextPreserving(
+    auto const a = MakeBlockWithTextPreserving(
         normalizer, "void foo(int x) { int a = x + 1; int b = a * 2; int c = b - 3; return; }", "foo");
-    auto const b = makeBlockWithTextPreserving(
+    auto const b = MakeBlockWithTextPreserving(
         normalizer, "void bar(int y) { int p = y + 1; int q = p * 2; int r = q - 3; return; }", "bar");
 
     // Without text sensitivity: clones detected
     CloneDetector detector0({.similarityThreshold = 0.95, .minTokens = 5, .textSensitivity = 0.0});
-    auto const groups0 = detector0.detect({a, b});
+    auto const groups0 = detector0.Detect({a, b});
     CHECK(groups0.size() == 1);
 
     // With high text sensitivity: renamed clones filtered out
     CloneDetector detector1({.similarityThreshold = 0.95, .minTokens = 5, .textSensitivity = 0.5});
-    auto const groups1 = detector1.detect({a, b});
+    auto const groups1 = detector1.Detect({a, b});
     CHECK(groups1.empty());
 }
 
@@ -557,7 +558,7 @@ TEST_CASE("CloneDetector.BlendedSimilarity.DetectWithTextSensitivity", "[detecto
 TEST_CASE("LcsAlignment.IdenticalSequences", "[lcs][alignment]")
 {
     std::vector<NormalizedTokenId> const seq = {1, 2, 3, 4, 5};
-    auto const alignment = CloneDetector::computeLcsAlignment(seq, seq);
+    auto const alignment = CloneDetector::ComputeLcsAlignment(seq, seq);
 
     REQUIRE(alignment.matchedA.size() == 5);
     REQUIRE(alignment.matchedB.size() == 5);
@@ -572,7 +573,7 @@ TEST_CASE("LcsAlignment.CompletelyDifferent", "[lcs][alignment]")
 {
     std::vector<NormalizedTokenId> const a = {1, 2, 3};
     std::vector<NormalizedTokenId> const b = {4, 5, 6};
-    auto const alignment = CloneDetector::computeLcsAlignment(a, b);
+    auto const alignment = CloneDetector::ComputeLcsAlignment(a, b);
 
     REQUIRE(alignment.matchedA.size() == 3);
     REQUIRE(alignment.matchedB.size() == 3);
@@ -588,7 +589,7 @@ TEST_CASE("LcsAlignment.PartialOverlap", "[lcs][alignment]")
     // LCS of {1,2,3,4} and {1,3,5,4} is {1,3,4} (length 3)
     std::vector<NormalizedTokenId> const a = {1, 2, 3, 4};
     std::vector<NormalizedTokenId> const b = {1, 3, 5, 4};
-    auto const alignment = CloneDetector::computeLcsAlignment(a, b);
+    auto const alignment = CloneDetector::ComputeLcsAlignment(a, b);
 
     REQUIRE(alignment.matchedA.size() == 4);
     REQUIRE(alignment.matchedB.size() == 4);
@@ -611,18 +612,18 @@ TEST_CASE("LcsAlignment.EmptySequences", "[lcs][alignment]")
     std::vector<NormalizedTokenId> const empty;
     std::vector<NormalizedTokenId> const nonEmpty = {1, 2, 3};
 
-    auto const both = CloneDetector::computeLcsAlignment(empty, empty);
+    auto const both = CloneDetector::ComputeLcsAlignment(empty, empty);
     CHECK(both.matchedA.empty());
     CHECK(both.matchedB.empty());
 
-    auto const aEmpty = CloneDetector::computeLcsAlignment(empty, nonEmpty);
+    auto const aEmpty = CloneDetector::ComputeLcsAlignment(empty, nonEmpty);
     CHECK(aEmpty.matchedA.empty());
     REQUIRE(aEmpty.matchedB.size() == 3);
     CHECK_FALSE(aEmpty.matchedB[0]);
     CHECK_FALSE(aEmpty.matchedB[1]);
     CHECK_FALSE(aEmpty.matchedB[2]);
 
-    auto const bEmpty = CloneDetector::computeLcsAlignment(nonEmpty, empty);
+    auto const bEmpty = CloneDetector::ComputeLcsAlignment(nonEmpty, empty);
     REQUIRE(bEmpty.matchedA.size() == 3);
     CHECK_FALSE(bEmpty.matchedA[0]);
     CHECK_FALSE(bEmpty.matchedA[1]);
@@ -634,7 +635,7 @@ TEST_CASE("LcsAlignment.SingleElementMatch", "[lcs][alignment]")
 {
     std::vector<NormalizedTokenId> const a = {42};
     std::vector<NormalizedTokenId> const b = {42};
-    auto const alignment = CloneDetector::computeLcsAlignment(a, b);
+    auto const alignment = CloneDetector::ComputeLcsAlignment(a, b);
 
     REQUIRE(alignment.matchedA.size() == 1);
     REQUIRE(alignment.matchedB.size() == 1);
@@ -646,7 +647,7 @@ TEST_CASE("LcsAlignment.SingleElementNoMatch", "[lcs][alignment]")
 {
     std::vector<NormalizedTokenId> const a = {1};
     std::vector<NormalizedTokenId> const b = {2};
-    auto const alignment = CloneDetector::computeLcsAlignment(a, b);
+    auto const alignment = CloneDetector::ComputeLcsAlignment(a, b);
 
     REQUIRE(alignment.matchedA.size() == 1);
     REQUIRE(alignment.matchedB.size() == 1);
@@ -660,7 +661,7 @@ TEST_CASE("LcsAlignment.AsymmetricLengths", "[lcs][alignment]")
     // LCS = {1, 2, 3} (length 3). All of a is matched, only first 3 of b matched.
     std::vector<NormalizedTokenId> const a = {1, 2, 3};
     std::vector<NormalizedTokenId> const b = {1, 2, 3, 4, 5};
-    auto const alignment = CloneDetector::computeLcsAlignment(a, b);
+    auto const alignment = CloneDetector::ComputeLcsAlignment(a, b);
 
     REQUIRE(alignment.matchedA.size() == 3);
     REQUIRE(alignment.matchedB.size() == 5);

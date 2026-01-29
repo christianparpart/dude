@@ -12,7 +12,7 @@ namespace codedup
 {
 
 /// @brief Enumeration of all C++ token types.
-enum class TokenType : uint16_t
+enum class TokenType : uint8_t
 {
     // Special
     EndOfFile = 0,
@@ -179,18 +179,18 @@ struct Token
 };
 
 /// @brief Returns a human-readable name for the given token type.
-[[nodiscard]] CODEDUP_API auto tokenTypeName(TokenType type) -> std::string_view;
+[[nodiscard]] CODEDUP_API auto TokenTypeName(TokenType type) -> std::string_view;
 
 /// @brief Returns true if the token type is a C++ keyword.
-[[nodiscard]] CODEDUP_API auto isKeyword(TokenType type) -> bool;
+[[nodiscard]] CODEDUP_API auto IsKeyword(TokenType type) -> bool;
 
 /// @brief Returns true if the token type is a comment (line or block).
-[[nodiscard]] CODEDUP_API auto isComment(TokenType type) -> bool;
+[[nodiscard]] CODEDUP_API auto IsComment(TokenType type) -> bool;
 
 /// @brief Returns true if the token type is a literal (numeric, string, or char).
-[[nodiscard]] CODEDUP_API auto isLiteral(TokenType type) -> bool;
+[[nodiscard]] CODEDUP_API auto IsLiteral(TokenType type) -> bool;
 
 /// @brief Returns true if the token type is an operator or punctuation.
-[[nodiscard]] CODEDUP_API auto isOperatorOrPunctuation(TokenType type) -> bool;
+[[nodiscard]] CODEDUP_API auto IsOperatorOrPunctuation(TokenType type) -> bool;
 
 } // namespace codedup

@@ -11,7 +11,7 @@ TEST_CASE("Reporter.SummaryNoColor", "[reporter]")
 {
     Reporter reporter({.useColor = false});
     std::string out;
-    reporter.reportSummary(out, {.totalFiles = 10, .totalBlocks = 50, .totalGroups = 3});
+    reporter.ReportSummary(out, {.totalFiles = 10, .totalBlocks = 50, .totalGroups = 3});
 
     CHECK(out.find("10 files") != std::string::npos);
     CHECK(out.find("50 blocks") != std::string::npos);
@@ -22,7 +22,7 @@ TEST_CASE("Reporter.SummaryWithColor", "[reporter]")
 {
     Reporter reporter({.useColor = true});
     std::string out;
-    reporter.reportSummary(out, {.totalFiles = 5, .totalBlocks = 20, .totalGroups = 1});
+    reporter.ReportSummary(out, {.totalFiles = 5, .totalBlocks = 20, .totalGroups = 1});
 
     CHECK(out.find("\033[") != std::string::npos); // Contains ANSI escape
     CHECK(out.find("5 files") != std::string::npos);
@@ -38,7 +38,7 @@ TEST_CASE("Reporter.EmptyGroups", "[reporter]")
     std::vector<std::vector<Token>> allTokens;
     std::vector<size_t> blockToFile;
 
-    reporter.report(out, groups, blocks, allTokens, blockToFile);
+    reporter.Report(out, groups, blocks, allTokens, blockToFile);
     CHECK(out.empty());
 }
 
@@ -82,7 +82,7 @@ TEST_CASE("Reporter.IndentationPreservation", "[reporter]")
     std::vector<size_t> blockToFile = {0, 0};
 
     std::string out;
-    reporter.report(out, {group}, {block, block2}, allTokens, blockToFile);
+    reporter.Report(out, {group}, {block, block2}, allTokens, blockToFile);
 
     // Line 1 should have 4 leading spaces for indentation (column 5 means 4 spaces before "if")
     CHECK(out.find("| " + std::string(4, ' ') + "if") != std::string::npos);
@@ -123,7 +123,7 @@ TEST_CASE("Reporter.InterTokenSpacingPreservation", "[reporter]")
     std::vector<size_t> blockToFile = {0, 0};
 
     std::string out;
-    reporter.report(out, {group}, {block, block2}, allTokens, blockToFile);
+    reporter.Report(out, {group}, {block, block2}, allTokens, blockToFile);
 
     // Should preserve "a  +  b" spacing (2 spaces before +, 2 spaces before b), not "a + b"
     CHECK(out.find("a  +  b") != std::string::npos);
@@ -153,7 +153,7 @@ TEST_CASE("Reporter.NoSourceOutput", "[reporter]")
     std::vector<std::vector<Token>> allTokens;
     std::vector<size_t> blockToFile;
 
-    reporter.report(out, {group}, {block, block2}, allTokens, blockToFile);
+    reporter.Report(out, {group}, {block, block2}, allTokens, blockToFile);
 
     CHECK(out.find("Clone Group #1") != std::string::npos);
     CHECK(out.find("testFunc") != std::string::npos);
@@ -172,7 +172,7 @@ TEST_CASE("Reporter.SummaryWithTiming", "[reporter]")
     timing.cloneDetection = std::chrono::milliseconds(890);
     timing.intraDetection = std::chrono::milliseconds(230);
 
-    reporter.reportSummary(
+    reporter.ReportSummary(
         out, {.totalFiles = 100, .totalBlocks = 500, .totalGroups = 12, .totalIntraPairs = 5, .timing = timing});
 
     CHECK(out.find("100 files") != std::string::npos);
@@ -191,7 +191,7 @@ TEST_CASE("Reporter.SummaryWithoutTiming", "[reporter]")
 {
     Reporter reporter({.useColor = false});
     std::string out;
-    reporter.reportSummary(out, {.totalFiles = 10, .totalBlocks = 50, .totalGroups = 3});
+    reporter.ReportSummary(out, {.totalFiles = 10, .totalBlocks = 50, .totalGroups = 3});
 
     CHECK(out.find("10 files") != std::string::npos);
     // No timing line should appear
@@ -204,7 +204,7 @@ TEST_CASE("Reporter.SummaryDuplications", "[reporter]")
 {
     Reporter reporter({.useColor = false});
     std::string out;
-    reporter.reportSummary(out, {.totalFiles = 10,
+    reporter.ReportSummary(out, {.totalFiles = 10,
                                  .totalBlocks = 50,
                                  .totalGroups = 3,
                                  .totalIntraPairs = 2,
@@ -222,7 +222,7 @@ TEST_CASE("Reporter.SummaryDuplicationsNoIntra", "[reporter]")
 {
     Reporter reporter({.useColor = false});
     std::string out;
-    reporter.reportSummary(
+    reporter.ReportSummary(
         out, {.totalFiles = 10, .totalBlocks = 50, .totalGroups = 3, .totalDuplicatedLines = 80, .totalFunctions = 4});
 
     CHECK(out.find("Duplications:") != std::string::npos);
@@ -287,7 +287,7 @@ TEST_CASE("Reporter.DiffHighlighting.ColoredOutput", "[reporter][highlight]")
     std::vector<size_t> blockToFile = {0, 1};
 
     std::string out;
-    reporter.report(out, {group}, {blockA, blockB}, allTokens, blockToFile);
+    reporter.Report(out, {group}, {blockA, blockB}, allTokens, blockToFile);
 
     // Background highlight ANSI code should appear (48;2; is background truecolor)
     CHECK(out.find("\033[48;2;") != std::string::npos);
@@ -334,7 +334,7 @@ TEST_CASE("Reporter.DiffHighlighting.NoColorDisablesHighlight", "[reporter][high
     std::vector<size_t> blockToFile = {0, 1};
 
     std::string out;
-    reporter.report(out, {group}, {blockA, blockB}, allTokens, blockToFile);
+    reporter.Report(out, {group}, {blockA, blockB}, allTokens, blockToFile);
 
     // No ANSI codes at all
     CHECK(out.find("\033[") == std::string::npos);
@@ -382,7 +382,7 @@ TEST_CASE("Reporter.DiffHighlighting.DisabledHighlightDifferences", "[reporter][
     std::vector<size_t> blockToFile = {0, 1};
 
     std::string out;
-    reporter.report(out, {group}, {blockA, blockB}, allTokens, blockToFile);
+    reporter.Report(out, {group}, {blockA, blockB}, allTokens, blockToFile);
 
     // Should have foreground ANSI codes (38;2;) but no background codes (48;2;)
     CHECK(out.find("\033[38;2;") != std::string::npos);

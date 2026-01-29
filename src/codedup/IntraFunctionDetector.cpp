@@ -36,7 +36,7 @@ using SimdU32x8 = stdx::simd<uint32_t, stdx::simd_abi::fixed_size<8>>;
 /// @param b Pointer to the start of the second region.
 /// @param maxLen Maximum number of elements to compare.
 /// @return The number of consecutive matching elements from the start.
-[[nodiscard]] auto simdForwardMatch(NormalizedTokenId const* a, NormalizedTokenId const* b, size_t maxLen) -> size_t
+[[nodiscard]] auto SimdForwardMatch(NormalizedTokenId const* a, NormalizedTokenId const* b, size_t maxLen) -> size_t
 {
     size_t offset = 0;
 
@@ -63,7 +63,7 @@ using SimdU32x8 = stdx::simd<uint32_t, stdx::simd_abi::fixed_size<8>>;
 
 /// @brief SIMD-accelerated backward match extension between two token sequences.
 ///
-/// Similar to simdForwardMatch but scans backward from the given positions. Compares
+/// Similar to SimdForwardMatch but scans backward from the given positions. Compares
 /// 8 elements per iteration in reverse order, using SIMD to find the first mismatch
 /// when scanning toward the beginning of the sequences.
 ///
@@ -72,7 +72,7 @@ using SimdU32x8 = stdx::simd<uint32_t, stdx::simd_abi::fixed_size<8>>;
 /// @param posA Current position in region A (extension starts at posA-1 going backward).
 /// @param posB Current position in region B (extension starts at posB-1 going backward).
 /// @return The number of consecutive matching elements going backward.
-[[nodiscard]] auto simdBackwardMatch(NormalizedTokenId const* a, NormalizedTokenId const* b, size_t posA, size_t posB)
+[[nodiscard]] auto SimdBackwardMatch(NormalizedTokenId const* a, NormalizedTokenId const* b, size_t posA, size_t posB)
     -> size_t
 {
     auto const maxLen = std::min(posA, posB);
@@ -115,7 +115,7 @@ using SimdU32x8 = stdx::simd<uint32_t, stdx::simd_abi::fixed_size<8>>;
 }
 
 /// @brief Computes the overlap length between two 1D intervals [s1, s1+l1) and [s2, s2+l2).
-[[nodiscard]] constexpr auto intervalOverlap(size_t s1, size_t l1, size_t s2, size_t l2) -> size_t
+[[nodiscard]] constexpr auto IntervalOverlap(size_t s1, size_t l1, size_t s2, size_t l2) -> size_t
 {
     auto const end1 = s1 + l1;
     auto const end2 = s2 + l2;
@@ -136,7 +136,7 @@ using SimdU32x8 = stdx::simd<uint32_t, stdx::simd_abi::fixed_size<8>>;
 /// @param startB Start index of region B.
 /// @param length Length of both regions.
 /// @return Fraction of matching positions (0.0 to 1.0), or 1.0 if textIds is empty.
-[[nodiscard]] auto positionalTextSimilarity(std::vector<NormalizedTokenId> const& textIds, size_t startA, size_t startB,
+[[nodiscard]] auto PositionalTextSimilarity(std::vector<NormalizedTokenId> const& textIds, size_t startA, size_t startB,
                                             size_t length) -> double
 {
     if (textIds.empty() || length == 0)
@@ -157,16 +157,16 @@ using SimdU32x8 = stdx::simd<uint32_t, stdx::simd_abi::fixed_size<8>>;
 /// by more than 50% of the shorter region in each comparison. This ensures only truly
 /// redundant pairs (describing the same underlying clone) are merged, preserving all
 /// distinct valid pairs.
-[[nodiscard]] auto pairsAreRedundant(IntraClonePair const& p, IntraClonePair const& q) -> bool
+[[nodiscard]] auto PairsAreRedundant(IntraClonePair const& p, IntraClonePair const& q) -> bool
 {
     // Check region A overlap
-    auto const overlapA = intervalOverlap(p.regionA.start, p.regionA.length, q.regionA.start, q.regionA.length);
+    auto const overlapA = IntervalOverlap(p.regionA.start, p.regionA.length, q.regionA.start, q.regionA.length);
     auto const minLenA = std::min(p.regionA.length, q.regionA.length);
     if (minLenA == 0 || overlapA * 2 <= minLenA)
         return false;
 
     // Check region B overlap
-    auto const overlapB = intervalOverlap(p.regionB.start, p.regionB.length, q.regionB.start, q.regionB.length);
+    auto const overlapB = IntervalOverlap(p.regionB.start, p.regionB.length, q.regionB.start, q.regionB.length);
     auto const minLenB = std::min(p.regionB.length, q.regionB.length);
     if (minLenB == 0 || overlapB * 2 <= minLenB)
         return false;
@@ -176,13 +176,13 @@ using SimdU32x8 = stdx::simd<uint32_t, stdx::simd_abi::fixed_size<8>>;
 
 } // namespace
 
-auto IntraFunctionDetector::detect(std::vector<CodeBlock> const& blocks) -> std::vector<IntraCloneResult>
+auto IntraFunctionDetector::Detect(std::vector<CodeBlock> const& blocks) -> std::vector<IntraCloneResult>
 {
     std::vector<IntraCloneResult> results;
 
     for (auto const bi : std::views::iota(size_t{0}, blocks.size()))
     {
-        auto pairs = detectInBlock(blocks[bi], bi);
+        auto pairs = DetectInBlock(blocks[bi], bi);
         if (!pairs.empty())
         {
             results.push_back(IntraCloneResult{
@@ -195,7 +195,8 @@ auto IntraFunctionDetector::detect(std::vector<CodeBlock> const& blocks) -> std:
     return results;
 }
 
-auto IntraFunctionDetector::detectInBlock(CodeBlock const& block, size_t blockIndex) -> std::vector<IntraClonePair>
+auto IntraFunctionDetector::DetectInBlock(CodeBlock const& block, size_t blockIndex) const
+    -> std::vector<IntraClonePair>
 {
     auto const& ids = block.normalizedIds;
 
@@ -204,7 +205,7 @@ auto IntraFunctionDetector::detectInBlock(CodeBlock const& block, size_t blockIn
         return {};
 
     // Phase 1: Fingerprint self-join
-    auto const fingerprints = computeRollingFingerprints(ids, _config.hashWindowSize);
+    auto const fingerprints = ComputeRollingFingerprints(ids, _config.hashWindowSize);
     if (fingerprints.empty())
         return {};
 
@@ -243,10 +244,10 @@ auto IntraFunctionDetector::detectInBlock(CodeBlock const& block, size_t blockIn
         // Forward extension limit: don't cross posJ from posI, and stay within bounds
         auto const fwdLimit = std::min({ids.size() - posI, ids.size() - posJ, posJ - posI});
         // Extend forward using SIMD-accelerated comparison (8 elements per iteration)
-        auto const fwdLen = simdForwardMatch(ids.data() + posI, ids.data() + posJ, fwdLimit);
+        auto const fwdLen = SimdForwardMatch(ids.data() + posI, ids.data() + posJ, fwdLimit);
 
         // Backward extension: SIMD-accelerated, comparing ids[posI-k-1] vs ids[posJ-k-1]
-        auto const bwdLen = simdBackwardMatch(ids.data(), ids.data(), posI, posJ);
+        auto const bwdLen = SimdBackwardMatch(ids.data(), ids.data(), posI, posJ);
 
         auto const startA = posI - bwdLen;
         auto const startB = posJ - bwdLen;
@@ -267,7 +268,7 @@ auto IntraFunctionDetector::detectInBlock(CodeBlock const& block, size_t blockIn
 
         if (_config.textSensitivity > 0.0 && !block.textPreservingIds.empty())
         {
-            auto const textualSim = positionalTextSimilarity(block.textPreservingIds, startA, startB, regionLen);
+            auto const textualSim = PositionalTextSimilarity(block.textPreservingIds, startA, startB, regionLen);
             similarity = (1.0 - _config.textSensitivity) * 1.0 + _config.textSensitivity * textualSim;
         }
 
@@ -308,7 +309,7 @@ auto IntraFunctionDetector::detectInBlock(CodeBlock const& block, size_t blockIn
         bool isRedundant = false;
         for (auto const& kept : result)
         {
-            if (pairsAreRedundant(candidate, kept))
+            if (PairsAreRedundant(candidate, kept))
             {
                 isRedundant = true;
                 break;

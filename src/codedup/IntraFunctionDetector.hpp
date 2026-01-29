@@ -56,7 +56,7 @@ public:
     /// @brief Detects intra-function clones in all blocks.
     /// @param blocks The code blocks to analyze.
     /// @return A vector of results, one per block that contains intra-function clones.
-    [[nodiscard]] auto detect(std::vector<CodeBlock> const& blocks) -> std::vector<IntraCloneResult>;
+    [[nodiscard]] auto Detect(std::vector<CodeBlock> const& blocks) -> std::vector<IntraCloneResult>;
 
 private:
     IntraCloneDetectorConfig _config;
@@ -65,7 +65,7 @@ private:
     /// @param block The code block to analyze.
     /// @param blockIndex The index of this block in the global block vector.
     /// @return A vector of intra-function clone pairs found within this block.
-    [[nodiscard]] auto detectInBlock(CodeBlock const& block, size_t blockIndex) -> std::vector<IntraClonePair>;
+    [[nodiscard]] auto DetectInBlock(CodeBlock const& block, size_t blockIndex) const -> std::vector<IntraClonePair>;
 };
 
 } // namespace codedup

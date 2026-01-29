@@ -42,7 +42,7 @@ public:
     /// @param tokens The original token sequence.
     /// @param normalized The normalized token sequence (structural).
     /// @return A vector of extracted code blocks.
-    [[nodiscard]] auto extract(std::vector<Token> const& tokens, std::vector<NormalizedToken> const& normalized)
+    [[nodiscard]] auto Extract(std::vector<Token> const& tokens, std::vector<NormalizedToken> const& normalized) const
         -> std::vector<CodeBlock>;
 
     /// @brief Extracts code blocks with both structural and text-preserving normalization.
@@ -50,14 +50,14 @@ public:
     /// @param normalized The structural normalized token sequence.
     /// @param textPreserving The text-preserving normalized token sequence.
     /// @return A vector of extracted code blocks with both ID vectors populated.
-    [[nodiscard]] auto extract(std::vector<Token> const& tokens, std::vector<NormalizedToken> const& normalized,
-                               std::vector<NormalizedToken> const& textPreserving) -> std::vector<CodeBlock>;
+    [[nodiscard]] auto Extract(std::vector<Token> const& tokens, std::vector<NormalizedToken> const& normalized,
+                               std::vector<NormalizedToken> const& textPreserving) const -> std::vector<CodeBlock>;
 
 private:
     Config _config;
 
     /// @brief Attempts to determine the function name preceding a brace-delimited block.
-    [[nodiscard]] static auto findFunctionName(std::vector<Token> const& tokens, size_t braceIndex) -> std::string;
+    [[nodiscard]] static auto FindFunctionName(std::vector<Token> const& tokens, size_t braceIndex) -> std::string;
 };
 
 } // namespace codedup

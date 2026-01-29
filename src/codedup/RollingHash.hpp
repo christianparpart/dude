@@ -34,7 +34,7 @@ constexpr uint64_t hashPrime = (1ULL << 61) - 1;
 /// @param a First operand (must be < hashPrime).
 /// @param b Second operand (must be < hashPrime).
 /// @return (a * b) % hashPrime.
-[[nodiscard]] constexpr auto mulmod(uint64_t a, uint64_t b) -> uint64_t
+[[nodiscard]] constexpr auto Mulmod(uint64_t a, uint64_t b) -> uint64_t
 {
     auto const product = static_cast<__int128>(a) * static_cast<__int128>(b);
     auto const lo = static_cast<uint64_t>(product) & hashPrime;
@@ -47,7 +47,7 @@ constexpr uint64_t hashPrime = (1ULL << 61) - 1;
 /// @param ids The normalized token ID sequence.
 /// @param windowSize The size of the sliding window.
 /// @return A vector of fingerprints, one per window position.
-[[nodiscard]] inline auto computeRollingFingerprints(std::span<NormalizedTokenId const> ids, size_t windowSize)
+[[nodiscard]] inline auto ComputeRollingFingerprints(std::span<NormalizedTokenId const> ids, size_t windowSize)
     -> std::vector<uint64_t>
 {
     if (ids.size() < windowSize)
@@ -59,21 +59,21 @@ constexpr uint64_t hashPrime = (1ULL << 61) - 1;
     // Compute BASE^(W-1) mod PRIME for removing the leading term
     uint64_t basePow = 1;
     for ([[maybe_unused]] auto const _ : std::views::iota(size_t{0}, windowSize - 1))
-        basePow = mulmod(basePow, hashBase);
+        basePow = Mulmod(basePow, hashBase);
 
     // Initial hash for the first window
     uint64_t hash = 0;
     for (auto const i : std::views::iota(size_t{0}, windowSize))
-        hash = (mulmod(hash, hashBase) + ids[i]) % hashPrime;
+        hash = (Mulmod(hash, hashBase) + ids[i]) % hashPrime;
 
     fingerprints.push_back(hash);
 
     // Rolling hash for subsequent windows
     for (size_t i = windowSize; i < ids.size(); ++i)
     {
-        auto const remove = mulmod(ids[i - windowSize], basePow);
+        auto const remove = Mulmod(ids[i - windowSize], basePow);
         hash = (hash + hashPrime - remove) % hashPrime;
-        hash = (mulmod(hash, hashBase) + ids[i]) % hashPrime;
+        hash = (Mulmod(hash, hashBase) + ids[i]) % hashPrime;
         fingerprints.push_back(hash);
     }
 

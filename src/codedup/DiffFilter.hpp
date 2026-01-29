@@ -29,7 +29,7 @@ public:
     /// @param diff The parsed git diff result containing changed file/line information.
     /// @param projectRoot The project root directory for resolving relative diff paths.
     /// @return A set of block indices that overlap with changed lines.
-    [[nodiscard]] static auto findChangedBlocks(std::vector<CodeBlock> const& blocks, DiffResult const& diff,
+    [[nodiscard]] static auto FindChangedBlocks(std::vector<CodeBlock> const& blocks, DiffResult const& diff,
                                                 std::filesystem::path const& projectRoot) -> std::unordered_set<size_t>;
 
     /// @brief Filters clone groups to only include those with at least one changed block.
@@ -40,7 +40,7 @@ public:
     /// @param groups The detected clone groups.
     /// @param changedBlocks The set of block indices overlapping with changed lines.
     /// @return Filtered clone groups.
-    [[nodiscard]] static auto filterCloneGroups(std::vector<CloneGroup> const& groups,
+    [[nodiscard]] static auto FilterCloneGroups(std::vector<CloneGroup> const& groups,
                                                 std::unordered_set<size_t> const& changedBlocks)
         -> std::vector<CloneGroup>;
 
@@ -51,7 +51,7 @@ public:
     /// @param results The detected intra-clone results.
     /// @param changedBlocks The set of block indices overlapping with changed lines.
     /// @return Filtered intra-clone results.
-    [[nodiscard]] static auto filterIntraResults(std::vector<IntraCloneResult> const& results,
+    [[nodiscard]] static auto FilterIntraResults(std::vector<IntraCloneResult> const& results,
                                                  std::unordered_set<size_t> const& changedBlocks)
         -> std::vector<IntraCloneResult>;
 };

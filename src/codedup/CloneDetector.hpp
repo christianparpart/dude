@@ -65,7 +65,7 @@ public:
     /// @brief Detects clone groups among the given code blocks.
     /// @param blocks The code blocks to analyze.
     /// @return A vector of clone groups, each containing block indices and similarity.
-    [[nodiscard]] auto detect(std::vector<CodeBlock> const& blocks) -> std::vector<CloneGroup>;
+    [[nodiscard]] auto Detect(std::vector<CodeBlock> const& blocks) -> std::vector<CloneGroup>;
 
     /// @brief Computes LCS-based Dice coefficient similarity between two ID sequences.
     ///
@@ -74,7 +74,7 @@ public:
     /// @param a First normalized token ID sequence.
     /// @param b Second normalized token ID sequence.
     /// @return Dice coefficient similarity (0.0 to 1.0).
-    [[nodiscard]] static auto computeSimilarity(std::vector<NormalizedTokenId> const& a,
+    [[nodiscard]] static auto ComputeSimilarity(std::vector<NormalizedTokenId> const& a,
                                                 std::vector<NormalizedTokenId> const& b) -> double;
 
     /// @brief Computes blended similarity using structural and text-preserving ID sequences.
@@ -87,7 +87,7 @@ public:
     /// @param textPreservingB Text-preserving IDs for block B (may be empty).
     /// @param textSensitivity Blend factor (0.0-1.0).
     /// @return Blended similarity (0.0 to 1.0).
-    [[nodiscard]] static auto computeBlendedSimilarity(std::vector<NormalizedTokenId> const& structuralA,
+    [[nodiscard]] static auto ComputeBlendedSimilarity(std::vector<NormalizedTokenId> const& structuralA,
                                                        std::vector<NormalizedTokenId> const& structuralB,
                                                        std::vector<NormalizedTokenId> const& textPreservingA,
                                                        std::vector<NormalizedTokenId> const& textPreservingB,
@@ -99,7 +99,7 @@ public:
     /// @param a First normalized token ID sequence.
     /// @param b Second normalized token ID sequence.
     /// @return Dice coefficient similarity (0.0 to 1.0).
-    [[nodiscard]] static auto computeSimilarityClassic(std::vector<NormalizedTokenId> const& a,
+    [[nodiscard]] static auto ComputeSimilarityClassic(std::vector<NormalizedTokenId> const& a,
                                                        std::vector<NormalizedTokenId> const& b) -> double;
 
     /// @brief Computes LCS alignment between two normalized token sequences.
@@ -109,7 +109,7 @@ public:
     /// @param a First normalized token ID sequence.
     /// @param b Second normalized token ID sequence.
     /// @return LcsAlignment indicating matched positions in both sequences.
-    [[nodiscard]] static auto computeLcsAlignment(std::span<NormalizedTokenId const> a,
+    [[nodiscard]] static auto ComputeLcsAlignment(std::span<NormalizedTokenId const> a,
                                                   std::span<NormalizedTokenId const> b) -> LcsAlignment;
 
     /// @brief O(1) length-ratio pre-filter for clone candidate pairs.
@@ -122,7 +122,7 @@ public:
     /// @param lenB Length of the second sequence.
     /// @param threshold Minimum similarity threshold.
     /// @return True if the pair could possibly meet the threshold.
-    [[nodiscard]] static constexpr auto lengthsCompatible(size_t lenA, size_t lenB, double threshold) -> bool
+    [[nodiscard]] static constexpr auto LengthsCompatible(size_t lenA, size_t lenB, double threshold) -> bool
     {
         if (lenA == 0 || lenB == 0)
             return false;
@@ -134,7 +134,7 @@ private:
     CloneDetectorConfig _config;
 
     /// @brief Computes a rolling hash fingerprint for a window of token IDs.
-    [[nodiscard]] auto computeFingerprints(std::vector<NormalizedTokenId> const& ids) const -> std::vector<uint64_t>;
+    [[nodiscard]] auto ComputeFingerprints(std::vector<NormalizedTokenId> const& ids) const -> std::vector<uint64_t>;
 };
 
 } // namespace codedup

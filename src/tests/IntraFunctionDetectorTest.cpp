@@ -13,14 +13,14 @@ namespace
 {
 
 /// @brief Creates a CodeBlock from source code by running the full tokenize+normalize pipeline.
-auto makeBlock(std::string_view source, std::string const& name = "test") -> CodeBlock
+auto MakeBlock(std::string_view source, std::string const& name = "test") -> CodeBlock
 {
-    auto tokens = Tokenizer::tokenize(source);
+    auto tokens = Tokenizer::Tokenize(source);
     if (!tokens)
         return {};
 
     TokenNormalizer normalizer;
-    auto normalized = normalizer.normalize(*tokens);
+    auto normalized = normalizer.Normalize(*tokens);
 
     std::vector<NormalizedTokenId> ids;
     ids.reserve(normalized.size());
@@ -44,7 +44,7 @@ TEST_CASE("IntraFunctionDetector.IdenticalRegions", "[intra]")
     // A function with two copy-pasted blocks of code (different variable names).
     // After normalization, identifiers are all the same generic ID, so the
     // two blocks become identical token sequences.
-    auto const block = makeBlock(R"cpp(
+    auto const block = MakeBlock(R"cpp(
 void bigFunction(int input) {
     int a = input + 1;
     int b = a * 2;
@@ -76,7 +76,7 @@ void bigFunction(int input) {
                                  "bigFunction");
 
     IntraFunctionDetector detector({.minRegionTokens = 10, .similarityThreshold = 0.80});
-    auto const results = detector.detect({block});
+    auto const results = detector.Detect({block});
 
     REQUIRE(results.size() == 1);
     CHECK(results[0].blockIndex == 0);
@@ -90,7 +90,7 @@ void bigFunction(int input) {
 TEST_CASE("IntraFunctionDetector.NoInternalDuplication", "[intra]")
 {
     // A function with no repetition
-    auto const block = makeBlock(R"cpp(
+    auto const block = MakeBlock(R"cpp(
 void uniqueFunction(int x) {
     int a = x + 1;
     if (a > 10) {
@@ -108,7 +108,7 @@ void uniqueFunction(int x) {
                                  "uniqueFunction");
 
     IntraFunctionDetector detector({.minRegionTokens = 10, .similarityThreshold = 0.80});
-    auto const results = detector.detect({block});
+    auto const results = detector.Detect({block});
 
     CHECK(results.empty());
 }
@@ -117,7 +117,7 @@ TEST_CASE("IntraFunctionDetector.OverlappingRegions", "[intra]")
 {
     // With three repeated blocks, multiple pairs are possible.
     // The detector should keep all non-redundant pairs.
-    auto const block = makeBlock(R"cpp(
+    auto const block = MakeBlock(R"cpp(
 void tripleRepeat(int input) {
     int a = input + 1;
     int b = a * 2;
@@ -156,7 +156,7 @@ void tripleRepeat(int input) {
                                  "tripleRepeat");
 
     IntraFunctionDetector detector({.minRegionTokens = 10, .similarityThreshold = 0.80});
-    auto const results = detector.detect({block});
+    auto const results = detector.Detect({block});
 
     REQUIRE(results.size() == 1);
     // With three identical regions, we expect multiple distinct pairs
@@ -167,7 +167,7 @@ TEST_CASE("IntraFunctionDetector.MinRegionFiltering", "[intra]")
 {
     // Regions below minRegionTokens are filtered out.
     // Create a function with short repeated snippets that are below the threshold.
-    auto const block = makeBlock(R"cpp(
+    auto const block = MakeBlock(R"cpp(
 void shortRepeats(int x) {
     int a = x + 1;
     int b = a + 2;
@@ -184,7 +184,7 @@ void shortRepeats(int x) {
 
     // Set minRegionTokens very high so nothing passes
     IntraFunctionDetector detector({.minRegionTokens = 50, .similarityThreshold = 0.80});
-    auto const results = detector.detect({block});
+    auto const results = detector.Detect({block});
 
     CHECK(results.empty());
 }
@@ -192,7 +192,7 @@ void shortRepeats(int x) {
 TEST_CASE("IntraFunctionDetector.MultipleIntraPairs", "[intra]")
 {
     // A function with two distinct sets of duplicated code
-    auto const block = makeBlock(R"cpp(
+    auto const block = MakeBlock(R"cpp(
 void multiDup(int input) {
     int a = input + 1;
     int b = a * 2;
@@ -245,7 +245,7 @@ void multiDup(int input) {
                                  "multiDup");
 
     IntraFunctionDetector detector({.minRegionTokens = 10, .similarityThreshold = 0.80});
-    auto const results = detector.detect({block});
+    auto const results = detector.Detect({block});
 
     REQUIRE(results.size() == 1);
     // Should detect at least 2 distinct pairs (the two different duplication sets)
@@ -255,7 +255,7 @@ void multiDup(int input) {
 TEST_CASE("IntraFunctionDetector.SmallFunction", "[intra]")
 {
     // Function too small for any intra-function clones
-    auto const block = makeBlock(R"cpp(
+    auto const block = MakeBlock(R"cpp(
 void tiny(int x) {
     return;
 }
@@ -263,7 +263,7 @@ void tiny(int x) {
                                  "tiny");
 
     IntraFunctionDetector detector({.minRegionTokens = 10, .similarityThreshold = 0.80});
-    auto const results = detector.detect({block});
+    auto const results = detector.Detect({block});
 
     CHECK(results.empty());
 }
@@ -272,7 +272,7 @@ TEST_CASE("IntraFunctionDetector.ThresholdFiltering", "[intra]")
 {
     // Near-miss regions below threshold are excluded.
     // Create two similar but not identical repeated blocks.
-    auto const block = makeBlock(R"cpp(
+    auto const block = MakeBlock(R"cpp(
 void nearMiss(int input) {
     int a = input + 1;
     int b = a * 2;
@@ -302,7 +302,7 @@ void nearMiss(int input) {
     // Use a very high threshold that even identical (post-normalization) regions might pass
     // but set it to 1.01 so nothing can pass
     IntraFunctionDetector detector({.minRegionTokens = 10, .similarityThreshold = 1.01});
-    auto const results = detector.detect({block});
+    auto const results = detector.Detect({block});
 
     // Nothing should pass a threshold > 1.0
     CHECK(results.empty());
@@ -311,7 +311,7 @@ void nearMiss(int input) {
 TEST_CASE("IntraFunctionDetector.Integration", "[intra]")
 {
     // End-to-end test with realistic C++ code containing internal duplication.
-    auto const block = makeBlock(R"cpp(
+    auto const block = MakeBlock(R"cpp(
 void processData(int* data, int size) {
     // First pass: forward scan
     for (int i = 0; i < size; ++i) {
@@ -349,7 +349,7 @@ void processData(int* data, int size) {
                                  "processData");
 
     IntraFunctionDetector detector({.minRegionTokens = 10, .similarityThreshold = 0.80});
-    auto const results = detector.detect({block});
+    auto const results = detector.Detect({block});
 
     REQUIRE(results.size() == 1);
     REQUIRE(!results[0].pairs.empty());
@@ -370,15 +370,15 @@ namespace
 {
 
 /// @brief Creates a CodeBlock with both structural and text-preserving IDs.
-auto makeBlockWithTP(std::string_view source, std::string const& name = "test") -> CodeBlock
+auto MakeBlockWithTP(std::string_view source, std::string const& name = "test") -> CodeBlock
 {
-    auto tokens = Tokenizer::tokenize(source);
+    auto tokens = Tokenizer::Tokenize(source);
     if (!tokens)
         return {};
 
     TokenNormalizer normalizer;
-    auto normalized = normalizer.normalize(*tokens);
-    auto textPreserving = normalizer.normalizeTextPreserving(*tokens);
+    auto normalized = normalizer.Normalize(*tokens);
+    auto textPreserving = normalizer.NormalizeTextPreserving(*tokens);
 
     std::vector<NormalizedTokenId> ids;
     ids.reserve(normalized.size());
@@ -406,7 +406,7 @@ TEST_CASE("IntraFunctionDetector.TextSensitivity.RenamedRegions", "[intra][blend
 {
     // Two copy-pasted blocks with different variable names.
     // With text sensitivity, the similarity should be reduced below 1.0.
-    auto const block = makeBlockWithTP(R"cpp(
+    auto const block = MakeBlockWithTP(R"cpp(
 void bigFunction(int input) {
     int a = input + 1;
     int b = a * 2;
@@ -439,14 +439,14 @@ void bigFunction(int input) {
 
     // Without text sensitivity: similarity = 1.0
     IntraFunctionDetector detector0({.minRegionTokens = 10, .similarityThreshold = 0.80, .textSensitivity = 0.0});
-    auto const results0 = detector0.detect({block});
+    auto const results0 = detector0.Detect({block});
     REQUIRE(results0.size() == 1);
     REQUIRE(!results0[0].pairs.empty());
     CHECK_THAT(results0[0].pairs[0].similarity, Catch::Matchers::WithinAbs(1.0, 0.01));
 
     // With text sensitivity: similarity < 1.0 (renamed identifiers reduce it)
     IntraFunctionDetector detector03({.minRegionTokens = 10, .similarityThreshold = 0.50, .textSensitivity = 0.3});
-    auto const results03 = detector03.detect({block});
+    auto const results03 = detector03.Detect({block});
     REQUIRE(results03.size() == 1);
     REQUIRE(!results03[0].pairs.empty());
     CHECK(results03[0].pairs[0].similarity < 1.0);
@@ -455,7 +455,7 @@ void bigFunction(int input) {
 TEST_CASE("IntraFunctionDetector.TextSensitivity.IdenticalRegions", "[intra][blended]")
 {
     // Copy-pasted blocks with identical variable names should still be 1.0 even with text sensitivity.
-    auto const block = makeBlockWithTP(R"cpp(
+    auto const block = MakeBlockWithTP(R"cpp(
 void duplicateFunction(int input) {
     int a = input + 1;
     int b = a * 2;
@@ -488,7 +488,7 @@ void duplicateFunction(int input) {
 
     // With text sensitivity: renamed identifiers should reduce similarity
     IntraFunctionDetector detector({.minRegionTokens = 10, .similarityThreshold = 0.50, .textSensitivity = 0.5});
-    auto const results = detector.detect({block});
+    auto const results = detector.Detect({block});
     REQUIRE(results.size() == 1);
     REQUIRE(!results[0].pairs.empty());
     // Even with text sensitivity, renamed vars reduce similarity below 1.0
@@ -498,7 +498,7 @@ void duplicateFunction(int input) {
 TEST_CASE("IntraFunctionDetector.TextSensitivity.FiltersByThreshold", "[intra][blended]")
 {
     // With high text sensitivity and high threshold, renamed clones get filtered
-    auto const block = makeBlockWithTP(R"cpp(
+    auto const block = MakeBlockWithTP(R"cpp(
 void bigFunction(int input) {
     int a = input + 1;
     int b = a * 2;
@@ -531,6 +531,6 @@ void bigFunction(int input) {
 
     // High text sensitivity + high threshold should filter renamed clones
     IntraFunctionDetector detector({.minRegionTokens = 10, .similarityThreshold = 0.99, .textSensitivity = 1.0});
-    auto const results = detector.detect({block});
+    auto const results = detector.Detect({block});
     CHECK(results.empty());
 }

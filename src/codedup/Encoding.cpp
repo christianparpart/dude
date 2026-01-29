@@ -26,7 +26,7 @@ constexpr auto windows1252Table = std::to_array<char32_t>({
 /// @brief Appends a Unicode code point as 1–4 UTF-8 bytes.
 /// @param out The string to append to.
 /// @param cp The Unicode code point to encode.
-void appendUtf8(std::string& out, char32_t cp)
+void AppendUtf8(std::string& out, char32_t cp)
 {
     if (cp <= 0x7F)
     {
@@ -55,7 +55,7 @@ void appendUtf8(std::string& out, char32_t cp)
 /// @brief Checks whether the data starts with a UTF-8 BOM (0xEF 0xBB 0xBF).
 /// @param data The byte sequence to check.
 /// @return True if a UTF-8 BOM is present.
-[[nodiscard]] auto hasUtf8Bom(std::string_view data) -> bool
+[[nodiscard]] auto HasUtf8Bom(std::string_view data) -> bool
 {
     return data.size() >= 3 && static_cast<uint8_t>(data[0]) == 0xEF && static_cast<uint8_t>(data[1]) == 0xBB &&
            static_cast<uint8_t>(data[2]) == 0xBF;
@@ -67,7 +67,7 @@ void appendUtf8(std::string& out, char32_t cp)
 /// and code points above U+10FFFF.
 /// @param data The byte sequence to validate.
 /// @return True if the data is valid UTF-8.
-[[nodiscard]] auto isValidUtf8(std::string_view data) -> bool
+[[nodiscard]] auto IsValidUtf8(std::string_view data) -> bool
 {
     auto const size = data.size();
     size_t i = 0;
@@ -142,7 +142,7 @@ void appendUtf8(std::string& out, char32_t cp)
 /// Bytes 0xA0–0xFF map to U+00A0–U+00FF (Latin-1 Supplement).
 /// @param data The Windows-1252 byte sequence.
 /// @return The UTF-8 converted string.
-[[nodiscard]] auto convertWindows1252ToUtf8(std::string_view data) -> std::string
+[[nodiscard]] auto ConvertWindows1252ToUtf8(std::string_view data) -> std::string
 {
     std::string result;
     result.reserve(data.size() + data.size() / 4); // Slight overallocation for multi-byte sequences
@@ -156,12 +156,12 @@ void appendUtf8(std::string& out, char32_t cp)
         }
         else if (byte >= 0x80 && byte <= 0x9F)
         {
-            appendUtf8(result, windows1252Table[byte - 0x80]);
+            AppendUtf8(result, windows1252Table[byte - 0x80]);
         }
         else
         {
             // 0xA0–0xFF map directly to U+00A0–U+00FF
-            appendUtf8(result, static_cast<char32_t>(byte));
+            AppendUtf8(result, static_cast<char32_t>(byte));
         }
     }
 
@@ -171,7 +171,7 @@ void appendUtf8(std::string& out, char32_t cp)
 /// @brief Converts a character to lowercase (ASCII only).
 /// @param ch The character to convert.
 /// @return The lowercase version of the character.
-[[nodiscard]] constexpr auto toLowerAscii(char ch) -> char
+[[nodiscard]] constexpr auto ToLowerAscii(char ch) -> char
 {
     if (ch >= 'A' && ch <= 'Z')
         return static_cast<char>(ch + ('a' - 'A'));
@@ -182,40 +182,40 @@ void appendUtf8(std::string& out, char32_t cp)
 /// @param a First string.
 /// @param b Second string.
 /// @return True if the strings are equal ignoring case.
-[[nodiscard]] auto equalsIgnoreCase(std::string_view a, std::string_view b) -> bool
+[[nodiscard]] auto EqualsIgnoreCase(std::string_view a, std::string_view b) -> bool
 {
     if (a.size() != b.size())
         return false;
-    return std::ranges::equal(a, b, [](char ca, char cb) { return toLowerAscii(ca) == toLowerAscii(cb); });
+    return std::ranges::equal(a, b, [](char ca, char cb) { return ToLowerAscii(ca) == ToLowerAscii(cb); });
 }
 
 } // namespace
 
-auto detectEncoding(std::string_view data) -> InputEncoding
+auto DetectEncoding(std::string_view data) -> InputEncoding
 {
-    if (hasUtf8Bom(data))
+    if (HasUtf8Bom(data))
         return InputEncoding::Utf8;
 
-    if (isValidUtf8(data))
+    if (IsValidUtf8(data))
         return InputEncoding::Utf8;
 
     return InputEncoding::Windows1252;
 }
 
-auto convertToUtf8(std::string_view data, InputEncoding encoding) -> std::expected<std::string, EncodingError>
+auto ConvertToUtf8(std::string_view data, InputEncoding encoding) -> std::expected<std::string, EncodingError>
 {
-    auto const resolved = (encoding == InputEncoding::Auto) ? detectEncoding(data) : encoding;
+    auto const resolved = (encoding == InputEncoding::Auto) ? DetectEncoding(data) : encoding;
 
     switch (resolved)
     {
         case InputEncoding::Utf8:
         {
             // Strip BOM if present
-            auto const start = hasUtf8Bom(data) ? size_t{3} : size_t{0};
+            auto const start = HasUtf8Bom(data) ? size_t{3} : size_t{0};
             return std::string(data.substr(start));
         }
         case InputEncoding::Windows1252:
-            return convertWindows1252ToUtf8(data);
+            return ConvertWindows1252ToUtf8(data);
         case InputEncoding::Auto:
             break; // Unreachable after resolution
     }
@@ -223,14 +223,14 @@ auto convertToUtf8(std::string_view data, InputEncoding encoding) -> std::expect
     return std::unexpected(EncodingError{.message = "Unexpected encoding value"});
 }
 
-auto parseEncodingName(std::string_view name) -> std::expected<InputEncoding, EncodingError>
+auto ParseEncodingName(std::string_view name) -> std::expected<InputEncoding, EncodingError>
 {
-    if (equalsIgnoreCase(name, "auto"))
+    if (EqualsIgnoreCase(name, "auto"))
         return InputEncoding::Auto;
-    if (equalsIgnoreCase(name, "utf8") || equalsIgnoreCase(name, "utf-8"))
+    if (EqualsIgnoreCase(name, "utf8") || EqualsIgnoreCase(name, "utf-8"))
         return InputEncoding::Utf8;
-    if (equalsIgnoreCase(name, "windows-1252") || equalsIgnoreCase(name, "windows1252") ||
-        equalsIgnoreCase(name, "cp1252"))
+    if (EqualsIgnoreCase(name, "windows-1252") || EqualsIgnoreCase(name, "windows1252") ||
+        EqualsIgnoreCase(name, "cp1252"))
         return InputEncoding::Windows1252;
 
     return std::unexpected(EncodingError{.message = std::format("Unknown encoding: {}", name)});

@@ -10,7 +10,7 @@ using namespace codedup;
 
 TEST_CASE("GitDiffParser.ParseSingleFileSingleHunk", "[gitdiff]")
 {
-    auto const diff = R"(diff --git a/src/foo.cpp b/src/foo.cpp
+    auto const* const diff = R"(diff --git a/src/foo.cpp b/src/foo.cpp
 index 1234567..abcdefg 100644
 --- a/src/foo.cpp
 +++ b/src/foo.cpp
@@ -19,7 +19,7 @@ index 1234567..abcdefg 100644
 +    int b = 2;
 )";
 
-    auto const result = GitDiffParser::parseDiffOutput(diff);
+    auto const result = GitDiffParser::ParseDiffOutput(diff);
     REQUIRE(result.size() == 1);
     CHECK(result[0].filePath == "src/foo.cpp");
     REQUIRE(result[0].changedRanges.size() == 1);
@@ -30,7 +30,7 @@ index 1234567..abcdefg 100644
 TEST_CASE("GitDiffParser.ParseSingleFileSingleLineHunk", "[gitdiff]")
 {
     // Single line addition: count is implicit 1.
-    auto const diff = R"(diff --git a/src/foo.cpp b/src/foo.cpp
+    auto const* const diff = R"(diff --git a/src/foo.cpp b/src/foo.cpp
 index 1234567..abcdefg 100644
 --- a/src/foo.cpp
 +++ b/src/foo.cpp
@@ -38,7 +38,7 @@ index 1234567..abcdefg 100644
 +    int x = 42;
 )";
 
-    auto const result = GitDiffParser::parseDiffOutput(diff);
+    auto const result = GitDiffParser::ParseDiffOutput(diff);
     REQUIRE(result.size() == 1);
     REQUIRE(result[0].changedRanges.size() == 1);
     CHECK(result[0].changedRanges[0].startLine == 6);
@@ -47,7 +47,7 @@ index 1234567..abcdefg 100644
 
 TEST_CASE("GitDiffParser.ParseMultipleHunks", "[gitdiff]")
 {
-    auto const diff = R"(diff --git a/src/foo.cpp b/src/foo.cpp
+    auto const* const diff = R"(diff --git a/src/foo.cpp b/src/foo.cpp
 index 1234567..abcdefg 100644
 --- a/src/foo.cpp
 +++ b/src/foo.cpp
@@ -59,7 +59,7 @@ index 1234567..abcdefg 100644
 +    int d = 4;
 )";
 
-    auto const result = GitDiffParser::parseDiffOutput(diff);
+    auto const result = GitDiffParser::ParseDiffOutput(diff);
     REQUIRE(result.size() == 1);
     REQUIRE(result[0].changedRanges.size() == 2);
     CHECK(result[0].changedRanges[0].startLine == 10);
@@ -70,7 +70,7 @@ index 1234567..abcdefg 100644
 
 TEST_CASE("GitDiffParser.ParseMultipleFiles", "[gitdiff]")
 {
-    auto const diff = R"(diff --git a/src/foo.cpp b/src/foo.cpp
+    auto const* const diff = R"(diff --git a/src/foo.cpp b/src/foo.cpp
 index 1234567..abcdefg 100644
 --- a/src/foo.cpp
 +++ b/src/foo.cpp
@@ -84,7 +84,7 @@ index 1234567..abcdefg 100644
 +    int b = 2;
 )";
 
-    auto const result = GitDiffParser::parseDiffOutput(diff);
+    auto const result = GitDiffParser::ParseDiffOutput(diff);
     REQUIRE(result.size() == 2);
     CHECK(result[0].filePath == "src/foo.cpp");
     CHECK(result[1].filePath == "src/bar.cpp");
@@ -92,7 +92,7 @@ index 1234567..abcdefg 100644
 
 TEST_CASE("GitDiffParser.SkipDeletedFile", "[gitdiff]")
 {
-    auto const diff = R"(diff --git a/src/old.cpp b/src/old.cpp
+    auto const* const diff = R"(diff --git a/src/old.cpp b/src/old.cpp
 deleted file mode 100644
 index 1234567..0000000
 --- a/src/old.cpp
@@ -101,23 +101,23 @@ index 1234567..0000000
 -void old() {}
 )";
 
-    auto const result = GitDiffParser::parseDiffOutput(diff);
+    auto const result = GitDiffParser::ParseDiffOutput(diff);
     CHECK(result.empty());
 }
 
 TEST_CASE("GitDiffParser.SkipBinaryFile", "[gitdiff]")
 {
-    auto const diff = R"(diff --git a/data/image.png b/data/image.png
+    auto const* const diff = R"(diff --git a/data/image.png b/data/image.png
 Binary files a/data/image.png and b/data/image.png differ
 )";
 
-    auto const result = GitDiffParser::parseDiffOutput(diff);
+    auto const result = GitDiffParser::ParseDiffOutput(diff);
     CHECK(result.empty());
 }
 
 TEST_CASE("GitDiffParser.NewFile", "[gitdiff]")
 {
-    auto const diff = R"(diff --git a/src/new.cpp b/src/new.cpp
+    auto const* const diff = R"(diff --git a/src/new.cpp b/src/new.cpp
 new file mode 100644
 index 0000000..abcdefg
 --- /dev/null
@@ -128,7 +128,7 @@ index 0000000..abcdefg
 +}
 )";
 
-    auto const result = GitDiffParser::parseDiffOutput(diff);
+    auto const result = GitDiffParser::ParseDiffOutput(diff);
     REQUIRE(result.size() == 1);
     CHECK(result[0].filePath == "src/new.cpp");
     REQUIRE(result[0].changedRanges.size() == 1);
@@ -138,7 +138,7 @@ index 0000000..abcdefg
 
 TEST_CASE("GitDiffParser.FilterByExtension", "[gitdiff]")
 {
-    auto const diff = R"(diff --git a/src/foo.cpp b/src/foo.cpp
+    auto const* const diff = R"(diff --git a/src/foo.cpp b/src/foo.cpp
 index 1234567..abcdefg 100644
 --- a/src/foo.cpp
 +++ b/src/foo.cpp
@@ -158,7 +158,7 @@ index 1234567..abcdefg 100644
 +    int b;
 )";
 
-    auto const result = GitDiffParser::parseDiffOutput(diff, {".cpp", ".hpp"});
+    auto const result = GitDiffParser::ParseDiffOutput(diff, {".cpp", ".hpp"});
     CHECK(result.size() == 2);
     CHECK(result[0].filePath == "src/foo.cpp");
     CHECK(result[1].filePath == "src/bar.hpp");
@@ -167,27 +167,27 @@ index 1234567..abcdefg 100644
 TEST_CASE("GitDiffParser.PureDeletionHunkSkipped", "[gitdiff]")
 {
     // Hunk with +start,0 means 0 added lines — pure deletion on the new side.
-    auto const diff = R"(diff --git a/src/foo.cpp b/src/foo.cpp
+    auto const* const diff = R"(diff --git a/src/foo.cpp b/src/foo.cpp
 index 1234567..abcdefg 100644
 --- a/src/foo.cpp
 +++ b/src/foo.cpp
 @@ -10,3 +10,0 @@ void foo()
 )";
 
-    auto const result = GitDiffParser::parseDiffOutput(diff);
+    auto const result = GitDiffParser::ParseDiffOutput(diff);
     // The file appears but with no changed ranges (the hunk was a deletion).
     CHECK(result.empty());
 }
 
 TEST_CASE("GitDiffParser.EmptyDiff", "[gitdiff]")
 {
-    auto const result = GitDiffParser::parseDiffOutput("");
+    auto const result = GitDiffParser::ParseDiffOutput("");
     CHECK(result.empty());
 }
 
 TEST_CASE("GitDiffParser.RenamedFile", "[gitdiff]")
 {
-    auto const diff = R"(diff --git a/src/old.cpp b/src/new.cpp
+    auto const* const diff = R"(diff --git a/src/old.cpp b/src/new.cpp
 similarity index 90%
 rename from src/old.cpp
 rename to src/new.cpp
@@ -199,7 +199,7 @@ index 1234567..abcdefg 100644
 +    int b = 2;
 )";
 
-    auto const result = GitDiffParser::parseDiffOutput(diff);
+    auto const result = GitDiffParser::ParseDiffOutput(diff);
     REQUIRE(result.size() == 1);
     // Should use the new (b/) path.
     CHECK(result[0].filePath == "src/new.cpp");

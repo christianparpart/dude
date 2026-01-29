@@ -27,7 +27,7 @@ public:
     /// @param projectRoot The directory in which to run git diff.
     /// @param baseRef The git ref to diff against (branch, tag, or SHA).
     /// @return The raw diff output string, or an error if git fails.
-    [[nodiscard]] static auto runGitDiff(std::filesystem::path const& projectRoot, std::string const& baseRef)
+    [[nodiscard]] static auto RunGitDiff(std::filesystem::path const& projectRoot, std::string const& baseRef)
         -> std::expected<std::string, GitDiffError>;
 
     /// @brief Parses unified diff output into structured file-change data.
@@ -39,7 +39,7 @@ public:
     /// @param diffOutput Raw unified diff output from git.
     /// @param extensions File extensions to include (e.g., ".cpp"). Empty means include all.
     /// @return Parsed diff result with per-file changed line ranges.
-    [[nodiscard]] static auto parseDiffOutput(std::string const& diffOutput,
+    [[nodiscard]] static auto ParseDiffOutput(std::string const& diffOutput,
                                               std::vector<std::string> const& extensions = {}) -> codedup::DiffResult;
 };
 

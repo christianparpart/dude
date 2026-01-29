@@ -28,3 +28,4 @@ set_target_properties(codedup PROPERTIES
 set_pedantic_compiler_warnings(codedup)
 enable_sanitizers(codedup)
 enable_coverage(codedup)
+enable_clang_tidy(codedup)

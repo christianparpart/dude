@@ -8,70 +8,70 @@ using namespace codedup;
 TEST_CASE("DiffRange.OverlapsExactMatch", "[diffrange]")
 {
     auto const changed = LineRange{.startLine = 10, .endLine = 20};
-    CHECK(overlaps(changed, 10, 20));
+    CHECK(Overlaps(changed, 10, 20));
 }
 
 TEST_CASE("DiffRange.OverlapsPartialStart", "[diffrange]")
 {
     auto const changed = LineRange{.startLine = 10, .endLine = 20};
-    CHECK(overlaps(changed, 5, 15));
+    CHECK(Overlaps(changed, 5, 15));
 }
 
 TEST_CASE("DiffRange.OverlapsPartialEnd", "[diffrange]")
 {
     auto const changed = LineRange{.startLine = 10, .endLine = 20};
-    CHECK(overlaps(changed, 15, 25));
+    CHECK(Overlaps(changed, 15, 25));
 }
 
 TEST_CASE("DiffRange.OverlapsContained", "[diffrange]")
 {
     // Changed range is fully contained within the block.
     auto const changed = LineRange{.startLine = 12, .endLine = 18};
-    CHECK(overlaps(changed, 10, 20));
+    CHECK(Overlaps(changed, 10, 20));
 }
 
 TEST_CASE("DiffRange.OverlapsContaining", "[diffrange]")
 {
     // Changed range fully contains the block.
     auto const changed = LineRange{.startLine = 5, .endLine = 25};
-    CHECK(overlaps(changed, 10, 20));
+    CHECK(Overlaps(changed, 10, 20));
 }
 
 TEST_CASE("DiffRange.OverlapsAdjacentStart", "[diffrange]")
 {
     // Ranges touch at a single line.
     auto const changed = LineRange{.startLine = 10, .endLine = 10};
-    CHECK(overlaps(changed, 10, 20));
+    CHECK(Overlaps(changed, 10, 20));
 }
 
 TEST_CASE("DiffRange.OverlapsAdjacentEnd", "[diffrange]")
 {
     auto const changed = LineRange{.startLine = 20, .endLine = 20};
-    CHECK(overlaps(changed, 10, 20));
+    CHECK(Overlaps(changed, 10, 20));
 }
 
 TEST_CASE("DiffRange.NoOverlapBefore", "[diffrange]")
 {
     auto const changed = LineRange{.startLine = 1, .endLine = 9};
-    CHECK_FALSE(overlaps(changed, 10, 20));
+    CHECK_FALSE(Overlaps(changed, 10, 20));
 }
 
 TEST_CASE("DiffRange.NoOverlapAfter", "[diffrange]")
 {
     auto const changed = LineRange{.startLine = 21, .endLine = 30};
-    CHECK_FALSE(overlaps(changed, 10, 20));
+    CHECK_FALSE(Overlaps(changed, 10, 20));
 }
 
 TEST_CASE("DiffRange.SingleLineOverlap", "[diffrange]")
 {
     auto const changed = LineRange{.startLine = 15, .endLine = 15};
-    CHECK(overlaps(changed, 15, 15));
+    CHECK(Overlaps(changed, 15, 15));
 }
 
 TEST_CASE("DiffRange.SingleLineNoOverlap", "[diffrange]")
 {
     auto const changed = LineRange{.startLine = 14, .endLine = 14};
-    CHECK_FALSE(overlaps(changed, 15, 15));
+    CHECK_FALSE(Overlaps(changed, 15, 15));
 }
 
 TEST_CASE("DiffRange.FileHasChangesAtMatch", "[diffrange]")
@@ -82,9 +82,9 @@ TEST_CASE("DiffRange.FileHasChangesAtMatch", "[diffrange]")
     };
 
     // Block overlaps second range.
-    CHECK(fileHasChangesAt(changes, 55, 70));
+    CHECK(FileHasChangesAt(changes, 55, 70));
     // Block overlaps first range.
-    CHECK(fileHasChangesAt(changes, 1, 7));
+    CHECK(FileHasChangesAt(changes, 1, 7));
 }
 
 TEST_CASE("DiffRange.FileHasChangesAtNoMatch", "[diffrange]")
@@ -95,7 +95,7 @@ TEST_CASE("DiffRange.FileHasChangesAtNoMatch", "[diffrange]")
     };
 
     // Block is between the two ranges.
-    CHECK_FALSE(fileHasChangesAt(changes, 20, 40));
+    CHECK_FALSE(FileHasChangesAt(changes, 20, 40));
 }
 
 TEST_CASE("DiffRange.FileHasChangesAtEmptyRanges", "[diffrange]")
@@ -104,5 +104,5 @@ TEST_CASE("DiffRange.FileHasChangesAtEmptyRanges", "[diffrange]")
         .filePath = "test.cpp",
         .changedRanges = {},
     };
-    CHECK_FALSE(fileHasChangesAt(changes, 1, 100));
+    CHECK_FALSE(FileHasChangesAt(changes, 1, 100));
 }

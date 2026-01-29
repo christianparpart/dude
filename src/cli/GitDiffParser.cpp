@@ -14,7 +14,7 @@
 namespace cli
 {
 
-auto GitDiffParser::runGitDiff(std::filesystem::path const& projectRoot, std::string const& baseRef)
+auto GitDiffParser::RunGitDiff(std::filesystem::path const& projectRoot, std::string const& baseRef)
     -> std::expected<std::string, GitDiffError>
 {
     // Build the command: git -C <dir> diff --no-color -U0 <baseRef>...HEAD
@@ -51,7 +51,7 @@ namespace
 {
 
 /// @brief Checks whether a file path matches any of the given extensions (case-insensitive).
-auto matchesExtension(std::filesystem::path const& filePath, std::vector<std::string> const& extensions) -> bool
+auto MatchesExtension(std::filesystem::path const& filePath, std::vector<std::string> const& extensions) -> bool
 {
     if (extensions.empty())
         return true;
@@ -76,7 +76,7 @@ auto matchesExtension(std::filesystem::path const& filePath, std::vector<std::st
 ///   @@ -a,b +c @@           → LineRange{c, c}      (single line, count=1 implied)
 ///   @@ -a +c,d @@           → (old side single line)
 ///   @@ -a,b +c,0 @@        → skipped (pure deletion in new file)
-auto parseHunkHeader(std::string_view line) -> std::optional<codedup::LineRange>
+auto ParseHunkHeader(std::string_view line) -> std::optional<codedup::LineRange>
 {
     // Find the "+start" or "+start,count" portion.
     auto const plusPos = line.find('+', 3); // Skip past "@@ -"
@@ -120,7 +120,7 @@ auto parseHunkHeader(std::string_view line) -> std::optional<codedup::LineRange>
 
 } // namespace
 
-auto GitDiffParser::parseDiffOutput(std::string const& diffOutput, std::vector<std::string> const& extensions)
+auto GitDiffParser::ParseDiffOutput(std::string const& diffOutput, std::vector<std::string> const& extensions)
     -> codedup::DiffResult
 {
     codedup::DiffResult result;
@@ -149,7 +149,7 @@ auto GitDiffParser::parseDiffOutput(std::string const& diffOutput, std::vector<s
             skipCurrentFile = false;
 
             // Filter by extension.
-            if (!matchesExtension(currentFile, extensions))
+            if (!MatchesExtension(currentFile, extensions))
             {
                 skipCurrentFile = true;
                 continue;
@@ -178,7 +178,7 @@ auto GitDiffParser::parseDiffOutput(std::string const& diffOutput, std::vector<s
         // Parse hunk headers: @@ ... @@
         if (line.starts_with("@@"))
         {
-            auto const hunkRange = parseHunkHeader(line);
+            auto const hunkRange = ParseHunkHeader(line);
             if (!hunkRange)
                 continue;
 

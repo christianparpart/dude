@@ -38,6 +38,7 @@ target_link_libraries(CodeDupTest PRIVATE
 set_pedantic_compiler_warnings(CodeDupTest)
 enable_sanitizers(CodeDupTest)
 enable_coverage(CodeDupTest)
+enable_clang_tidy(CodeDupTest)
 
 include(CTest)
 list(APPEND CMAKE_MODULE_PATH ${Catch2_SOURCE_DIR}/extras)
