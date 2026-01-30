@@ -7,7 +7,7 @@
 namespace mcp
 {
 
-/// @brief Registers all CodeDupDetector MCP tools and prompts on the given server.
+/// @brief Registers all dude MCP tools and prompts on the given server.
 /// @param server The MCP server to register on.
 /// @param session The analysis session to use for all tool invocations.
 void RegisterCodeDupTools(mcpprotocol::McpServer& server, AnalysisSession& session);

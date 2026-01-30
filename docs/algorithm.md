@@ -1,6 +1,6 @@
 # Code Duplication Detection Algorithm
 
-This document describes how CodeDupDetector identifies duplicated code across and within
+This document describes how dude identifies duplicated code across and within
 source files. It covers the full analysis pipeline, the core detection algorithms,
 the data structures involved, and the performance engineering that makes the tool
 practical on large codebases.
@@ -724,7 +724,7 @@ Platform-specific 128-bit multiplication is used: `_umul128` intrinsic on MSVC,
 
 The Longest Common Subsequence is the most computationally expensive operation in the
 pipeline. The classic dynamic programming algorithm runs in O(m * n) time, where m and
-n are the sequence lengths. CodeDupDetector uses the Allison-Dill / Hyyro-Navarro
+n are the sequence lengths. dude uses the Allison-Dill / Hyyro-Navarro
 bit-parallel algorithm, reducing this to **O(m * ceil(n / w))** where `w` is the
 machine word size (64 bits).
 

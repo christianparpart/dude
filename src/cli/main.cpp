@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include <exec/static_thread_pool.hpp>
-#include <codedup/GlobMatch.hpp>
 #include <git/GitDiffParser.hpp>
 #include <git/GitFileFilter.hpp>
 #include <mcp/AnalysisSession.hpp>
@@ -15,6 +14,7 @@
 #include <codedup/DiffFilter.hpp>
 #include <codedup/Encoding.hpp>
 #include <codedup/FileScanner.hpp>
+#include <codedup/GlobMatch.hpp>
 #include <codedup/HelpFormatter.hpp>
 #include <codedup/IntraFunctionDetector.hpp>
 #include <codedup/Language.hpp>
@@ -59,7 +59,7 @@
 namespace
 {
 
-constexpr auto versionString = CODEDUPDETECTOR_VERSION;
+constexpr auto versionString = DUDE_VERSION;
 
 /// @brief Parsed command-line arguments.
 struct CliOptions
@@ -89,7 +89,7 @@ struct CliOptions
 void PrintUsage(FILE* out, bool useColor, codedup::ColorTheme theme)
 {
     static constexpr auto helpText =
-        "Usage: codedupdetector [OPTIONS] <directory>\n"
+        "Usage: dude [OPTIONS] <directory>\n"
         "\n"
         "Options:\n"
         "  -t, --threshold <N>         Similarity threshold 0.0-1.0 (default: 0.80)\n"
@@ -121,102 +121,102 @@ void PrintUsage(FILE* out, bool useColor, codedup::ColorTheme theme)
 /// @brief Prints categorized usage examples to stdout.
 void PrintExamples(bool useColor, codedup::ColorTheme theme)
 {
-    static constexpr auto examplesText = "Usage Examples for codedupdetector\n"
-                                         "==================================\n"
+    static constexpr auto examplesText = "Usage Examples for dude\n"
+                                         "=======================\n"
                                          "\n"
                                          "Basic Usage\n"
                                          "-----------\n"
                                          "  # Scan a directory with default settings\n"
-                                         "  codedupdetector /path/to/project\n"
+                                         "  dude /path/to/project\n"
                                          "\n"
                                          "  # Scan with progress bars\n"
-                                         "  codedupdetector -p /path/to/project\n"
+                                         "  dude -p /path/to/project\n"
                                          "\n"
                                          "  # Scan with verbose output\n"
-                                         "  codedupdetector -v /path/to/project\n"
+                                         "  dude -v /path/to/project\n"
                                          "\n"
                                          "Threshold & Sensitivity Tuning\n"
                                          "------------------------------\n"
                                          "  # High threshold: only near-identical clones\n"
-                                         "  codedupdetector -t 0.95 /path/to/project\n"
+                                         "  dude -t 0.95 /path/to/project\n"
                                          "\n"
                                          "  # Low threshold: find loose similarities\n"
-                                         "  codedupdetector -t 0.60 /path/to/project\n"
+                                         "  dude -t 0.60 /path/to/project\n"
                                          "\n"
                                          "  # Stricter identifier matching (higher text sensitivity)\n"
-                                         "  codedupdetector --text-sensitivity 0.7 /path/to/project\n"
+                                         "  dude --text-sensitivity 0.7 /path/to/project\n"
                                          "\n"
                                          "  # Ignore identifier names entirely (structural only)\n"
-                                         "  codedupdetector --text-sensitivity 0.0 /path/to/project\n"
+                                         "  dude --text-sensitivity 0.0 /path/to/project\n"
                                          "\n"
                                          "Scope Control\n"
                                          "-------------\n"
                                          "  # Only detect inter-file clones\n"
-                                         "  codedupdetector -s inter-file /path/to/project\n"
+                                         "  dude -s inter-file /path/to/project\n"
                                          "\n"
                                          "  # Only detect intra-function copy-paste\n"
-                                         "  codedupdetector -s intra-function /path/to/project\n"
+                                         "  dude -s intra-function /path/to/project\n"
                                          "\n"
                                          "  # Combine scopes\n"
-                                         "  codedupdetector -s inter-file,intra-function /path/to/project\n"
+                                         "  dude -s inter-file,intra-function /path/to/project\n"
                                          "\n"
                                          "File Filtering\n"
                                          "--------------\n"
                                          "  # Scan only C++ headers and source files\n"
-                                         "  codedupdetector -g '*.hpp' -g '*.cpp' /path/to/project\n"
+                                         "  dude -g '*.hpp' -g '*.cpp' /path/to/project\n"
                                          "\n"
                                          "  # Scan only C# files\n"
-                                         "  codedupdetector -g '*.cs' /path/to/project\n"
+                                         "  dude -g '*.cs' /path/to/project\n"
                                          "\n"
                                          "  # Glob-based filename filter\n"
-                                         "  codedupdetector -g '*Controller*' /path/to/project\n"
+                                         "  dude -g '*Controller*' /path/to/project\n"
                                          "\n"
                                          "  # Multiple glob patterns\n"
-                                         "  codedupdetector -g '*Controller*' -g '*Service*' /path/to/project\n"
+                                         "  dude -g '*Controller*' -g '*Service*' /path/to/project\n"
                                          "\n"
                                          "  # Include gitignored files in analysis\n"
-                                         "  codedupdetector --no-gitignore /path/to/project\n"
+                                         "  dude --no-gitignore /path/to/project\n"
                                          "\n"
                                          "Output Control\n"
                                          "--------------\n"
                                          "  # Disable colors (useful for piping or CI logs)\n"
-                                         "  codedupdetector --no-color /path/to/project\n"
+                                         "  dude --no-color /path/to/project\n"
                                          "\n"
                                          "  # Suppress source code snippets\n"
-                                         "  codedupdetector --no-source /path/to/project\n"
+                                         "  dude --no-source /path/to/project\n"
                                          "\n"
                                          "  # Machine-readable output (no color, no source)\n"
-                                         "  codedupdetector --no-color --no-source /path/to/project\n"
+                                         "  dude --no-color --no-source /path/to/project\n"
                                          "\n"
                                          "  # Set color theme explicitly\n"
-                                         "  codedupdetector --theme dark /path/to/project\n"
+                                         "  dude --theme dark /path/to/project\n"
                                          "\n"
                                          "CI / Git Integration\n"
                                          "--------------------\n"
                                          "  # Diff mode: only check changed code vs. a branch\n"
-                                         "  codedupdetector --diff-base origin/master /path/to/project\n"
+                                         "  dude --diff-base origin/master /path/to/project\n"
                                          "\n"
                                          "  # Diff mode with strict threshold for CI gates\n"
-                                         "  codedupdetector --diff-base origin/master -t 0.90 /path/to/project\n"
+                                         "  dude --diff-base origin/master -t 0.90 /path/to/project\n"
                                          "\n"
                                          "Combining Options\n"
                                          "-----------------\n"
                                          "  # Full CI pipeline: diff mode, strict threshold, machine-readable,\n"
                                          "  # inter-file scope only\n"
-                                         "  codedupdetector --diff-base origin/main -t 0.90 --no-color \\\n"
+                                         "  dude --diff-base origin/main -t 0.90 --no-color \\\n"
                                          "      --no-source -s inter-file /path/to/project\n"
                                          "\n"
                                          "MCP Server Mode\n"
                                          "---------------\n"
                                          "  # Start the MCP server for use with AI coding assistants\n"
-                                         "  codedupdetector --mcp\n"
+                                         "  dude --mcp\n"
                                          "\n"
                                          "  # Claude Code: add to .mcp.json in project root\n"
                                          "  {\n"
                                          "    \"mcpServers\": {\n"
-                                         "      \"codedupdetector\": {\n"
+                                         "      \"dude\": {\n"
                                          "        \"type\": \"stdio\",\n"
-                                         "        \"command\": \"/path/to/codedupdetector\",\n"
+                                         "        \"command\": \"/path/to/dude\",\n"
                                          "        \"args\": [\"--mcp\"]\n"
                                          "      }\n"
                                          "    }\n"
@@ -225,8 +225,8 @@ void PrintExamples(bool useColor, codedup::ColorTheme theme)
                                          "  # Gemini CLI / Antigravity IDE: add to mcp_config.json\n"
                                          "  {\n"
                                          "    \"mcpServers\": {\n"
-                                         "      \"codedupdetector\": {\n"
-                                         "        \"command\": \"/path/to/codedupdetector\",\n"
+                                         "      \"dude\": {\n"
+                                         "        \"command\": \"/path/to/dude\",\n"
                                          "        \"args\": [\"--mcp\"]\n"
                                          "      }\n"
                                          "    }\n"
@@ -641,16 +641,15 @@ auto ScanFiles(CliOptions const& opts, codedup::PerformanceTiming& timing)
         opts.respectGitignore ? git::GitFileFilter::CreateFilter(opts.directory, opts.verbose) : std::nullopt;
 
     // Build an optional glob-based filename filter.
-    auto const globFilter =
-        opts.globPatterns.empty()
-            ? std::optional<codedup::FileFilter>(std::nullopt)
-            : std::optional<codedup::FileFilter>(
-                  [patterns = opts.globPatterns](std::filesystem::path const& path) -> bool
-                  {
-                      auto const filename = path.filename().string();
-                      return std::ranges::any_of(patterns, [&filename](std::string const& pattern)
-                                                 { return codedup::GlobMatch(pattern, filename); });
-                  });
+    auto const globFilter = opts.globPatterns.empty()
+                                ? std::optional<codedup::FileFilter>(std::nullopt)
+                                : std::optional<codedup::FileFilter>(
+                                      [patterns = opts.globPatterns](std::filesystem::path const& path) -> bool
+                                      {
+                                          auto const filename = path.filename().string();
+                                          return std::ranges::any_of(patterns, [&filename](std::string const& pattern)
+                                                                     { return codedup::GlobMatch(pattern, filename); });
+                                      });
 
     // Compose all filters into a single predicate.
     auto const composedFilter = (gitFilter || globFilter)
@@ -849,7 +848,7 @@ int main(int argc, char* argv[])
 
     if (opts.showVersion)
     {
-        std::println("codedupdetector {}", versionString);
+        std::println("dude {}", versionString);
         return 0;
     }
 
@@ -869,9 +868,9 @@ int main(int argc, char* argv[])
     {
         mcp::AnalysisSession session;
         mcpprotocol::McpServer server({
-            .name = "codedupdetector",
+            .name = "dude",
             .version = versionString,
-            .title = "CodeDupDetector",
+            .title = "Code Duplication Analysis Tool",
             .description = "Code duplication detection and analysis tool",
             .websiteUrl = {},
         });

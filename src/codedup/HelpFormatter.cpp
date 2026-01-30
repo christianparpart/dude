@@ -93,7 +93,7 @@ namespace
 [[nodiscard]] auto IsShellCommand(std::string_view trimmed) -> bool
 {
     // Shell commands in the examples start with the tool name
-    return trimmed.starts_with("codedupdetector");
+    return trimmed.starts_with("dude");
 }
 
 /// @brief Checks if a line starts an option definition (e.g. "  -t, --threshold").
@@ -124,7 +124,7 @@ namespace
 /// @brief Checks if a string is a known shell command keyword.
 [[nodiscard]] auto IsShellKeyword(std::string_view s) -> bool
 {
-    return s == "codedupdetector";
+    return s == "dude";
 }
 
 /// @brief State machine for shell line syntax highlighting.

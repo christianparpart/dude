@@ -56,7 +56,7 @@ TEST_CASE("HelpFormatter.ClassifyLine.ShellCommand", "[help-formatter]")
 {
     int jsonDepth = 0;
     bool inContinuation = false;
-    CHECK(HelpFormatter::ClassifyLine("  codedupdetector /path/to/project", jsonDepth, inContinuation, true) ==
+    CHECK(HelpFormatter::ClassifyLine("  dude /path/to/project", jsonDepth, inContinuation, true) ==
           HelpLineType::ShellCommand);
 }
 
@@ -66,8 +66,7 @@ TEST_CASE("HelpFormatter.ClassifyLine.ShellContinuation", "[help-formatter]")
     bool inContinuation = false;
 
     // First line ends with backslash
-    auto type =
-        HelpFormatter::ClassifyLine("  codedupdetector --diff-base origin/main \\", jsonDepth, inContinuation, true);
+    auto type = HelpFormatter::ClassifyLine("  dude --diff-base origin/main \\", jsonDepth, inContinuation, true);
     CHECK(type == HelpLineType::ShellCommand);
     CHECK(inContinuation == true);
 
@@ -107,8 +106,8 @@ TEST_CASE("HelpFormatter.ClassifyLine.UsageLine", "[help-formatter]")
 {
     int jsonDepth = 0;
     bool inContinuation = false;
-    CHECK(HelpFormatter::ClassifyLine("Usage: codedupdetector [OPTIONS] <directory>", jsonDepth, inContinuation,
-                                      false) == HelpLineType::UsageLine);
+    CHECK(HelpFormatter::ClassifyLine("Usage: dude [OPTIONS] <directory>", jsonDepth, inContinuation, false) ==
+          HelpLineType::UsageLine);
 }
 
 TEST_CASE("HelpFormatter.ClassifyLine.OptionsLabel", "[help-formatter]")
@@ -141,14 +140,14 @@ TEST_CASE("HelpFormatter.ClassifyLine.NotExamplesMode", "[help-formatter]")
 
 TEST_CASE("HelpFormatter.FormatHelp.NoColor", "[help-formatter]")
 {
-    auto const input = std::string_view("Usage: codedupdetector [OPTIONS]\n\nOptions:\n  -t, --threshold <N>  desc");
+    auto const input = std::string_view("Usage: dude [OPTIONS]\n\nOptions:\n  -t, --threshold <N>  desc");
     auto const result = HelpFormatter::FormatHelp(input, false, ColorTheme::Dark);
     CHECK(result == input);
 }
 
 TEST_CASE("HelpFormatter.FormatExamples.NoColor", "[help-formatter]")
 {
-    auto const input = std::string_view("Title\n=====\n  # Comment\n  codedupdetector /path");
+    auto const input = std::string_view("Title\n=====\n  # Comment\n  dude /path");
     auto const result = HelpFormatter::FormatExamples(input, false, ColorTheme::Dark);
     CHECK(result == input);
 }
@@ -159,7 +158,7 @@ TEST_CASE("HelpFormatter.FormatExamples.NoColor", "[help-formatter]")
 
 TEST_CASE("HelpFormatter.FormatHelp.Color", "[help-formatter]")
 {
-    auto const input = std::string_view("Usage: codedupdetector [OPTIONS]\n\nOptions:\n  -t, --threshold <N>  desc");
+    auto const input = std::string_view("Usage: dude [OPTIONS]\n\nOptions:\n  -t, --threshold <N>  desc");
     auto const result = HelpFormatter::FormatHelp(input, true, ColorTheme::Dark);
     CHECK(result != input);
     CHECK(result.contains("\033[")); // Contains ANSI escape
@@ -169,8 +168,7 @@ TEST_CASE("HelpFormatter.FormatHelp.Color", "[help-formatter]")
 
 TEST_CASE("HelpFormatter.FormatExamples.Color", "[help-formatter]")
 {
-    auto const input =
-        std::string_view("Title\n=====\n\nSection\n-------\n  # Comment\n  codedupdetector /path/to/project");
+    auto const input = std::string_view("Title\n=====\n\nSection\n-------\n  # Comment\n  dude /path/to/project");
     auto const result = HelpFormatter::FormatExamples(input, true, ColorTheme::Dark);
     CHECK(result != input);
     CHECK(result.contains("\033["));   // Contains ANSI escape
@@ -186,7 +184,7 @@ TEST_CASE("HelpFormatter.FormatExamples.Color", "[help-formatter]")
 TEST_CASE("HelpFormatter.HighlightShellLine.CommandName", "[help-formatter]")
 {
     auto const colors = GetThemeColors(ColorTheme::Dark);
-    auto const result = HelpFormatter::HighlightShellLine("  codedupdetector /path/to/project", colors);
+    auto const result = HelpFormatter::HighlightShellLine("  dude /path/to/project", colors);
     CHECK(result.contains("\033[1m"));                                               // Bold
     CHECK(result.contains(std::format("\033[38;2;{};{};{}m", colors.keywords.r,      //
                                       colors.keywords.g, colors.keywords.b)));       // Keywords color
@@ -198,7 +196,7 @@ TEST_CASE("HelpFormatter.HighlightShellLine.CommandName", "[help-formatter]")
 TEST_CASE("HelpFormatter.HighlightShellLine.Flags", "[help-formatter]")
 {
     auto const colors = GetThemeColors(ColorTheme::Dark);
-    auto const result = HelpFormatter::HighlightShellLine("  codedupdetector -t 0.95 /path", colors);
+    auto const result = HelpFormatter::HighlightShellLine("  dude -t 0.95 /path", colors);
     CHECK(result.contains(std::format("\033[38;2;{};{};{}m", colors.preprocessor.r,    //
                                       colors.preprocessor.g, colors.preprocessor.b))); // Flag color
     CHECK(result.contains("-t"));
@@ -207,7 +205,7 @@ TEST_CASE("HelpFormatter.HighlightShellLine.Flags", "[help-formatter]")
 TEST_CASE("HelpFormatter.HighlightShellLine.Numbers", "[help-formatter]")
 {
     auto const colors = GetThemeColors(ColorTheme::Dark);
-    auto const result = HelpFormatter::HighlightShellLine("  codedupdetector -t 0.95 /path", colors);
+    auto const result = HelpFormatter::HighlightShellLine("  dude -t 0.95 /path", colors);
     CHECK(result.contains(std::format("\033[38;2;{};{};{}m", colors.numbers.r, //
                                       colors.numbers.g, colors.numbers.b)));   // Number color
     CHECK(result.contains("0.95"));
@@ -216,7 +214,7 @@ TEST_CASE("HelpFormatter.HighlightShellLine.Numbers", "[help-formatter]")
 TEST_CASE("HelpFormatter.HighlightShellLine.QuotedStrings", "[help-formatter]")
 {
     auto const colors = GetThemeColors(ColorTheme::Dark);
-    auto const result = HelpFormatter::HighlightShellLine("  codedupdetector -g '*Controller*' /path", colors);
+    auto const result = HelpFormatter::HighlightShellLine("  dude -g '*Controller*' /path", colors);
     CHECK(result.contains(std::format("\033[38;2;{};{};{}m", colors.strings.r, //
                                       colors.strings.g, colors.strings.b)));   // String color
     CHECK(result.contains("'*Controller*'"));
@@ -225,7 +223,7 @@ TEST_CASE("HelpFormatter.HighlightShellLine.QuotedStrings", "[help-formatter]")
 TEST_CASE("HelpFormatter.HighlightShellLine.Continuation", "[help-formatter]")
 {
     auto const colors = GetThemeColors(ColorTheme::Dark);
-    auto const result = HelpFormatter::HighlightShellLine("  codedupdetector --no-color \\", colors);
+    auto const result = HelpFormatter::HighlightShellLine("  dude --no-color \\", colors);
     CHECK(result.contains(std::format("\033[38;2;{};{};{}m", colors.operators.r, //
                                       colors.operators.g, colors.operators.b))); // Operator color
     CHECK(result.contains("\\"));
@@ -348,7 +346,7 @@ TEST_CASE("HelpFormatter.LightTheme", "[help-formatter]")
 TEST_CASE("HelpFormatter.HighlightShellLine.FlagsAfterCommand", "[help-formatter]")
 {
     auto const colors = GetThemeColors(ColorTheme::Dark);
-    auto const result = HelpFormatter::HighlightShellLine("  codedupdetector --threshold 0.8 --no-color", colors);
+    auto const result = HelpFormatter::HighlightShellLine("  dude --threshold 0.8 --no-color", colors);
     CHECK(result.contains("--threshold"));
     CHECK(result.contains("0.8"));
     CHECK(result.contains("--no-color"));
@@ -357,18 +355,17 @@ TEST_CASE("HelpFormatter.HighlightShellLine.FlagsAfterCommand", "[help-formatter
 TEST_CASE("HelpFormatter.HighlightShellLine.DoubleQuotedString", "[help-formatter]")
 {
     auto const colors = GetThemeColors(ColorTheme::Dark);
-    auto const result = HelpFormatter::HighlightShellLine(R"(  codedupdetector -g "*.cpp")", colors);
-    CHECK(result.contains(std::format("\033[38;2;{};{};{}m", colors.strings.r,
-                                      colors.strings.g, colors.strings.b)));
+    auto const result = HelpFormatter::HighlightShellLine(R"(  dude -g "*.cpp")", colors);
+    CHECK(result.contains(std::format("\033[38;2;{};{};{}m", colors.strings.r, colors.strings.g, colors.strings.b)));
     CHECK(result.contains("\"*.cpp\""));
 }
 
 TEST_CASE("HelpFormatter.HighlightShellLine.DotSlashPath", "[help-formatter]")
 {
     auto const colors = GetThemeColors(ColorTheme::Dark);
-    auto const result = HelpFormatter::HighlightShellLine("  codedupdetector ./src", colors);
-    CHECK(result.contains(std::format("\033[38;2;{};{};{}m", colors.identifiers.r,
-                                      colors.identifiers.g, colors.identifiers.b)));
+    auto const result = HelpFormatter::HighlightShellLine("  dude ./src", colors);
+    CHECK(result.contains(
+        std::format("\033[38;2;{};{};{}m", colors.identifiers.r, colors.identifiers.g, colors.identifiers.b)));
     CHECK(result.contains("./src"));
 }
 
@@ -401,8 +398,8 @@ TEST_CASE("HelpFormatter.HighlightJsonLine.BooleanAndNull", "[help-formatter]")
 {
     auto const colors = GetThemeColors(ColorTheme::Dark);
     auto const trueResult = HelpFormatter::HighlightJsonLine("    \"enabled\": true,", colors);
-    CHECK(trueResult.contains(std::format("\033[38;2;{};{};{}m", colors.keywords.r,
-                                          colors.keywords.g, colors.keywords.b)));
+    CHECK(trueResult.contains(
+        std::format("\033[38;2;{};{};{}m", colors.keywords.r, colors.keywords.g, colors.keywords.b)));
     CHECK(trueResult.contains("true"));
 
     auto const nullResult = HelpFormatter::HighlightJsonLine("    \"value\": null", colors);
@@ -413,8 +410,7 @@ TEST_CASE("HelpFormatter.HighlightJsonLine.Numbers", "[help-formatter]")
 {
     auto const colors = GetThemeColors(ColorTheme::Dark);
     auto const result = HelpFormatter::HighlightJsonLine("    \"count\": 42,", colors);
-    CHECK(result.contains(std::format("\033[38;2;{};{};{}m", colors.numbers.r,
-                                      colors.numbers.g, colors.numbers.b)));
+    CHECK(result.contains(std::format("\033[38;2;{};{};{}m", colors.numbers.r, colors.numbers.g, colors.numbers.b)));
     CHECK(result.contains("42"));
 }
 

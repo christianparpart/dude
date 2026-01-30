@@ -48,5 +48,5 @@ jobs:
         if: matrix.preset == 'clangcl-release'
         uses: actions/upload-artifact@v4
         with:
-          name: codedupdetector
-          path: build/${{ matrix.preset }}/src/cli/codedupdetector.exe
+          name: dude
+          path: build/${{ matrix.preset }}/src/cli/dude.exe

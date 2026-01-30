@@ -1,4 +1,4 @@
-# CodeDupDetector - Code Duplication Analysis Tool
+# Code Duplication Analysis Tool
 
 A platform-independent C++23 CLI tool for **Type-2 clone detection** across multiple programming languages.
 It identifies duplicated code blocks even when identifiers, types, or function names differ,
@@ -70,7 +70,7 @@ cmake --build --preset linux-clang-release
 ## Usage
 
 ```
-codedupdetector [OPTIONS] <directory>
+dude [OPTIONS] <directory>
 ```
 
 ### Detection Parameters
@@ -128,38 +128,38 @@ Valid scopes: `inter-file`, `intra-file`, `inter-function`, `intra-function`, `a
 
 ```bash
 # Scan a project directory
-codedupdetector /path/to/project/src/
+dude /path/to/project/src/
 
 # Higher threshold (only report near-identical clones)
-codedupdetector -t 0.95 /path/to/project/
+dude -t 0.95 /path/to/project/
 
 # Structural-only detection (ignore identifier names)
-codedupdetector --text-sensitivity 0.0 /path/to/project/
+dude --text-sensitivity 0.0 /path/to/project/
 
 # Scan only C# files
-codedupdetector -g '*.cs' /path/to/csharp_project/
+dude -g '*.cs' /path/to/csharp_project/
 
 # Scan only Python files
-codedupdetector -g '*.py' /path/to/python_project/
+dude -g '*.py' /path/to/python_project/
 
 # Filter by filename pattern
-codedupdetector -g '*Controller*' -g '*Service*' /path/to/project/
+dude -g '*Controller*' -g '*Service*' /path/to/project/
 
 # Only detect cross-file clones
-codedupdetector -s inter-file /path/to/project/
+dude -s inter-file /path/to/project/
 
 # Only detect within-function copy-paste
-codedupdetector -s intra-function /path/to/project/
+dude -s intra-function /path/to/project/
 
 # JSON output to a file
-codedupdetector --reporter json:file=report.json /path/to/project/
+dude --reporter json:file=report.json /path/to/project/
 
 # CI gate: check changed code against a branch
-codedupdetector --diff-base origin/main -t 0.90 --no-color --no-source \
+dude --diff-base origin/main -t 0.90 --no-color --no-source \
     -s inter-file /path/to/project/
 
 # Machine-readable output (no colors, no source)
-codedupdetector --no-color --no-source /path/to/project/
+dude --no-color --no-source /path/to/project/
 ```
 
 ### Exit Codes
@@ -172,13 +172,13 @@ codedupdetector --no-color --no-source /path/to/project/
 
 ## MCP Server Mode
 
-CodeDupDetector can run as a [Model Context Protocol](https://modelcontextprotocol.io/) (MCP)
+The tool can run as a [Model Context Protocol](https://modelcontextprotocol.io/) (MCP)
 server, enabling AI coding assistants to analyze code duplication interactively.
 
 ### Starting the MCP Server
 
 ```bash
-codedupdetector --mcp
+dude --mcp
 ```
 
 This starts a JSON-RPC 2.0 server on stdio. The server exposes tools for
@@ -203,9 +203,9 @@ Add the server to your project configuration (`.mcp.json` in project root):
 ```json
 {
   "mcpServers": {
-    "codedupdetector": {
+    "dude": {
       "type": "stdio",
-      "command": "/path/to/codedupdetector",
+      "command": "/path/to/dude",
       "args": ["--mcp"]
     }
   }
@@ -215,7 +215,7 @@ Add the server to your project configuration (`.mcp.json` in project root):
 Or add it via the CLI:
 
 ```bash
-claude mcp add codedupdetector -- /path/to/codedupdetector --mcp
+claude mcp add dude -- /path/to/dude --mcp
 ```
 
 ### Gemini CLI / Antigravity IDE Integration
@@ -226,8 +226,8 @@ Edit `~/.gemini/settings.json` or the MCP config (open via **Manage MCP Servers*
 ```json
 {
   "mcpServers": {
-    "codedupdetector": {
-      "command": "/path/to/codedupdetector",
+    "dude": {
+      "command": "/path/to/dude",
       "args": ["--mcp"]
     }
   }

@@ -3,13 +3,13 @@ cmake_minimum_required(VERSION 3.25)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 include(Version)
-GetVersionInformation(CODEDUPDETECTOR_VERSION CODEDUPDETECTOR_VERSION_STRING)
-file(WRITE "${CMAKE_BINARY_DIR}/version.txt" "${CODEDUPDETECTOR_VERSION_STRING}")
+GetVersionInformation(DUDE_VERSION DUDE_VERSION_STRING)
+file(WRITE "${CMAKE_BINARY_DIR}/version.txt" "${DUDE_VERSION_STRING}")
 
-project(CodeDupDetector
-    VERSION "${CODEDUPDETECTOR_VERSION}"
+project(dude
+    VERSION "${DUDE_VERSION}"
     LANGUAGES CXX
-    DESCRIPTION "C++ code duplication detector"
+    DESCRIPTION "Code Duplication Analysis Tool"
 )
 
 set(CMAKE_CXX_STANDARD 23)

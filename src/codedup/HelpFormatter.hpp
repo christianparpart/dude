@@ -18,7 +18,7 @@ enum class HelpLineType : uint8_t
     TitleUnderline,    ///< Title underline (===...).
     SectionHeader,     ///< Section header (e.g. "Basic Usage").
     SectionUnderline,  ///< Section underline (---...).
-    UsageLine,         ///< Usage synopsis line (e.g. "Usage: codedupdetector ...").
+    UsageLine,         ///< Usage synopsis line (e.g. "Usage: dude ...").
     OptionsLabel,      ///< The "Options:" label line.
     OptionLine,        ///< An option definition line (e.g. "  -t, --threshold <N>  ...").
     ShellComment,      ///< Shell comment line (leading #).
