@@ -269,3 +269,145 @@ TEST_CASE("CSharpTokenizer.SharedOperators", "[csharp][tokenizer]")
     CHECK(t[17].type == TokenType::Caret);
     CHECK(t[18].type == TokenType::Tilde);
 }
+
+TEST_CASE("CSharpTokenizer.VerbatimStringDoubledQuotes", "[csharp][tokenizer]")
+{
+    auto result = CSharpLanguage{}.Tokenize(R"cs(@"doubled ""quotes"" inside")cs");
+    REQUIRE(result.has_value());
+    CHECK((*result)[0].type == TokenType::StringLiteral);
+    CHECK((*result)[0].text.find("doubled") != std::string::npos);
+}
+
+TEST_CASE("CSharpTokenizer.UnterminatedVerbatimString", "[csharp][tokenizer]")
+{
+    auto result = CSharpLanguage{}.Tokenize(R"cs(@"unterminated)cs");
+    CHECK(!result.has_value());
+}
+
+TEST_CASE("CSharpTokenizer.InterpolatedVerbatimString", "[csharp][tokenizer]")
+{
+    auto result = CSharpLanguage{}.Tokenize(R"cs($@"multi {x}")cs");
+    REQUIRE(result.has_value());
+    CHECK((*result)[0].type == TokenType::StringLiteral);
+}
+
+TEST_CASE("CSharpTokenizer.VerbatimInterpolatedString", "[csharp][tokenizer]")
+{
+    auto result = CSharpLanguage{}.Tokenize(R"cs(@$"multi {x}")cs");
+    REQUIRE(result.has_value());
+    CHECK((*result)[0].type == TokenType::StringLiteral);
+}
+
+TEST_CASE("CSharpTokenizer.InterpolatedEscapedBraces", "[csharp][tokenizer]")
+{
+    auto result = CSharpLanguage{}.Tokenize(R"($"{{literal}}")");
+    REQUIRE(result.has_value());
+    CHECK((*result)[0].type == TokenType::StringLiteral);
+}
+
+TEST_CASE("CSharpTokenizer.UnterminatedInterpolatedString", "[csharp][tokenizer]")
+{
+    auto result = CSharpLanguage{}.Tokenize("$\"unterminated");
+    CHECK(!result.has_value());
+}
+
+TEST_CASE("CSharpTokenizer.RawStringLiteral", "[csharp][tokenizer]")
+{
+    auto result = CSharpLanguage{}.Tokenize(R"cs("""raw string""")cs");
+    REQUIRE(result.has_value());
+    CHECK((*result)[0].type == TokenType::StringLiteral);
+}
+
+TEST_CASE("CSharpTokenizer.RawStringMultiline", "[csharp][tokenizer]")
+{
+    auto result = CSharpLanguage{}.Tokenize("\"\"\"multi\nline\nraw\"\"\"");
+    REQUIRE(result.has_value());
+    CHECK((*result)[0].type == TokenType::StringLiteral);
+}
+
+TEST_CASE("CSharpTokenizer.RawStringFourQuotes", "[csharp][tokenizer]")
+{
+    auto result = CSharpLanguage{}.Tokenize(R"cs(""""has "quotes" inside"""")cs");
+    REQUIRE(result.has_value());
+    CHECK((*result)[0].type == TokenType::StringLiteral);
+}
+
+TEST_CASE("CSharpTokenizer.UnterminatedRawString", "[csharp][tokenizer]")
+{
+    auto result = CSharpLanguage{}.Tokenize(R"cs("""unterminated)cs");
+    CHECK(!result.has_value());
+}
+
+TEST_CASE("CSharpTokenizer.NumericSuffixes", "[csharp][tokenizer]")
+{
+    auto result = CSharpLanguage{}.Tokenize("42UL 3.14M 100D 0XAB 0B1010 1.5e10");
+    REQUIRE(result.has_value());
+
+    for (size_t i = 0; i < 6; ++i)
+    {
+        CAPTURE(i);
+        CHECK((*result)[i].type == TokenType::NumericLiteral);
+    }
+    CHECK((*result)[0].text == "42UL");
+    CHECK((*result)[1].text == "3.14M");
+    CHECK((*result)[2].text == "100D");
+}
+
+TEST_CASE("CSharpTokenizer.VerbatimIdentifier", "[csharp][tokenizer]")
+{
+    auto result = CSharpLanguage{}.Tokenize("@if");
+    REQUIRE(result.has_value());
+    CHECK((*result)[0].type == TokenType::Identifier);
+    CHECK((*result)[0].text == "@if");
+}
+
+TEST_CASE("CSharpTokenizer.DotStartedNumeric", "[csharp][tokenizer]")
+{
+    auto result = CSharpLanguage{}.Tokenize(".5");
+    REQUIRE(result.has_value());
+    CHECK((*result)[0].type == TokenType::NumericLiteral);
+}
+
+TEST_CASE("CSharpTokenizer.AllCSharpKeywords", "[csharp][tokenizer]")
+{
+    auto result = CSharpLanguage{}.Tokenize("checked decimal event finally fixed in internal is lock nameof "
+                                            "object out params partial readonly ref sbyte stackalloc typeof "
+                                            "uint ulong unchecked unsafe ushort where value when init");
+    REQUIRE(result.has_value());
+
+    auto const& t = *result;
+    CHECK(t[0].type == TokenType::CSharp_Checked);
+    CHECK(t[1].type == TokenType::CSharp_Decimal);
+    CHECK(t[2].type == TokenType::CSharp_Event);
+    CHECK(t[3].type == TokenType::CSharp_Finally);
+    CHECK(t[4].type == TokenType::CSharp_Fixed);
+    CHECK(t[5].type == TokenType::CSharp_In);
+    CHECK(t[6].type == TokenType::CSharp_Internal);
+    CHECK(t[7].type == TokenType::CSharp_Is);
+    CHECK(t[8].type == TokenType::CSharp_Lock);
+    CHECK(t[9].type == TokenType::CSharp_Nameof);
+    CHECK(t[10].type == TokenType::CSharp_Object);
+    CHECK(t[11].type == TokenType::CSharp_Out);
+    CHECK(t[12].type == TokenType::CSharp_Params);
+    CHECK(t[13].type == TokenType::CSharp_Partial);
+    CHECK(t[14].type == TokenType::CSharp_Readonly);
+    CHECK(t[15].type == TokenType::CSharp_Ref);
+    CHECK(t[16].type == TokenType::CSharp_Sbyte);
+    CHECK(t[17].type == TokenType::CSharp_Stackalloc);
+    CHECK(t[18].type == TokenType::CSharp_Typeof);
+    CHECK(t[19].type == TokenType::CSharp_Uint);
+    CHECK(t[20].type == TokenType::CSharp_Ulong);
+    CHECK(t[21].type == TokenType::CSharp_Unchecked);
+    CHECK(t[22].type == TokenType::CSharp_Unsafe);
+    CHECK(t[23].type == TokenType::CSharp_Ushort);
+    CHECK(t[24].type == TokenType::CSharp_Where);
+    CHECK(t[25].type == TokenType::CSharp_Value);
+    CHECK(t[26].type == TokenType::CSharp_When);
+    CHECK(t[27].type == TokenType::CSharp_Init);
+}
+
+TEST_CASE("CSharpTokenizer.UnterminatedCharLiteral", "[csharp][tokenizer]")
+{
+    auto result = CSharpLanguage{}.Tokenize("'unterminated");
+    CHECK(!result.has_value());
+}

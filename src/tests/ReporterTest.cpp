@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <codedup/AnalysisScope.hpp>
 #include <codedup/ConsoleReporter.hpp>
 #include <codedup/IntraFunctionDetector.hpp>
 
@@ -6,6 +7,7 @@
 
 #include <filesystem>
 #include <span>
+#include <sstream>
 #include <string>
 
 using namespace codedup;
@@ -555,4 +557,69 @@ TEST_CASE("Reporter.IntraCloneHighlighting.WithComments", "[reporter][intra][hig
     // The tokens "a" and "b" should appear in the source output
     CHECK(out.contains('a'));
     CHECK(out.contains('b'));
+}
+
+// ============================================================================================
+// Timing edge cases
+// ============================================================================================
+
+TEST_CASE("Reporter.SummaryWithSubMillisecondTiming", "[reporter]")
+{
+    ConsoleReporter reporter({.useColor = false});
+
+    PerformanceTiming timing;
+    timing.scanning = std::chrono::microseconds(500);
+    timing.tokenizing = std::chrono::microseconds(200);
+    timing.normalizing = std::chrono::microseconds(100);
+    timing.cloneDetection = std::chrono::microseconds(800);
+
+    reporter.ReportSummary({.totalFiles = 5, .totalBlocks = 10, .totalGroups = 1, .timing = timing});
+
+    auto const out = reporter.Render();
+    CHECK(out.contains("Timing:"));
+    // Sub-millisecond values should be formatted in microseconds
+    CHECK(out.contains("us"));
+}
+
+TEST_CASE("Reporter.SummaryWithMultiSecondTiming", "[reporter]")
+{
+    ConsoleReporter reporter({.useColor = false});
+
+    PerformanceTiming timing;
+    timing.scanning = std::chrono::milliseconds(1500);
+    timing.tokenizing = std::chrono::milliseconds(3200);
+    timing.normalizing = std::chrono::milliseconds(800);
+    timing.cloneDetection = std::chrono::milliseconds(5000);
+
+    reporter.ReportSummary({.totalFiles = 1000, .totalBlocks = 5000, .totalGroups = 50, .timing = timing});
+
+    auto const out = reporter.Render();
+    CHECK(out.contains("Timing:"));
+    // Multi-second values should be formatted in seconds
+    CHECK(out.contains(" s"));
+}
+
+TEST_CASE("Reporter.SummaryWithNonDefaultScope", "[reporter]")
+{
+    ConsoleReporter reporter({.useColor = false});
+    reporter.ReportSummary({.totalFiles = 10,
+                            .totalBlocks = 50,
+                            .totalGroups = 3,
+                            .activeScope = AnalysisScope::InterFile});
+
+    auto const out = reporter.Render();
+    CHECK(out.contains("Scope:"));
+}
+
+TEST_CASE("Reporter.WriteTo", "[reporter]")
+{
+    ConsoleReporter reporter({.useColor = false});
+    reporter.ReportSummary({.totalFiles = 7, .totalBlocks = 30, .totalGroups = 2});
+
+    std::ostringstream oss;
+    reporter.WriteTo(oss);
+    auto const streamOut = oss.str();
+    auto const renderOut = reporter.Render();
+    CHECK(streamOut == renderOut);
+    CHECK(streamOut.contains("7 files"));
 }

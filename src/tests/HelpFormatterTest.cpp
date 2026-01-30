@@ -340,3 +340,93 @@ TEST_CASE("HelpFormatter.LightTheme", "[help-formatter]")
     auto const lightResult = HelpFormatter::FormatExamples("  # Comment", true, ColorTheme::Light);
     CHECK(darkResult != lightResult);
 }
+
+// ---------------------------------------------------------------------------
+// Additional shell highlighting edge cases
+// ---------------------------------------------------------------------------
+
+TEST_CASE("HelpFormatter.HighlightShellLine.FlagsAfterCommand", "[help-formatter]")
+{
+    auto const colors = GetThemeColors(ColorTheme::Dark);
+    auto const result = HelpFormatter::HighlightShellLine("  codedupdetector --threshold 0.8 --no-color", colors);
+    CHECK(result.contains("--threshold"));
+    CHECK(result.contains("0.8"));
+    CHECK(result.contains("--no-color"));
+}
+
+TEST_CASE("HelpFormatter.HighlightShellLine.DoubleQuotedString", "[help-formatter]")
+{
+    auto const colors = GetThemeColors(ColorTheme::Dark);
+    auto const result = HelpFormatter::HighlightShellLine(R"(  codedupdetector -g "*.cpp")", colors);
+    CHECK(result.contains(std::format("\033[38;2;{};{};{}m", colors.strings.r,
+                                      colors.strings.g, colors.strings.b)));
+    CHECK(result.contains("\"*.cpp\""));
+}
+
+TEST_CASE("HelpFormatter.HighlightShellLine.DotSlashPath", "[help-formatter]")
+{
+    auto const colors = GetThemeColors(ColorTheme::Dark);
+    auto const result = HelpFormatter::HighlightShellLine("  codedupdetector ./src", colors);
+    CHECK(result.contains(std::format("\033[38;2;{};{};{}m", colors.identifiers.r,
+                                      colors.identifiers.g, colors.identifiers.b)));
+    CHECK(result.contains("./src"));
+}
+
+// ---------------------------------------------------------------------------
+// Additional option line edge cases
+// ---------------------------------------------------------------------------
+
+TEST_CASE("HelpFormatter.HighlightOptionLine.NoParam", "[help-formatter]")
+{
+    auto const colors = GetThemeColors(ColorTheme::Dark);
+    auto const result = HelpFormatter::HighlightOptionLine("  -v, --verbose         Enable verbose output", colors);
+    CHECK(result.contains("-v"));
+    CHECK(result.contains("--verbose"));
+    CHECK(result.contains("Enable verbose output"));
+}
+
+TEST_CASE("HelpFormatter.HighlightOptionLine.MalformedAngleBracket", "[help-formatter]")
+{
+    auto const colors = GetThemeColors(ColorTheme::Dark);
+    auto const result = HelpFormatter::HighlightOptionLine("  -t, --threshold <N   Malformed param", colors);
+    CHECK(result.contains("-t"));
+    CHECK(result.contains("--threshold"));
+}
+
+// ---------------------------------------------------------------------------
+// JSON highlighting edge cases
+// ---------------------------------------------------------------------------
+
+TEST_CASE("HelpFormatter.HighlightJsonLine.BooleanAndNull", "[help-formatter]")
+{
+    auto const colors = GetThemeColors(ColorTheme::Dark);
+    auto const trueResult = HelpFormatter::HighlightJsonLine("    \"enabled\": true,", colors);
+    CHECK(trueResult.contains(std::format("\033[38;2;{};{};{}m", colors.keywords.r,
+                                          colors.keywords.g, colors.keywords.b)));
+    CHECK(trueResult.contains("true"));
+
+    auto const nullResult = HelpFormatter::HighlightJsonLine("    \"value\": null", colors);
+    CHECK(nullResult.contains("null"));
+}
+
+TEST_CASE("HelpFormatter.HighlightJsonLine.Numbers", "[help-formatter]")
+{
+    auto const colors = GetThemeColors(ColorTheme::Dark);
+    auto const result = HelpFormatter::HighlightJsonLine("    \"count\": 42,", colors);
+    CHECK(result.contains(std::format("\033[38;2;{};{};{}m", colors.numbers.r,
+                                      colors.numbers.g, colors.numbers.b)));
+    CHECK(result.contains("42"));
+}
+
+// ---------------------------------------------------------------------------
+// PlainText in examples section
+// ---------------------------------------------------------------------------
+
+TEST_CASE("HelpFormatter.ClassifyLine.PlainTextInExamples", "[help-formatter]")
+{
+    int jsonDepth = 0;
+    bool inContinuation = false;
+    // Indented text that is not a shell command or comment → PlainText
+    CHECK(HelpFormatter::ClassifyLine("    some descriptive text here", jsonDepth, inContinuation, true) ==
+          HelpLineType::PlainText);
+}

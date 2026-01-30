@@ -336,3 +336,90 @@ quoted""")py");
 
     CHECK((*result)[0].type == TokenType::StringLiteral);
 }
+
+TEST_CASE("PythonTokenizer.CombinedPrefixRfFr", "[python][tokenizer]")
+{
+    auto result = PythonLanguage{}.Tokenize(R"py(rf"hello {x}" fr"hello {x}")py");
+    REQUIRE(result.has_value());
+
+    CHECK((*result)[0].type == TokenType::StringLiteral);
+    CHECK((*result)[1].type == TokenType::StringLiteral);
+}
+
+TEST_CASE("PythonTokenizer.ByteTripleQuotedString", "[python][tokenizer]")
+{
+    auto result = PythonLanguage{}.Tokenize("b\"\"\"bytes\ncontent\"\"\"");
+    REQUIRE(result.has_value());
+
+    CHECK((*result)[0].type == TokenType::StringLiteral);
+}
+
+TEST_CASE("PythonTokenizer.FStringTripleQuoted", "[python][tokenizer]")
+{
+    auto result = PythonLanguage{}.Tokenize("f\"\"\"formatted\n{value}\"\"\"");
+    REQUIRE(result.has_value());
+
+    CHECK((*result)[0].type == TokenType::StringLiteral);
+}
+
+TEST_CASE("PythonTokenizer.RawTripleSingleQuoted", "[python][tokenizer]")
+{
+    auto result = PythonLanguage{}.Tokenize("r'''raw\nsingle'''");
+    REQUIRE(result.has_value());
+
+    CHECK((*result)[0].type == TokenType::StringLiteral);
+}
+
+TEST_CASE("PythonTokenizer.UppercaseOctal", "[python][tokenizer]")
+{
+    auto result = PythonLanguage{}.Tokenize("0O17");
+    REQUIRE(result.has_value());
+    CHECK((*result)[0].type == TokenType::NumericLiteral);
+    CHECK((*result)[0].text == "0O17");
+}
+
+TEST_CASE("PythonTokenizer.UppercaseComplex", "[python][tokenizer]")
+{
+    auto result = PythonLanguage{}.Tokenize("3J");
+    REQUIRE(result.has_value());
+    CHECK((*result)[0].type == TokenType::NumericLiteral);
+    CHECK((*result)[0].text == "3J");
+}
+
+TEST_CASE("PythonTokenizer.ExponentWithSign", "[python][tokenizer]")
+{
+    auto result = PythonLanguage{}.Tokenize("1.5e+10 2e-3");
+    REQUIRE(result.has_value());
+
+    CHECK((*result)[0].type == TokenType::NumericLiteral);
+    CHECK((*result)[0].text == "1.5e+10");
+    CHECK((*result)[1].type == TokenType::NumericLiteral);
+    CHECK((*result)[1].text == "2e-3");
+}
+
+TEST_CASE("PythonTokenizer.TypeKeyword", "[python][tokenizer]")
+{
+    auto result = PythonLanguage{}.Tokenize("type Point = tuple");
+    REQUIRE(result.has_value());
+
+    CHECK((*result)[0].type == TokenType::Python_Type);
+}
+
+TEST_CASE("PythonTokenizer.UnterminatedSingleQuote", "[python][tokenizer]")
+{
+    auto result = PythonLanguage{}.Tokenize("'unterminated");
+    CHECK(!result.has_value());
+}
+
+TEST_CASE("PythonTokenizer.UnterminatedPrefixedTripleQuoted", "[python][tokenizer]")
+{
+    auto result = PythonLanguage{}.Tokenize(R"(r"""unterminated)");
+    CHECK(!result.has_value());
+}
+
+TEST_CASE("PythonTokenizer.DotStartedNumeric", "[python][tokenizer]")
+{
+    auto result = PythonLanguage{}.Tokenize(".5");
+    REQUIRE(result.has_value());
+    CHECK((*result)[0].type == TokenType::NumericLiteral);
+}

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <codedup/Token.hpp>
 
+#include <utility>
+
 namespace codedup
 {
 
@@ -470,7 +472,8 @@ auto TokenTypeName(TokenType type) -> std::string_view
         case TokenType::Python_Walrus:
             return ":=";
     }
-    return "Unknown";
+    // All TokenType enum values are exhaustively handled above.
+    std::unreachable();
 }
 
 auto IsKeyword(TokenType type) -> bool

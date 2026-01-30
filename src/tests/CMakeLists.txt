@@ -41,6 +41,9 @@ add_executable(CodeDupTest
     McpToolsTest.cpp
     HelpFormatterTest.cpp
     ProgressBarTest.cpp
+    TokenTest.cpp
+    MappedFileTest.cpp
+    SyntaxHighlighterTest.cpp
 )
 
 target_link_libraries(CodeDupTest PRIVATE

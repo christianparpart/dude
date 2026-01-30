@@ -272,3 +272,128 @@ void foo(int x) {
     CHECK(t[i++].type == TokenType::LeftBrace);
     CHECK(t[i++].type == TokenType::If);
 }
+
+TEST_CASE("Tokenizer.PrefixedRawStrings", "[tokenizer]")
+{
+    auto result = CppLanguage{}.Tokenize(R"cpp(u8R"(content)" uR"(content)" LR"(content)")cpp");
+    REQUIRE(result.has_value());
+
+    CHECK((*result)[0].type == TokenType::StringLiteral);
+    CHECK((*result)[1].type == TokenType::StringLiteral);
+    CHECK((*result)[2].type == TokenType::StringLiteral);
+}
+
+TEST_CASE("Tokenizer.UnterminatedRawString", "[tokenizer]")
+{
+    auto result = CppLanguage{}.Tokenize(R"cpp(R"(unterminated)cpp");
+    CHECK(!result.has_value());
+}
+
+TEST_CASE("Tokenizer.RawStringDelimiterTooLong", "[tokenizer]")
+{
+    auto result = CppLanguage{}.Tokenize(R"(R"12345678901234567(content)12345678901234567")");
+    CHECK(!result.has_value());
+}
+
+TEST_CASE("Tokenizer.PrefixedStrings", "[tokenizer]")
+{
+    auto result = CppLanguage{}.Tokenize(R"cpp(u"str" U"str" L"str" u8"str")cpp");
+    REQUIRE(result.has_value());
+
+    for (size_t i = 0; i < 4; ++i)
+    {
+        CAPTURE(i);
+        CHECK((*result)[i].type == TokenType::StringLiteral);
+    }
+}
+
+TEST_CASE("Tokenizer.PrefixedChars", "[tokenizer]")
+{
+    auto result = CppLanguage{}.Tokenize("u'x' U'x' L'x' u8'x'");
+    REQUIRE(result.has_value());
+
+    for (size_t i = 0; i < 4; ++i)
+    {
+        CAPTURE(i);
+        CHECK((*result)[i].type == TokenType::CharLiteral);
+    }
+}
+
+TEST_CASE("Tokenizer.NumericEdgeCases", "[tokenizer]")
+{
+    auto result = CppLanguage{}.Tokenize("0b1010'0101 0xFF'00 1.5e+10 2E-3 42uz 3.14f 2.0L");
+    REQUIRE(result.has_value());
+
+    for (size_t i = 0; i < 7; ++i)
+    {
+        CAPTURE(i);
+        CHECK((*result)[i].type == TokenType::NumericLiteral);
+    }
+    CHECK((*result)[0].text == "0b1010'0101");
+    CHECK((*result)[1].text == "0xFF'00");
+    CHECK((*result)[2].text == "1.5e+10");
+    CHECK((*result)[3].text == "2E-3");
+    CHECK((*result)[4].text == "42uz");
+    CHECK((*result)[5].text == "3.14f");
+    CHECK((*result)[6].text == "2.0L");
+}
+
+TEST_CASE("Tokenizer.AllCppKeywords", "[tokenizer]")
+{
+    auto result = CppLanguage{}.Tokenize("alignof char8_t char16_t char32_t concept consteval constinit "
+                                         "decltype dynamic_cast explicit export mutable register "
+                                         "reinterpret_cast requires short signed static_assert static_cast "
+                                         "thread_local typeid");
+    REQUIRE(result.has_value());
+
+    auto const& t = *result;
+    CHECK(t[0].type == TokenType::Alignof);
+    CHECK(t[1].type == TokenType::Char8T);
+    CHECK(t[2].type == TokenType::Char16T);
+    CHECK(t[3].type == TokenType::Char32T);
+    CHECK(t[4].type == TokenType::Concept);
+    CHECK(t[5].type == TokenType::Consteval);
+    CHECK(t[6].type == TokenType::Constinit);
+    CHECK(t[7].type == TokenType::Decltype);
+    CHECK(t[8].type == TokenType::DynamicCast);
+    CHECK(t[9].type == TokenType::Explicit);
+    CHECK(t[10].type == TokenType::Export);
+    CHECK(t[11].type == TokenType::Mutable);
+    CHECK(t[12].type == TokenType::Register);
+    CHECK(t[13].type == TokenType::ReinterpretCast);
+    CHECK(t[14].type == TokenType::Requires);
+    CHECK(t[15].type == TokenType::Short);
+    CHECK(t[16].type == TokenType::Signed);
+    CHECK(t[17].type == TokenType::StaticAssert);
+    CHECK(t[18].type == TokenType::StaticCast);
+    CHECK(t[19].type == TokenType::ThreadLocal);
+    CHECK(t[20].type == TokenType::Typeid);
+}
+
+TEST_CASE("Tokenizer.CompoundAssignmentOperators", "[tokenizer]")
+{
+    auto result = CppLanguage{}.Tokenize("*= /= %= &= |= ^=");
+    REQUIRE(result.has_value());
+
+    auto const& t = *result;
+    CHECK(t[0].type == TokenType::StarEqual);
+    CHECK(t[1].type == TokenType::SlashEqual);
+    CHECK(t[2].type == TokenType::PercentEqual);
+    CHECK(t[3].type == TokenType::AmpEqual);
+    CHECK(t[4].type == TokenType::PipeEqual);
+    CHECK(t[5].type == TokenType::CaretEqual);
+}
+
+TEST_CASE("Tokenizer.DotStartedNumeric", "[tokenizer]")
+{
+    auto result = CppLanguage{}.Tokenize(".5");
+    REQUIRE(result.has_value());
+    CHECK((*result)[0].type == TokenType::NumericLiteral);
+    CHECK((*result)[0].text == ".5");
+}
+
+TEST_CASE("Tokenizer.UnterminatedCharLiteral", "[tokenizer]")
+{
+    auto result = CppLanguage{}.Tokenize("'unterminated");
+    CHECK(!result.has_value());
+}

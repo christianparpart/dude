@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <format>
+#include <utility>
 
 namespace codedup
 {
@@ -217,10 +218,9 @@ auto ConvertToUtf8(std::string_view data, InputEncoding encoding) -> std::expect
         case InputEncoding::Windows1252:
             return ConvertWindows1252ToUtf8(data);
         case InputEncoding::Auto:
-            break; // Unreachable after resolution
+            // DetectEncoding() above always resolves Auto to either Utf8 or Windows1252.
+            std::unreachable();
     }
-
-    return std::unexpected(EncodingError{.message = "Unexpected encoding value"});
 }
 
 auto ParseEncodingName(std::string_view name) -> std::expected<InputEncoding, EncodingError>

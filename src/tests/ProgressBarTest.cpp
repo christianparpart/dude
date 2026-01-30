@@ -119,3 +119,24 @@ TEST_CASE("ProgressBar.MakeCallbacks", "[ProgressBar]")
 
     bar.Finish();
 }
+
+TEST_CASE("ProgressBar.FinishNoClear", "[ProgressBar]")
+{
+    NullFile nf;
+    REQUIRE(nf.file != nullptr);
+    ProgressBar bar("NoClear", 10, nf.file);
+    bar.Start();
+    for (size_t i = 0; i < 10; ++i)
+        bar.Tick();
+    bar.Finish(false); // non-clearing finish path
+}
+
+TEST_CASE("ProgressBar.FinishWithoutStart", "[ProgressBar]")
+{
+    NullFile nf;
+    REQUIRE(nf.file != nullptr);
+    ProgressBar bar("NoStart", 10, nf.file);
+    // Finish without calling Start — should not crash on non-TTY
+    bar.Finish();
+    bar.Finish(false);
+}
