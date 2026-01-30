@@ -78,7 +78,7 @@ jobs:
         if: matrix.preset == 'clang-release-static'
         uses: actions/upload-artifact@v4
         with:
-          name: dude-linux
+          name: dude-linux-static
           path: build/${{ matrix.preset }}/src/cli/dude
 
   windows:
