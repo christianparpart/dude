@@ -7,7 +7,81 @@ on:
     branches: [master]
 
 jobs:
-  build:
+  linux:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - preset: clang-debug
+            compiler: Clang 21 (Debug)
+            install: clang
+            extra_cmake_args: -DCMAKE_C_COMPILER=clang-21 -DCMAKE_CXX_COMPILER=clang++-21 -DENABLE_CLANG_TIDY=OFF
+          - preset: clang-release
+            compiler: Clang 21 (Release)
+            install: clang
+            extra_cmake_args: -DCMAKE_C_COMPILER=clang-21 -DCMAKE_CXX_COMPILER=clang++-21
+          - preset: clang-release-static
+            compiler: Clang 21 (Release, static)
+            install: clang
+            extra_cmake_args: -DCMAKE_C_COMPILER=clang-21 -DCMAKE_CXX_COMPILER=clang++-21
+          - preset: clang-tsan
+            compiler: Clang 21 (ThreadSanitizer)
+            install: clang
+            extra_cmake_args: -DCMAKE_C_COMPILER=clang-21 -DCMAKE_CXX_COMPILER=clang++-21
+          - preset: gcc-debug
+            compiler: GCC 14
+            install: gcc
+            extra_cmake_args:
+
+    name: ${{ matrix.compiler }}
+
+    env:
+      CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Clang 21
+        if: matrix.install == 'clang'
+        run: |
+          wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- 21
+
+      - name: Install GCC 14
+        if: matrix.install == 'gcc'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-14 g++-14
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
+          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
+
+      - name: Install Ninja
+        run: sudo apt-get install -y ninja-build
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CPM_SOURCE_CACHE }}
+          key: cpm-${{ matrix.preset }}-${{ hashFiles('CMakeLists.txt') }}
+          restore-keys: cpm-${{ matrix.preset }}-
+
+      - name: Configure
+        run: cmake --preset ${{ matrix.preset }} ${{ matrix.extra_cmake_args }}
+
+      - name: Build
+        run: cmake --build --preset ${{ matrix.preset }}
+
+      - name: Test
+        run: ctest --preset ${{ matrix.preset }}
+
+      - name: Upload CLI executable
+        if: matrix.preset == 'clang-release-static'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dude-linux
+          path: build/${{ matrix.preset }}/src/cli/dude
+
+  windows:
     runs-on: windows-latest
     strategy:
       fail-fast: false
@@ -32,8 +106,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.CPM_SOURCE_CACHE }}
-          key: cpm-${{ hashFiles('CMakeLists.txt') }}
-          restore-keys: cpm-
+          key: cpm-${{ matrix.preset }}-${{ hashFiles('CMakeLists.txt') }}
+          restore-keys: cpm-${{ matrix.preset }}-
 
       - name: Configure
         run: cmake --preset ${{ matrix.preset }}
@@ -48,5 +122,5 @@ jobs:
         if: matrix.preset == 'clangcl-release'
         uses: actions/upload-artifact@v4
         with:
-          name: dude
+          name: dude-windows
           path: build/${{ matrix.preset }}/src/cli/dude.exe

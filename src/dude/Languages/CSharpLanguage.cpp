@@ -139,9 +139,9 @@ struct OperatorEntry
 /// @brief Sorted array of three-character operators for binary search lookup.
 ///
 /// C# does not have ->*, <=>, or .* but does have ??= and <<=, >>=.
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wtrigraphs"
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wtrigraphs"
 #endif
 constexpr auto threeCharOperators = std::to_array<OperatorEntry>({
     {.text = "...", .type = TokenType::Ellipsis},
@@ -149,8 +149,8 @@ constexpr auto threeCharOperators = std::to_array<OperatorEntry>({
     {.text = "??=", .type = TokenType::CSharp_NullCoalescingAssign},
     {.text = ">>=", .type = TokenType::GreaterGreaterEqual},
 });
-#if defined(__clang__)
-#pragma clang diagnostic pop
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop
 #endif
 
 /// @brief Sorted array of two-character operators for binary search lookup.
@@ -186,9 +186,9 @@ constexpr auto twoCharOperators = std::to_array<OperatorEntry>({
 /// @return The corresponding TokenType, or TokenType::Identifier if not a keyword.
 [[nodiscard]] auto LookupKeyword(std::string_view text) -> TokenType
 {
-    auto const* const it = std::ranges::lower_bound(keywords, text, {}, &KeywordEntry::text);
-    if (it != keywords.end() && it->text == text)
-        return it->type;
+    auto const range = std::ranges::equal_range(keywords, text, {}, &KeywordEntry::text);
+    if (!range.empty())
+        return range.front().type;
     return TokenType::Identifier;
 }
 
