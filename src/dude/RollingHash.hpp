@@ -48,9 +48,12 @@ constexpr uint64_t hashPrime = (1ULL << 61) - 1;
     auto const result = lo + upper;
     return result >= hashPrime ? result - hashPrime : result;
 #else
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
     auto const product = static_cast<__int128>(a) * static_cast<__int128>(b);
     auto const lo = static_cast<uint64_t>(product) & hashPrime;
     auto const hi = static_cast<uint64_t>(static_cast<unsigned __int128>(product) >> 61);
+#pragma GCC diagnostic pop
     auto const result = lo + hi;
     return result >= hashPrime ? result - hashPrime : result;
 #endif

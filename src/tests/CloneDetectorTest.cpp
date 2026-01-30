@@ -239,7 +239,7 @@ TEST_CASE("BitParallelLCS.PartialOverlap", "[lcs]")
 TEST_CASE("BitParallelLCS.AsymmetricLengths", "[lcs]")
 {
     // Test with different-length sequences to verify proper swapping (shorter = bitvector)
-    for (auto const [m, n] :
+    for (auto const& [m, n] :
          {std::pair{size_t{10}, size_t{64}}, std::pair{size_t{64}, size_t{10}}, std::pair{size_t{100}, size_t{256}},
           std::pair{size_t{256}, size_t{100}}, std::pair{size_t{64}, size_t{65}}, std::pair{size_t{300}, size_t{50}}})
     {
@@ -350,8 +350,8 @@ TEST_CASE("BitParallelLCS.DynamicWidthIdentical", "[lcs]")
 TEST_CASE("BitParallelLCS.DynamicWidthAsymmetric", "[lcs]")
 {
     // Asymmetric lengths where the shorter sequence > 256
-    for (auto const [m, n] : {std::pair{size_t{300}, size_t{500}}, std::pair{size_t{500}, size_t{300}},
-                              std::pair{size_t{400}, size_t{1000}}})
+    for (auto const& [m, n] : {std::pair{size_t{300}, size_t{500}}, std::pair{size_t{500}, size_t{300}},
+                               std::pair{size_t{400}, size_t{1000}}})
     {
         CAPTURE(m, n);
         auto const a = MakeShuffledSequence(m, 15, 42);

@@ -210,7 +210,8 @@ TEST_CASE("JsonReporter.ValidJson", "[reporter][json]")
     reporter.ReportSummary({});
 
     auto const output = reporter.Render();
-    CHECK_NOTHROW(nlohmann::json::parse(output));
+    nlohmann::json parsed;
+    CHECK_NOTHROW(parsed = nlohmann::json::parse(output));
 }
 
 TEST_CASE("JsonReporter.WriteTo", "[reporter][json]")
