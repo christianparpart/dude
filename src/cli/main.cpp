@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include <exec/static_thread_pool.hpp>
-#include <fnmatch.h>
+#include <codedup/GlobMatch.hpp>
 #include <git/GitDiffParser.hpp>
 #include <git/GitFileFilter.hpp>
 #include <mcp/AnalysisSession.hpp>
@@ -594,7 +594,7 @@ auto RunDiffSetup(CliOptions const& opts) -> std::expected<codedup::DiffResult, 
                       {
                           auto const filename = fc.filePath.filename().string();
                           return !std::ranges::any_of(opts.globPatterns, [&filename](std::string const& pattern)
-                                                      { return fnmatch(pattern.c_str(), filename.c_str(), 0) == 0; });
+                                                      { return codedup::GlobMatch(pattern, filename); });
                       });
     }
 
@@ -649,7 +649,7 @@ auto ScanFiles(CliOptions const& opts, codedup::PerformanceTiming& timing)
                   {
                       auto const filename = path.filename().string();
                       return std::ranges::any_of(patterns, [&filename](std::string const& pattern)
-                                                 { return fnmatch(pattern.c_str(), filename.c_str(), 0) == 0; });
+                                                 { return codedup::GlobMatch(pattern, filename); });
                   });
 
     // Compose all filters into a single predicate.

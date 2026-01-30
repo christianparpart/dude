@@ -104,6 +104,56 @@
             "cacheVariables": {
                 "ENABLE_PGO_OPTIMIZE": "ON"
             }
+        },
+        {
+            "name": "windows-base",
+            "hidden": true,
+            "inherits": "base",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Windows"
+            }
+        },
+        {
+            "name": "cl-debug",
+            "inherits": "windows-base",
+            "displayName": "MSVC Debug",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_C_COMPILER": "cl",
+                "CMAKE_CXX_COMPILER": "cl"
+            }
+        },
+        {
+            "name": "cl-release",
+            "inherits": "windows-base",
+            "displayName": "MSVC Release",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_C_COMPILER": "cl",
+                "CMAKE_CXX_COMPILER": "cl"
+            }
+        },
+        {
+            "name": "clangcl-debug",
+            "inherits": "windows-base",
+            "displayName": "Clang-CL Debug",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_C_COMPILER": "clang-cl",
+                "CMAKE_CXX_COMPILER": "clang-cl"
+            }
+        },
+        {
+            "name": "clangcl-release",
+            "inherits": "windows-base",
+            "displayName": "Clang-CL Release",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_C_COMPILER": "clang-cl",
+                "CMAKE_CXX_COMPILER": "clang-cl"
+            }
         }
     ],
     "buildPresets": [
@@ -142,6 +192,22 @@
         {
             "name": "linux-clang-pgo-optimize",
             "configurePreset": "linux-clang-pgo-optimize"
+        },
+        {
+            "name": "cl-debug",
+            "configurePreset": "cl-debug"
+        },
+        {
+            "name": "cl-release",
+            "configurePreset": "cl-release"
+        },
+        {
+            "name": "clangcl-debug",
+            "configurePreset": "clangcl-debug"
+        },
+        {
+            "name": "clangcl-release",
+            "configurePreset": "clangcl-release"
         }
     ],
     "testPresets": [
@@ -204,6 +270,34 @@
         {
             "name": "linux-clang-pgo-optimize",
             "configurePreset": "linux-clang-pgo-optimize",
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "cl-debug",
+            "configurePreset": "cl-debug",
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "cl-release",
+            "configurePreset": "cl-release",
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "clangcl-debug",
+            "configurePreset": "clangcl-debug",
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "clangcl-release",
+            "configurePreset": "clangcl-release",
             "output": {
                 "outputOnFailure": true
             }

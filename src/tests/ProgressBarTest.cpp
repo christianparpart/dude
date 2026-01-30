@@ -12,23 +12,26 @@ using namespace codedup;
 namespace
 {
 
-/// @brief RAII wrapper for FILE* opened to /dev/null (non-TTY).
-struct NullFile
+/// @brief RAII wrapper for a temporary FILE* that is guaranteed non-TTY on all platforms.
+///
+/// Uses tmpfile() instead of the null device because Windows _isatty() reports NUL
+/// as a TTY (it's a character device), which defeats the purpose of testing non-TTY behavior.
+struct NonTtyFile
 {
     FILE* file;
-    NullFile() : file(std::fopen("/dev/null", "w")) {} // NOLINT(cppcoreguidelines-owning-memory)
-    ~NullFile() { std::fclose(file); }                 // NOLINT(cppcoreguidelines-owning-memory)
-    NullFile(NullFile const&) = delete;
-    NullFile& operator=(NullFile const&) = delete;
-    NullFile(NullFile&&) = delete;
-    NullFile& operator=(NullFile&&) = delete;
+    NonTtyFile() : file(std::tmpfile()) {} // NOLINT(cppcoreguidelines-owning-memory)
+    ~NonTtyFile() { std::fclose(file); }   // NOLINT(cppcoreguidelines-owning-memory)
+    NonTtyFile(NonTtyFile const&) = delete;
+    NonTtyFile& operator=(NonTtyFile const&) = delete;
+    NonTtyFile(NonTtyFile&&) = delete;
+    NonTtyFile& operator=(NonTtyFile&&) = delete;
 };
 
 } // namespace
 
 TEST_CASE("ProgressBar.Construction", "[ProgressBar]")
 {
-    NullFile nf;
+    NonTtyFile nf;
     REQUIRE(nf.file != nullptr);
     ProgressBar bar("Testing", 100, nf.file);
     CHECK_FALSE(bar.IsActive());
@@ -36,7 +39,7 @@ TEST_CASE("ProgressBar.Construction", "[ProgressBar]")
 
 TEST_CASE("ProgressBar.TickNoTTY", "[ProgressBar]")
 {
-    NullFile nf;
+    NonTtyFile nf;
     REQUIRE(nf.file != nullptr);
     ProgressBar bar("Testing", 10, nf.file);
     bar.Start();
@@ -47,7 +50,7 @@ TEST_CASE("ProgressBar.TickNoTTY", "[ProgressBar]")
 
 TEST_CASE("ProgressBar.ThreadSafeTick", "[ProgressBar]")
 {
-    NullFile nf;
+    NonTtyFile nf;
     REQUIRE(nf.file != nullptr);
     ProgressBar bar("Threaded", 8000, nf.file);
     bar.Start();
@@ -78,7 +81,7 @@ TEST_CASE("ProgressBar.FormatDuration", "[ProgressBar]")
 
 TEST_CASE("ProgressBar.UpdateAbsolute", "[ProgressBar]")
 {
-    NullFile nf;
+    NonTtyFile nf;
     REQUIRE(nf.file != nullptr);
     ProgressBar bar("Detecting", 0, nf.file);
     bar.Start();
@@ -90,7 +93,7 @@ TEST_CASE("ProgressBar.UpdateAbsolute", "[ProgressBar]")
 
 TEST_CASE("ProgressBar.LogDuringProgress", "[ProgressBar]")
 {
-    NullFile nf;
+    NonTtyFile nf;
     REQUIRE(nf.file != nullptr);
     ProgressBar bar("Logging", 10, nf.file);
     bar.Start();
@@ -102,7 +105,7 @@ TEST_CASE("ProgressBar.LogDuringProgress", "[ProgressBar]")
 
 TEST_CASE("ProgressBar.MakeCallbacks", "[ProgressBar]")
 {
-    NullFile nf;
+    NonTtyFile nf;
     REQUIRE(nf.file != nullptr);
     ProgressBar bar("Callbacks", 100, nf.file);
     bar.Start();
@@ -122,7 +125,7 @@ TEST_CASE("ProgressBar.MakeCallbacks", "[ProgressBar]")
 
 TEST_CASE("ProgressBar.FinishNoClear", "[ProgressBar]")
 {
-    NullFile nf;
+    NonTtyFile nf;
     REQUIRE(nf.file != nullptr);
     ProgressBar bar("NoClear", 10, nf.file);
     bar.Start();
@@ -133,7 +136,7 @@ TEST_CASE("ProgressBar.FinishNoClear", "[ProgressBar]")
 
 TEST_CASE("ProgressBar.FinishWithoutStart", "[ProgressBar]")
 {
-    NullFile nf;
+    NonTtyFile nf;
     REQUIRE(nf.file != nullptr);
     ProgressBar bar("NoStart", 10, nf.file);
     // Finish without calling Start — should not crash on non-TTY

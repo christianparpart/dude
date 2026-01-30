@@ -27,21 +27,38 @@ include(cmake/Coverage.cmake)
 include(cmake/ClangTidy.cmake)
 include(cmake/StaticLinking.cmake)
 
-if(ENABLE_NATIVE_ARCH)
-    add_compile_options(-march=native)
+if(MSVC)
+    # Suppress MSVC deprecation warnings for standard C functions (fopen, getenv, etc.)
+    add_compile_definitions(_CRT_SECURE_NO_WARNINGS NOMINMAX)
+    # Required for correct __cplusplus macro value
+    add_compile_options(/Zc:__cplusplus)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+        # clang-cl's preprocessor is already standards-conforming; this flag is only needed for cl.exe
+        add_compile_options(/Zc:preprocessor)
+    endif()
+    # Suppress C4702 (unreachable code) triggered by stdexec template instantiations
+    add_compile_options(/wd4702)
 endif()
 
-if(ENABLE_PGO_INSTRUMENT)
-    add_compile_options(-fprofile-instr-generate=${PGO_PROFILE_DIR}/default-%p.profraw)
-    add_link_options(-fprofile-instr-generate=${PGO_PROFILE_DIR}/default-%p.profraw)
-elseif(ENABLE_PGO_OPTIMIZE)
-    if(NOT EXISTS "${PGO_PROFILE_DIR}/merged.profdata")
-        message(FATAL_ERROR "PGO profile data not found at ${PGO_PROFILE_DIR}/merged.profdata. "
-            "Run the instrumented build first, then merge with: "
-            "llvm-profdata merge -output=${PGO_PROFILE_DIR}/merged.profdata ${PGO_PROFILE_DIR}/*.profraw")
+if(ENABLE_NATIVE_ARCH)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        add_compile_options(-march=native)
     endif()
-    add_compile_options(-fprofile-instr-use=${PGO_PROFILE_DIR}/merged.profdata)
-    add_link_options(-fprofile-instr-use=${PGO_PROFILE_DIR}/merged.profdata)
+endif()
+
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    if(ENABLE_PGO_INSTRUMENT)
+        add_compile_options(-fprofile-instr-generate=${PGO_PROFILE_DIR}/default-%p.profraw)
+        add_link_options(-fprofile-instr-generate=${PGO_PROFILE_DIR}/default-%p.profraw)
+    elseif(ENABLE_PGO_OPTIMIZE)
+        if(NOT EXISTS "${PGO_PROFILE_DIR}/merged.profdata")
+            message(FATAL_ERROR "PGO profile data not found at ${PGO_PROFILE_DIR}/merged.profdata. "
+                "Run the instrumented build first, then merge with: "
+                "llvm-profdata merge -output=${PGO_PROFILE_DIR}/merged.profdata ${PGO_PROFILE_DIR}/*.profraw")
+        endif()
+        add_compile_options(-fprofile-instr-use=${PGO_PROFILE_DIR}/merged.profdata)
+        add_link_options(-fprofile-instr-use=${PGO_PROFILE_DIR}/merged.profdata)
+    endif()
 endif()
 
 # CPM for dependency management
