@@ -4,6 +4,9 @@
 #include <codedup/CloneDetector.hpp>
 #include <codedup/RollingHash.hpp>
 
+#include <exec/static_thread_pool.hpp>
+#include <stdexec/execution.hpp>
+
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -114,27 +117,79 @@ auto CloneDetector::Detect(std::vector<CodeBlock> const& blocks, ProgressCallbac
     // Skip over-common fingerprints (appearing in > 50 blocks)
     auto const maxBlocksPerFingerprint = std::max(size_t{50}, blocks.size() / 2);
 
-    // Count shared fingerprints per pair
-    auto const fingerprintCount = fingerprintIndex.size();
-    size_t fingerprintProcessed = 0;
-    ankerl::unordered_dense::map<std::pair<size_t, size_t>, size_t, PairHash> pairCounts;
-    for (auto const& [fp, blockList] : fingerprintIndex)
+    // Convert fingerprint index to a vector of block-lists for indexed parallel access.
+    // We only need the block lists; the fingerprint hash keys are not used during counting.
+    std::vector<std::vector<size_t>> fingerprintBlocks;
+    fingerprintBlocks.reserve(fingerprintIndex.size());
+    for (auto& [fp, blockList] : fingerprintIndex)
+        fingerprintBlocks.push_back(std::move(blockList));
+    fingerprintIndex.clear(); // Free map memory early
+
+    auto const fingerprintCount = fingerprintBlocks.size();
+
+    // Parallel candidate gathering: each worker builds a local pair-count map,
+    // then maps are merged. Uses stdexec::bulk for work distribution.
+    auto const numWorkers = static_cast<size_t>(std::max(1U, std::thread::hardware_concurrency()));
+    exec::static_thread_pool pool(std::max(1U, std::thread::hardware_concurrency()));
+    auto sched = pool.get_scheduler();
+
+    std::vector<ankerl::unordered_dense::map<std::pair<size_t, size_t>, size_t, PairHash>> perWorkerPairCounts(
+        numWorkers);
+    std::atomic<size_t> fingerprintProcessed{0};
+
+    auto const gatherRange = [&](std::size_t workerIdx)
     {
-        if (blockList.size() <= maxBlocksPerFingerprint)
+        auto& localCounts = perWorkerPairCounts[workerIdx];
+
+        // Interleaved (striped) assignment: worker i processes fingerprints i, i+N, i+2N, ...
+        // This distributes expensive fingerprints (large block lists → O(n²) pairs) evenly
+        // across workers, avoiding the tail-end stall of contiguous chunking.
+        for (auto i = workerIdx; i < fingerprintCount; i += numWorkers)
         {
-            for (auto const i : std::views::iota(size_t{0}, blockList.size()))
+            auto const& blockList = fingerprintBlocks[i];
+            if (blockList.size() <= maxBlocksPerFingerprint)
             {
-                for (auto const j : std::views::iota(i + 1, blockList.size()))
+                for (auto const ii : std::views::iota(size_t{0}, blockList.size()))
                 {
-                    auto const key =
-                        std::pair{std::min(blockList[i], blockList[j]), std::max(blockList[i], blockList[j])};
-                    ++pairCounts[key];
+                    for (auto const jj : std::views::iota(ii + 1, blockList.size()))
+                    {
+                        auto const key =
+                            std::pair{std::min(blockList[ii], blockList[jj]), std::max(blockList[ii], blockList[jj])};
+                        ++localCounts[key];
+                    }
                 }
             }
+
+            if (candidateCallback)
+            {
+                auto const processed = fingerprintProcessed.fetch_add(1, std::memory_order_relaxed) + 1;
+                candidateCallback(processed, fingerprintCount);
+            }
         }
-        ++fingerprintProcessed;
-        if (candidateCallback)
-            candidateCallback(fingerprintProcessed, fingerprintCount);
+    };
+
+    {
+        auto work = stdexec::starts_on(
+            sched, stdexec::just() | stdexec::bulk(stdexec::par, numWorkers, gatherRange));
+        stdexec::sync_wait(work);
+    }
+
+    // Merge per-worker pair counts into a single map.
+    // Start with the largest worker-local map to minimize rehashing.
+    size_t largestIdx = 0;
+    for (size_t t = 1; t < numWorkers; ++t)
+    {
+        if (perWorkerPairCounts[t].size() > perWorkerPairCounts[largestIdx].size())
+            largestIdx = t;
+    }
+    ankerl::unordered_dense::map<std::pair<size_t, size_t>, size_t, PairHash> pairCounts =
+        std::move(perWorkerPairCounts[largestIdx]);
+    for (size_t t = 0; t < numWorkers; ++t)
+    {
+        if (t == largestIdx)
+            continue;
+        for (auto& [key, count] : perWorkerPairCounts[t])
+            pairCounts[key] += count;
     }
 
     // Phase 2: Collect candidate pairs, applying length pre-filter and hash match threshold
@@ -152,21 +207,18 @@ auto CloneDetector::Detect(std::vector<CodeBlock> const& blocks, ProgressCallbac
         candidates.push_back(CandidatePair{.blockA = pair.first, .blockB = pair.second});
     }
 
-    // Optimization 5: Multi-threaded similarity computation
-    auto const numThreads = std::max(1U, std::thread::hardware_concurrency());
+    // Parallel similarity computation using stdexec::bulk.
     auto const candidateCount = candidates.size();
 
-    std::vector<std::vector<ClonePair>> perThreadResults(numThreads);
+    std::vector<std::vector<ClonePair>> perWorkerResults(numWorkers);
     std::atomic<size_t> processedCount{0};
 
-    auto const computeRange = [&](size_t threadIdx, size_t threadCount)
+    auto const computeRange = [&](std::size_t workerIdx)
     {
-        auto const chunkSize = (candidateCount + threadCount - 1) / threadCount;
-        auto const start = std::min(threadIdx * chunkSize, candidateCount);
-        auto const end = std::min(start + chunkSize, candidateCount);
+        auto& localPairs = perWorkerResults[workerIdx];
 
-        auto& localPairs = perThreadResults[threadIdx];
-        for (auto const i : std::views::iota(start, end))
+        // Interleaved (striped) assignment for even load distribution across workers.
+        for (auto i = workerIdx; i < candidateCount; i += numWorkers)
         {
             auto const& candidate = candidates[i];
             auto const& blockA = blocks[candidate.blockA];
@@ -191,29 +243,18 @@ auto CloneDetector::Detect(std::vector<CodeBlock> const& blocks, ProgressCallbac
         }
     };
 
-    if (candidateCount <= 100 || numThreads <= 1)
     {
-        // Small workload: run single-threaded (thread count = 1, so chunk covers all candidates)
-        computeRange(0, 1);
-    }
-    else
-    {
-        // Launch worker threads for indices 1..numThreads-1, main thread handles index 0
-        std::vector<std::jthread> threads;
-        threads.reserve(numThreads - 1);
-        for (auto const t : std::views::iota(1U, numThreads))
-            threads.emplace_back([&, t] { computeRange(t, numThreads); });
-
-        computeRange(0, numThreads);
-        // jthreads auto-join on destruction
+        auto work = stdexec::starts_on(
+            sched, stdexec::just() | stdexec::bulk(stdexec::par, numWorkers, computeRange));
+        stdexec::sync_wait(work);
     }
 
-    // Merge per-thread results
+    // Merge per-worker results
     std::vector<ClonePair> clonePairs;
-    for (auto& threadPairs : perThreadResults)
+    for (auto& workerPairs : perWorkerResults)
     {
-        clonePairs.insert(clonePairs.end(), std::make_move_iterator(threadPairs.begin()),
-                          std::make_move_iterator(threadPairs.end()));
+        clonePairs.insert(clonePairs.end(), std::make_move_iterator(workerPairs.begin()),
+                          std::make_move_iterator(workerPairs.end()));
     }
 
     if (clonePairs.empty())

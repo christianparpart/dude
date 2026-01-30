@@ -84,8 +84,17 @@ auto GitFileFilter::QueryNonIgnoredFiles(std::filesystem::path const& gitRoot, s
         if (!pathStr.empty())
         {
             // git ls-files outputs paths relative to the git root.
-            auto const fullPath = std::filesystem::weakly_canonical(gitRoot / pathStr);
-            files.insert(fullPath.string());
+            // On Windows, paths containing reserved device names (NUL, CON, PRN, etc.)
+            // cause weakly_canonical to throw. Skip such paths gracefully.
+            try
+            {
+                auto const fullPath = std::filesystem::weakly_canonical(gitRoot / pathStr);
+                files.insert(fullPath.string());
+            }
+            catch (std::filesystem::filesystem_error const&)
+            {
+                // Skip paths that cannot be canonicalized (e.g. reserved device names on Windows).
+            }
         }
         start = (end == std::string::npos) ? output.size() : end + 1;
     }
