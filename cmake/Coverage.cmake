@@ -32,8 +32,10 @@ function(add_coverage_target test_target)
             COMMAND ${CMAKE_COMMAND} -E env LLVM_PROFILE_FILE=coverage.profraw $<TARGET_FILE:${test_target}>
             COMMAND llvm-profdata merge -sparse coverage.profraw -o coverage.profdata
             COMMAND llvm-cov report $<TARGET_FILE:${test_target}> -instr-profile=coverage.profdata
+                -ignore-filename-regex=_deps/
             COMMAND llvm-cov show $<TARGET_FILE:${test_target}> -instr-profile=coverage.profdata
                 -format=html -output-dir=${CMAKE_BINARY_DIR}/coverage
+                -ignore-filename-regex=_deps/
             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
             DEPENDS ${test_target}
             COMMENT "Generating code coverage report"
