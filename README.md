@@ -44,28 +44,28 @@ and supports interactive use via the [Model Context Protocol](https://modelconte
 
 ```bash
 # Configure and build (debug, with ASAN/UBSAN/clang-tidy)
-cmake --preset linux-clang-debug
-cmake --build --preset linux-clang-debug
+cmake --preset clang-debug
+cmake --build --preset clang-debug
 
 # Run tests
-ctest --preset linux-clang-debug
+ctest --preset clang-debug
 
 # Release build
-cmake --preset linux-clang-release
-cmake --build --preset linux-clang-release
+cmake --preset clang-release
+cmake --build --preset clang-release
 ```
 
 ### Additional Build Presets
 
 | Preset | Purpose |
 |--------|---------|
-| `linux-clang-debug` | Debug with ASAN, UBSAN, clang-tidy |
-| `linux-clang-release` | Optimized release build |
-| `linux-clang-release-native` | Release with `-march=native` |
-| `linux-clang-release-static` | Statically linked release build |
-| `linux-clang-coverage` | Code coverage instrumentation |
-| `linux-clang-tsan` | ThreadSanitizer build |
-| `linux-gcc-debug` | GCC debug build |
+| `clang-debug` | Debug with ASAN, UBSAN, clang-tidy |
+| `clang-release` | Optimized release build |
+| `clang-release-native` | Release with `-march=native` |
+| `clang-release-static` | Statically linked release build |
+| `clang-coverage` | Code coverage instrumentation |
+| `clang-tsan` | ThreadSanitizer build |
+| `gcc-debug` | GCC debug build |
 
 ## Usage
 

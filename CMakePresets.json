@@ -16,9 +16,19 @@
             }
         },
         {
-            "name": "linux-clang-debug",
+            "name": "linux-base",
+            "hidden": true,
             "inherits": "base",
-            "displayName": "Linux Clang Debug",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Linux"
+            }
+        },
+        {
+            "name": "clang-debug",
+            "inherits": "linux-base",
+            "displayName": "Clang Debug",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
                 "CMAKE_C_COMPILER": "clang",
@@ -29,9 +39,9 @@
             }
         },
         {
-            "name": "linux-clang-release",
-            "inherits": "base",
-            "displayName": "Linux Clang Release",
+            "name": "clang-release",
+            "inherits": "linux-base",
+            "displayName": "Clang Release",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
                 "CMAKE_C_COMPILER": "clang",
@@ -39,9 +49,9 @@
             }
         },
         {
-            "name": "linux-clang-release-native",
-            "inherits": "linux-clang-release",
-            "displayName": "Linux Clang Release (native arch)",
+            "name": "clang-release-native",
+            "inherits": "clang-release",
+            "displayName": "Clang Release (native arch)",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
                 "CMAKE_C_COMPILER": "clang",
@@ -50,17 +60,17 @@
             }
         },
         {
-            "name": "linux-clang-release-static",
-            "inherits": "linux-clang-release",
-            "displayName": "Linux Clang Release (static)",
+            "name": "clang-release-static",
+            "inherits": "clang-release",
+            "displayName": "Clang Release (static)",
             "cacheVariables": {
                 "ENABLE_STATIC_LINKING": "ON"
             }
         },
         {
-            "name": "linux-clang-coverage",
-            "inherits": "base",
-            "displayName": "Linux Clang Coverage",
+            "name": "clang-coverage",
+            "inherits": "linux-base",
+            "displayName": "Clang Coverage",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
                 "CMAKE_C_COMPILER": "clang",
@@ -69,9 +79,9 @@
             }
         },
         {
-            "name": "linux-clang-tsan",
-            "inherits": "base",
-            "displayName": "Linux Clang ThreadSanitizer",
+            "name": "clang-tsan",
+            "inherits": "linux-base",
+            "displayName": "Clang ThreadSanitizer",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
                 "CMAKE_C_COMPILER": "clang",
@@ -80,9 +90,9 @@
             }
         },
         {
-            "name": "linux-gcc-debug",
-            "inherits": "base",
-            "displayName": "Linux GCC Debug",
+            "name": "gcc-debug",
+            "inherits": "linux-base",
+            "displayName": "GCC Debug",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
                 "CMAKE_C_COMPILER": "gcc",
@@ -90,17 +100,17 @@
             }
         },
         {
-            "name": "linux-clang-pgo-instrument",
-            "inherits": "linux-clang-release-native",
-            "displayName": "Linux Clang PGO Instrumentation",
+            "name": "clang-pgo-instrument",
+            "inherits": "clang-release-native",
+            "displayName": "Clang PGO Instrumentation",
             "cacheVariables": {
                 "ENABLE_PGO_INSTRUMENT": "ON"
             }
         },
         {
-            "name": "linux-clang-pgo-optimize",
-            "inherits": "linux-clang-release-native",
-            "displayName": "Linux Clang PGO Optimized",
+            "name": "clang-pgo-optimize",
+            "inherits": "clang-release-native",
+            "displayName": "Clang PGO Optimized",
             "cacheVariables": {
                 "ENABLE_PGO_OPTIMIZE": "ON"
             }
@@ -158,40 +168,40 @@
     ],
     "buildPresets": [
         {
-            "name": "linux-clang-debug",
-            "configurePreset": "linux-clang-debug"
+            "name": "clang-debug",
+            "configurePreset": "clang-debug"
         },
         {
-            "name": "linux-clang-release",
-            "configurePreset": "linux-clang-release"
+            "name": "clang-release",
+            "configurePreset": "clang-release"
         },
         {
-            "name": "linux-clang-release-native",
-            "configurePreset": "linux-clang-release-native"
+            "name": "clang-release-native",
+            "configurePreset": "clang-release-native"
         },
         {
-            "name": "linux-clang-release-static",
-            "configurePreset": "linux-clang-release-static"
+            "name": "clang-release-static",
+            "configurePreset": "clang-release-static"
         },
         {
-            "name": "linux-clang-coverage",
-            "configurePreset": "linux-clang-coverage"
+            "name": "clang-coverage",
+            "configurePreset": "clang-coverage"
         },
         {
-            "name": "linux-clang-tsan",
-            "configurePreset": "linux-clang-tsan"
+            "name": "clang-tsan",
+            "configurePreset": "clang-tsan"
         },
         {
-            "name": "linux-gcc-debug",
-            "configurePreset": "linux-gcc-debug"
+            "name": "gcc-debug",
+            "configurePreset": "gcc-debug"
         },
         {
-            "name": "linux-clang-pgo-instrument",
-            "configurePreset": "linux-clang-pgo-instrument"
+            "name": "clang-pgo-instrument",
+            "configurePreset": "clang-pgo-instrument"
         },
         {
-            "name": "linux-clang-pgo-optimize",
-            "configurePreset": "linux-clang-pgo-optimize"
+            "name": "clang-pgo-optimize",
+            "configurePreset": "clang-pgo-optimize"
         },
         {
             "name": "cl-debug",
@@ -212,64 +222,64 @@
     ],
     "testPresets": [
         {
-            "name": "linux-clang-debug",
-            "configurePreset": "linux-clang-debug",
+            "name": "clang-debug",
+            "configurePreset": "clang-debug",
             "output": {
                 "outputOnFailure": true
             }
         },
         {
-            "name": "linux-clang-release",
-            "configurePreset": "linux-clang-release",
+            "name": "clang-release",
+            "configurePreset": "clang-release",
             "output": {
                 "outputOnFailure": true
             }
         },
         {
-            "name": "linux-clang-release-native",
-            "configurePreset": "linux-clang-release-native",
+            "name": "clang-release-native",
+            "configurePreset": "clang-release-native",
             "output": {
                 "outputOnFailure": true
             }
         },
         {
-            "name": "linux-clang-release-static",
-            "configurePreset": "linux-clang-release-static",
+            "name": "clang-release-static",
+            "configurePreset": "clang-release-static",
             "output": {
                 "outputOnFailure": true
             }
         },
         {
-            "name": "linux-clang-coverage",
-            "configurePreset": "linux-clang-coverage",
+            "name": "clang-coverage",
+            "configurePreset": "clang-coverage",
             "output": {
                 "outputOnFailure": true
             }
         },
         {
-            "name": "linux-clang-tsan",
-            "configurePreset": "linux-clang-tsan",
+            "name": "clang-tsan",
+            "configurePreset": "clang-tsan",
             "output": {
                 "outputOnFailure": true
             }
         },
         {
-            "name": "linux-gcc-debug",
-            "configurePreset": "linux-gcc-debug",
+            "name": "gcc-debug",
+            "configurePreset": "gcc-debug",
             "output": {
                 "outputOnFailure": true
             }
         },
         {
-            "name": "linux-clang-pgo-instrument",
-            "configurePreset": "linux-clang-pgo-instrument",
+            "name": "clang-pgo-instrument",
+            "configurePreset": "clang-pgo-instrument",
             "output": {
                 "outputOnFailure": true
             }
         },
         {
-            "name": "linux-clang-pgo-optimize",
-            "configurePreset": "linux-clang-pgo-optimize",
+            "name": "clang-pgo-optimize",
+            "configurePreset": "clang-pgo-optimize",
             "output": {
                 "outputOnFailure": true
             }
