@@ -324,6 +324,10 @@ auto MakeQueryFileDuplicatesDescriptor() -> mcpprotocol::ToolDescriptor
                 {"properties",
                  {
                      {"file_path", {{"type", "string"}, {"description", "File path (substring match)"}}},
+                     {"limit",
+                      {{"type", "integer"},
+                       {"description",
+                        "Maximum number of clone groups to return, largest first (default: unlimited)"}}},
                  }},
             },
         .outputSchema = nullptr,
@@ -339,6 +343,7 @@ auto HandleQueryFileDuplicates(AnalysisSession const& session, nlohmann::json co
         return std::unexpected(check.error());
 
     auto const filePath = args.at("file_path").get<std::string>();
+    auto const limit = args.value("limit", size_t{0});
     auto const& groups = session.CloneGroups();
     auto const& blocks = session.AllBlocks();
     auto const& blockToFileIndex = session.BlockToFileIndex();
@@ -349,6 +354,9 @@ auto HandleQueryFileDuplicates(AnalysisSession const& session, nlohmann::json co
     auto interGroups = nlohmann::json::array();
     for (size_t gi = 0; gi < groups.size(); ++gi)
     {
+        if (limit > 0 && interGroups.size() >= limit)
+            break;
+
         bool involves = false;
         for (auto const bi : groups[gi].blockIndices)
         {
@@ -584,6 +592,10 @@ auto MakeAnalyzeFileDescriptor() -> mcpprotocol::ToolDescriptor
                       {{"type", "integer"}, {"description", "Minimum block size in tokens (default: 30)"}}},
                      {"text_sensitivity",
                       {{"type", "number"}, {"description", "Text sensitivity 0.0-1.0 (default: 0.3)"}}},
+                     {"limit",
+                      {{"type", "integer"},
+                       {"description",
+                        "Maximum number of clone groups to return, largest first (default: unlimited)"}}},
                  }},
             },
         .outputSchema = nullptr,
@@ -636,6 +648,7 @@ auto HandleAnalyzeFile(AnalysisSession& session, nlohmann::json const& args)
     auto const& blocks = session.AllBlocks();
     auto const& blockToFileIndex = session.BlockToFileIndex();
     auto const& intraResults = session.IntraResults();
+    auto const limit = args.value("limit", size_t{0});
 
     // Categorize clone groups.
     auto withinFileClones = nlohmann::json::array();
@@ -643,6 +656,10 @@ auto HandleAnalyzeFile(AnalysisSession& session, nlohmann::json const& args)
 
     for (size_t gi = 0; gi < groups.size(); ++gi)
     {
+        // Stop once both categories have reached the limit.
+        if (limit > 0 && withinFileClones.size() >= limit && crossFileClones.size() >= limit)
+            break;
+
         auto const& group = groups[gi];
 
         // Check if target file is involved.
@@ -681,9 +698,15 @@ auto HandleAnalyzeFile(AnalysisSession& session, nlohmann::json const& args)
         };
 
         if (hasOtherFile)
-            crossFileClones.push_back(std::move(groupJson));
+        {
+            if (limit == 0 || crossFileClones.size() < limit)
+                crossFileClones.push_back(std::move(groupJson));
+        }
         else
-            withinFileClones.push_back(std::move(groupJson));
+        {
+            if (limit == 0 || withinFileClones.size() < limit)
+                withinFileClones.push_back(std::move(groupJson));
+        }
     }
 
     // Filter intra-function clones to the target file.
@@ -758,6 +781,10 @@ auto MakeAnalyzeBranchDuplicatesDescriptor() -> mcpprotocol::ToolDescriptor
                       {{"type", "array"},
                        {"items", {{"type", "string"}}},
                        {"description", R"(File extensions to filter diff (e.g. [".cpp", ".hpp"]))"}}},
+                     {"limit",
+                      {{"type", "integer"},
+                       {"description",
+                        "Maximum number of clone groups to return, largest first (default: unlimited)"}}},
                  }},
             },
         .outputSchema = nullptr,
@@ -811,11 +838,15 @@ auto HandleAnalyzeBranchDuplicates(AnalysisSession& session, nlohmann::json cons
     auto const filteredGroups = codedup::DiffFilter::FilterCloneGroups(session.CloneGroups(), changedBlocks);
 
     // Step 5: Categorize.
+    auto const limit = args.value("limit", size_t{0});
     auto duplicatesExisting = nlohmann::json::array();
     auto duplicatesNew = nlohmann::json::array();
 
     for (size_t gi = 0; gi < filteredGroups.size(); ++gi)
     {
+        if (limit > 0 && duplicatesExisting.size() >= limit && duplicatesNew.size() >= limit)
+            break;
+
         auto const& group = filteredGroups[gi];
 
         bool hasChangedBlock = false;
@@ -851,9 +882,15 @@ auto HandleAnalyzeBranchDuplicates(AnalysisSession& session, nlohmann::json cons
         };
 
         if (hasChangedBlock && hasUnchangedBlock)
-            duplicatesExisting.push_back(std::move(groupJson));
+        {
+            if (limit == 0 || duplicatesExisting.size() < limit)
+                duplicatesExisting.push_back(std::move(groupJson));
+        }
         else if (hasChangedBlock)
-            duplicatesNew.push_back(std::move(groupJson));
+        {
+            if (limit == 0 || duplicatesNew.size() < limit)
+                duplicatesNew.push_back(std::move(groupJson));
+        }
     }
 
     // Step 6: Filter intra-function clones for changed blocks.
