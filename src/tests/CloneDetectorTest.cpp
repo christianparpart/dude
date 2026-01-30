@@ -676,3 +676,197 @@ TEST_CASE("LcsAlignment.AsymmetricLengths", "[lcs][alignment]")
     CHECK_FALSE(alignment.matchedB[3]);
     CHECK_FALSE(alignment.matchedB[4]);
 }
+
+// ============================================================================================
+// Bag-of-Tokens Dice Pre-Filter Tests
+// ============================================================================================
+
+TEST_CASE("BagDiceCompatible.IdenticalHistograms", "[detector][bagdice]")
+{
+    // Identical sequences have bag_dice = 1.0
+    BlockHistogram h;
+    h.counts = {0, 5, 3, 2}; // token 1 appears 5x, token 2 appears 3x, token 3 appears 2x
+    CHECK(CloneDetector::BagDiceCompatible(h, h, 10, 10, 0.97));
+    CHECK(CloneDetector::BagDiceCompatible(h, h, 10, 10, 1.0));
+}
+
+TEST_CASE("BagDiceCompatible.CompletelyDifferent", "[detector][bagdice]")
+{
+    // No shared tokens: bag_dice = 0
+    BlockHistogram hA;
+    hA.counts = {0, 5, 3, 0};
+    BlockHistogram hB;
+    hB.counts = {0, 0, 0, 8};
+    CHECK_FALSE(CloneDetector::BagDiceCompatible(hA, hB, 8, 8, 0.80));
+}
+
+TEST_CASE("BagDiceCompatible.PartialOverlap", "[detector][bagdice]")
+{
+    // A has tokens: {1:5, 2:5}, B has tokens: {1:5, 3:5}
+    // bag_intersection = min(5,5) + min(5,0) + min(0,5) = 5
+    // bag_dice = 2*5 / (10+10) = 0.5
+    BlockHistogram hA;
+    hA.counts = {0, 5, 5, 0};
+    BlockHistogram hB;
+    hB.counts = {0, 5, 0, 5};
+    CHECK(CloneDetector::BagDiceCompatible(hA, hB, 10, 10, 0.50));
+    CHECK_FALSE(CloneDetector::BagDiceCompatible(hA, hB, 10, 10, 0.80));
+}
+
+TEST_CASE("BagDiceCompatible.EmptySequences", "[detector][bagdice]")
+{
+    BlockHistogram empty;
+    empty.counts = {};
+    BlockHistogram nonEmpty;
+    nonEmpty.counts = {0, 5};
+    CHECK_FALSE(CloneDetector::BagDiceCompatible(empty, nonEmpty, 0, 5, 0.80));
+    CHECK_FALSE(CloneDetector::BagDiceCompatible(nonEmpty, empty, 5, 0, 0.80));
+    CHECK_FALSE(CloneDetector::BagDiceCompatible(empty, empty, 0, 0, 0.80));
+}
+
+TEST_CASE("BagDiceCompatible.DifferentSizedHistograms", "[detector][bagdice]")
+{
+    // Histograms may have different sizes; only the shared range is compared.
+    BlockHistogram hA;
+    hA.counts = {0, 10, 10};
+    BlockHistogram hB;
+    hB.counts = {0, 10, 10, 0, 0, 5};
+    // intersection = min(10,10) + min(10,10) = 20, dice = 2*20/(20+25) = 40/45 = 0.888...
+    CHECK(CloneDetector::BagDiceCompatible(hA, hB, 20, 25, 0.80));
+    CHECK_FALSE(CloneDetector::BagDiceCompatible(hA, hB, 20, 25, 0.95));
+}
+
+// ============================================================================================
+// Threshold-Aware LCS (Early Termination) Tests
+// ============================================================================================
+
+TEST_CASE("ComputeSimilarityWithThreshold.IdenticalSequences", "[detector][threshold]")
+{
+    // Identical sequences should always pass, regardless of threshold
+    for (auto const n : {size_t{30}, size_t{64}, size_t{128}, size_t{256}, size_t{300}})
+    {
+        CAPTURE(n);
+        auto const seq = MakeSequence(n);
+        auto const sim = CloneDetector::ComputeSimilarityWithThreshold(seq, seq, 0.97);
+        CHECK_THAT(sim, Catch::Matchers::WithinAbs(1.0, 1e-10));
+    }
+}
+
+TEST_CASE("ComputeSimilarityWithThreshold.CompletelyDifferent", "[detector][threshold]")
+{
+    // Completely different sequences should return 0 quickly (early termination)
+    for (auto const n : {size_t{30}, size_t{64}, size_t{128}, size_t{256}, size_t{300}})
+    {
+        CAPTURE(n);
+        std::vector<NormalizedTokenId> a(n);
+        std::vector<NormalizedTokenId> b(n);
+        for (size_t i = 0; i < n; ++i)
+        {
+            a[i] = static_cast<NormalizedTokenId>(i + 1);
+            b[i] = static_cast<NormalizedTokenId>(i + n + 1);
+        }
+        auto const sim = CloneDetector::ComputeSimilarityWithThreshold(a, b, 0.97);
+        CHECK_THAT(sim, Catch::Matchers::WithinAbs(0.0, 1e-10));
+    }
+}
+
+TEST_CASE("ComputeSimilarityWithThreshold.MatchesNonThreshold", "[detector][threshold]")
+{
+    // For pairs that DO pass the threshold, the result should match the non-threshold version.
+    for (auto const n : {size_t{40}, size_t{64}, size_t{128}, size_t{256}, size_t{300}})
+    {
+        CAPTURE(n);
+        auto const a = MakeSequence(n);
+        // Create b by changing ~2% of tokens (should still pass 0.90 threshold)
+        auto b = a;
+        for (size_t i = 0; i < n; i += 50)
+            b[i] = static_cast<NormalizedTokenId>(999);
+
+        auto const simThreshold = CloneDetector::ComputeSimilarityWithThreshold(a, b, 0.50);
+        auto const simNormal = CloneDetector::ComputeSimilarity(a, b);
+        CHECK_THAT(simThreshold, Catch::Matchers::WithinAbs(simNormal, 1e-10));
+    }
+}
+
+TEST_CASE("ComputeSimilarityWithThreshold.EarlyTerminationReturnsZero", "[detector][threshold]")
+{
+    // Create sequences with ~50% similarity; requesting 0.97 should early-terminate and return 0.
+    auto const n = size_t{200};
+    auto a = MakeSequence(n, 10);
+    auto b = a;
+    // Change every other token to create ~50% mismatch
+    for (size_t i = 0; i < n; i += 2)
+        b[i] = static_cast<NormalizedTokenId>(900 + (i % 10));
+
+    auto const sim = CloneDetector::ComputeSimilarityWithThreshold(a, b, 0.97);
+    CHECK(sim == 0.0);
+}
+
+TEST_CASE("ComputeSimilarityWithThreshold.EmptySequences", "[detector][threshold]")
+{
+    std::vector<NormalizedTokenId> const empty;
+    std::vector<NormalizedTokenId> const nonEmpty = {1, 2, 3};
+
+    CHECK(CloneDetector::ComputeSimilarityWithThreshold(empty, empty, 0.80) == 0.0);
+    CHECK(CloneDetector::ComputeSimilarityWithThreshold(empty, nonEmpty, 0.80) == 0.0);
+    CHECK(CloneDetector::ComputeSimilarityWithThreshold(nonEmpty, empty, 0.80) == 0.0);
+}
+
+// ============================================================================================
+// End-to-End Optimization Regression Tests
+// ============================================================================================
+
+TEST_CASE("CloneDetector.OptimizationsPreserveResults097", "[detector][optimization]")
+{
+    // Verify that with threshold 0.97, identical blocks are still detected.
+    // This validates that the bag filter, adaptive minHash, and early-term LCS
+    // don't introduce false negatives for exact clones.
+    std::vector<CodeBlock> blocks;
+    for (size_t i = 0; i < 10; ++i)
+    {
+        auto block =
+            MakeBlock("void func(int x) { int a = x + 1; int b = a * 2; int c = b - 3; int d = c + 4; return; }",
+                      "func" + std::to_string(i));
+        blocks.push_back(std::move(block));
+    }
+
+    CloneDetector detector({.similarityThreshold = 0.97, .minTokens = 5});
+    auto const groups = detector.Detect(blocks);
+
+    REQUIRE(groups.size() == 1);
+    CHECK(groups[0].blockIndices.size() == 10);
+    CHECK(groups[0].avgSimilarity >= 0.97);
+}
+
+TEST_CASE("CloneDetector.OptimizationsPreserveResultsNearThreshold", "[detector][optimization]")
+{
+    // Renamed-identifier clones: structurally identical after normalization.
+    // Should still be detected at 0.97 because structural normalization makes them identical.
+    auto const block1 =
+        MakeBlock("void foo(int x) { int a = x + 1; int b = a * 2; int c = b - 3; int d = c + 4; return; }", "foo");
+    auto const block2 =
+        MakeBlock("void bar(int y) { int p = y + 1; int q = p * 2; int r = q - 3; int s = r + 4; return; }", "bar");
+
+    CloneDetector detector({.similarityThreshold = 0.97, .minTokens = 5});
+    auto const groups = detector.Detect({block1, block2});
+
+    REQUIRE(groups.size() == 1);
+    CHECK_THAT(groups[0].avgSimilarity, Catch::Matchers::WithinAbs(1.0, 0.01));
+}
+
+TEST_CASE("CloneDetector.BlendedSimilarityWithThreshold", "[detector][blended][threshold]")
+{
+    // Verify threshold-aware blended similarity matches non-threshold version for passing pairs.
+    TokenNormalizer normalizer;
+    auto const a = MakeBlockWithTextPreserving(
+        normalizer, "void foo(int x) { int a = x + 1; int b = a * 2; int c = b - 3; return; }", "foo");
+    auto const b = MakeBlockWithTextPreserving(
+        normalizer, "void foo(int x) { int a = x + 1; int b = a * 2; int c = b - 3; return; }", "foo2");
+
+    auto const simBlended = CloneDetector::ComputeBlendedSimilarity(a.normalizedIds, b.normalizedIds,
+                                                                     a.textPreservingIds, b.textPreservingIds, 0.3);
+    auto const simBlendedThreshold = CloneDetector::ComputeBlendedSimilarityWithThreshold(
+        a.normalizedIds, b.normalizedIds, a.textPreservingIds, b.textPreservingIds, 0.3, 0.80);
+
+    CHECK_THAT(simBlendedThreshold, Catch::Matchers::WithinAbs(simBlended, 1e-10));
+}

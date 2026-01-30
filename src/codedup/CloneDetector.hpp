@@ -6,6 +6,7 @@
 #include <codedup/ProgressCallback.hpp>
 
 #include <cstddef>
+#include <cstdint>
 #include <span>
 #include <vector>
 
@@ -47,6 +48,15 @@ struct CloneDetectorConfig
     size_t minHashMatches = 3;         ///< Minimum shared fingerprints for candidacy.
     double textSensitivity = 0.0;      ///< Blend factor for text-preserving similarity (0.0-1.0).
                                        ///< 0.0 = pure structural (default), 1.0 = pure textual.
+};
+
+/// @brief Token frequency histogram for a code block.
+///
+/// Stores the count of each NormalizedTokenId in a block's token sequence.
+/// Used by the bag-of-tokens Dice pre-filter to cheaply upper-bound LCS similarity.
+struct BlockHistogram
+{
+    std::vector<uint32_t> counts; ///< counts[tokenId] = number of occurrences.
 };
 
 /// @brief Detects code clones using fingerprint-based filtering and LCS similarity.
@@ -119,6 +129,43 @@ public:
     /// @return LcsAlignment indicating matched positions in both sequences.
     [[nodiscard]] static auto ComputeLcsAlignment(std::span<NormalizedTokenId const> a,
                                                   std::span<NormalizedTokenId const> b) -> LcsAlignment;
+
+    /// @brief Computes LCS-based Dice coefficient similarity with early termination.
+    ///
+    /// Like ComputeSimilarity, but aborts early if the threshold cannot be reached,
+    /// returning 0.0. This avoids wasting work on pairs that will be filtered out.
+    /// @param a First normalized token ID sequence.
+    /// @param b Second normalized token ID sequence.
+    /// @param threshold Minimum similarity threshold for early termination.
+    /// @return Dice coefficient similarity (0.0 to 1.0), or 0.0 if threshold unreachable.
+    [[nodiscard]] static auto ComputeSimilarityWithThreshold(std::vector<NormalizedTokenId> const& a,
+                                                             std::vector<NormalizedTokenId> const& b,
+                                                             double threshold) -> double;
+
+    /// @brief Computes blended similarity with early termination support.
+    ///
+    /// Like ComputeBlendedSimilarity, but uses threshold-aware LCS to abort early
+    /// when the threshold cannot be reached.
+    [[nodiscard]] static auto ComputeBlendedSimilarityWithThreshold(
+        std::vector<NormalizedTokenId> const& structuralA, std::vector<NormalizedTokenId> const& structuralB,
+        std::vector<NormalizedTokenId> const& textPreservingA, std::vector<NormalizedTokenId> const& textPreservingB,
+        double textSensitivity, double threshold) -> double;
+
+    /// @brief Bag-of-tokens Dice pre-filter.
+    ///
+    /// Computes an upper bound on Dice similarity using token frequency histograms
+    /// (multiset intersection). Since bag intersection >= LCS length is always true,
+    /// if bag_dice < threshold, the true Dice similarity also < threshold.
+    /// Cost: O(V) where V is the vocabulary size (~1003), much cheaper than LCS.
+    ///
+    /// @param histA Histogram of the first block.
+    /// @param histB Histogram of the second block.
+    /// @param lenA Length of the first block's token sequence.
+    /// @param lenB Length of the second block's token sequence.
+    /// @param threshold Minimum similarity threshold.
+    /// @return True if the pair could possibly meet the threshold.
+    [[nodiscard]] static auto BagDiceCompatible(BlockHistogram const& histA, BlockHistogram const& histB, size_t lenA,
+                                                size_t lenB, double threshold) -> bool;
 
     /// @brief O(1) length-ratio pre-filter for clone candidate pairs.
     ///

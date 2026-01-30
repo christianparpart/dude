@@ -114,6 +114,24 @@ auto CloneDetector::Detect(std::vector<CodeBlock> const& blocks, ProgressCallbac
             fingerprintCallback(bi + 1, blocks.size());
     }
 
+    // Precompute token frequency histograms for bag-of-tokens Dice pre-filter.
+    // Find the global maximum token ID to size histograms uniformly.
+    NormalizedTokenId globalMaxId = 0;
+    for (auto const& block : blocks)
+    {
+        for (auto const id : block.normalizedIds)
+            globalMaxId = std::max(globalMaxId, id);
+    }
+    auto const histogramSize = static_cast<size_t>(globalMaxId) + 1;
+
+    std::vector<BlockHistogram> histograms(blocks.size());
+    for (size_t bi = 0; bi < blocks.size(); ++bi)
+    {
+        histograms[bi].counts.resize(histogramSize, 0);
+        for (auto const id : blocks[bi].normalizedIds)
+            ++histograms[bi].counts[id];
+    }
+
     // Find candidate pairs: blocks sharing >= minHashMatches fingerprints
     // Skip over-common fingerprints (appearing in > 50 blocks)
     auto const maxBlocksPerFingerprint = std::max(size_t{50}, blocks.size() / 2);
@@ -214,9 +232,41 @@ auto CloneDetector::Detect(std::vector<CodeBlock> const& blocks, ProgressCallbac
         {
             if (count < _config.minHashMatches)
                 continue;
-            if (!LengthsCompatible(blocks[pair.first].normalizedIds.size(),
-                                    blocks[pair.second].normalizedIds.size(), _config.similarityThreshold))
+
+            auto const lenA = blocks[pair.first].normalizedIds.size();
+            auto const lenB = blocks[pair.second].normalizedIds.size();
+
+            // Optimization 3: Adaptive minHashMatches — require more shared fingerprints
+            // for high thresholds. Each changed token disrupts up to hashWindowSize consecutive
+            // rolling-hash windows, so the minimum fingerprint survival rate is:
+            //   max(0, 1 - (1 - threshold) * hashWindowSize)
+            // A 0.5 safety margin accounts for edge effects and hash collisions.
+            // This naturally disables itself for thresholds where the bound is 0
+            // (e.g., threshold <= 0.90 with hashWindowSize = 10).
+            {
+                auto const changeRate = 1.0 - _config.similarityThreshold;
+                auto const minSurvivalRate =
+                    std::max(0.0, 1.0 - changeRate * static_cast<double>(_config.hashWindowSize));
+                if (minSurvivalRate > 0.0)
+                {
+                    auto const fpsA = lenA > _config.hashWindowSize ? lenA - _config.hashWindowSize + 1 : size_t{0};
+                    auto const fpsB = lenB > _config.hashWindowSize ? lenB - _config.hashWindowSize + 1 : size_t{0};
+                    auto const adaptiveMin = std::max(
+                        _config.minHashMatches,
+                        static_cast<size_t>(minSurvivalRate * 0.5 * static_cast<double>(std::min(fpsA, fpsB))));
+                    if (count < adaptiveMin)
+                        continue;
+                }
+            }
+
+            if (!LengthsCompatible(lenA, lenB, _config.similarityThreshold))
                 continue;
+
+            // Optimization 1: Bag-of-tokens Dice pre-filter — cheap upper bound on similarity.
+            if (!BagDiceCompatible(histograms[pair.first], histograms[pair.second], lenA, lenB,
+                                   _config.similarityThreshold))
+                continue;
+
             localCandidates.push_back(CandidatePair{.blockA = pair.first, .blockB = pair.second});
         }
 
@@ -261,9 +311,9 @@ auto CloneDetector::Detect(std::vector<CodeBlock> const& blocks, ProgressCallbac
             auto const& candidate = candidates[i];
             auto const& blockA = blocks[candidate.blockA];
             auto const& blockB = blocks[candidate.blockB];
-            auto const similarity =
-                ComputeBlendedSimilarity(blockA.normalizedIds, blockB.normalizedIds, blockA.textPreservingIds,
-                                         blockB.textPreservingIds, _config.textSensitivity);
+            auto const similarity = ComputeBlendedSimilarityWithThreshold(
+                blockA.normalizedIds, blockB.normalizedIds, blockA.textPreservingIds, blockB.textPreservingIds,
+                _config.textSensitivity, _config.similarityThreshold);
             if (similarity >= _config.similarityThreshold)
             {
                 localPairs.push_back(ClonePair{
@@ -798,6 +848,226 @@ auto CloneDetector::ComputeBlendedSimilarity(std::vector<NormalizedTokenId> cons
 
     auto const textualSim = ComputeSimilarity(textPreservingA, textPreservingB);
     return (1.0 - textSensitivity) * structuralSim + textSensitivity * textualSim;
+}
+
+auto CloneDetector::BagDiceCompatible(BlockHistogram const& histA, BlockHistogram const& histB, size_t lenA,
+                                      size_t lenB, double threshold) -> bool
+{
+    if (lenA == 0 || lenB == 0)
+        return false;
+
+    // Compute multiset intersection: sum of min(countA[t], countB[t]) for all token IDs.
+    // This is an upper bound on LCS length (LCS respects order; bag intersection doesn't).
+    auto const minSize = std::min(histA.counts.size(), histB.counts.size());
+    size_t bagIntersection = 0;
+    for (size_t t = 0; t < minSize; ++t)
+        bagIntersection += std::min(histA.counts[t], histB.counts[t]);
+
+    // bag_dice = 2.0 * bag_intersection / (|A| + |B|)
+    auto const bagDice = 2.0 * static_cast<double>(bagIntersection) / static_cast<double>(lenA + lenB);
+    return bagDice >= threshold;
+}
+
+// ============================================================================================
+// Threshold-Aware Bit-Parallel LCS Variants (Early Termination)
+// ============================================================================================
+
+namespace
+{
+
+/// @brief Computes LCS length using bit-parallel algorithm for n <= 64, with early termination.
+///
+/// Periodically checks (every 4 rows) whether the remaining rows can still reach minLcs.
+/// Returns 0 if the threshold is unreachable.
+[[nodiscard]] auto LcsLengthBitParallel64WithThreshold(std::span<NormalizedTokenId const> a,
+                                                       std::span<NormalizedTokenId const> b, size_t minLcs) -> size_t
+{
+    auto const m = a.size();
+    auto const n = b.size();
+
+    auto const maxId = FindMaxId(b);
+    std::vector<uint64_t> pm(static_cast<size_t>(maxId) + 1, 0);
+    for (auto const j : std::views::iota(size_t{0}, n))
+        pm[b[j]] |= (uint64_t{1} << j);
+
+    uint64_t M = 0;
+
+    for (size_t i = 0; i < m; ++i)
+    {
+        auto const pmVal = (a[i] <= maxId) ? pm[a[i]] : uint64_t{0};
+        auto const X = M | pmVal;
+        M = X & ((X - ((M << 1) | uint64_t{1})) ^ X);
+
+        // Check every 4 rows whether the threshold is still reachable.
+        if (((i + 1) & 3) == 0)
+        {
+            auto const currentLcs = static_cast<size_t>(std::popcount(M));
+            auto const remainingA = m - (i + 1);
+            auto const maxAdditional = std::min(remainingA, n - currentLcs);
+            if (currentLcs + maxAdditional < minLcs)
+                return 0;
+        }
+    }
+
+    return static_cast<size_t>(std::popcount(M));
+}
+
+/// @brief Computes LCS length using bit-parallel algorithm for 65 <= n <= 256, with early termination.
+///
+/// Checks every 8 rows.
+[[nodiscard]] auto LcsLengthBitParallel256WithThreshold(std::span<NormalizedTokenId const> a,
+                                                        std::span<NormalizedTokenId const> b, size_t minLcs) -> size_t
+{
+    auto const m = a.size();
+    auto const n = b.size();
+
+    auto const maxId = FindMaxId(b);
+    std::vector<BitVector256> pm(static_cast<size_t>(maxId) + 1);
+    for (auto const j : std::views::iota(size_t{0}, n))
+        pm[b[j]].SetBit(j);
+
+    BitVector256 M{};
+    BitVector256 one{};
+    one.words[0] = 1;
+
+    for (size_t i = 0; i < m; ++i)
+    {
+        constexpr BitVector256 zero{};
+        auto const& pmVal = (a[i] <= maxId) ? pm[a[i]] : zero;
+        auto const X = M | pmVal;
+        M = X & ((X - (M.ShiftLeft1() | one)) ^ X);
+
+        if (((i + 1) & 7) == 0)
+        {
+            auto const currentLcs = M.Popcount();
+            auto const remainingA = m - (i + 1);
+            auto const maxAdditional = std::min(remainingA, n - currentLcs);
+            if (currentLcs + maxAdditional < minLcs)
+                return 0;
+        }
+    }
+
+    return M.Popcount();
+}
+
+/// @brief Computes LCS length using dynamic-width bit-parallel algorithm for n > 256, with early termination.
+///
+/// Checks every 16 rows.
+[[nodiscard]] auto LcsLengthBitParallelDynamicWithThreshold(std::span<NormalizedTokenId const> a,
+                                                            std::span<NormalizedTokenId const> b, size_t minLcs)
+    -> size_t
+{
+    auto const m = a.size();
+    auto const n = b.size();
+    auto const W = (n + 63) / 64;
+
+    auto const maxId = FindMaxId(b);
+    auto const pmTableSize = (static_cast<size_t>(maxId) + 1) * W;
+    std::vector<uint64_t> pm(pmTableSize, 0);
+    for (auto const j : std::views::iota(size_t{0}, n))
+    {
+        auto const wordIdx = j / 64;
+        auto const bitIdx = j % 64;
+        pm[static_cast<size_t>(b[j]) * W + wordIdx] |= (uint64_t{1} << bitIdx);
+    }
+
+    DynamicBitVector M(W);
+
+    for (size_t i = 0; i < m; ++i)
+    {
+        auto const* pmRow = (a[i] <= maxId) ? &pm[static_cast<size_t>(a[i]) * W] : nullptr;
+
+        uint64_t carryShift = 1;
+        uint64_t borrowSub = 0;
+
+        for (size_t w = 0; w < W; ++w)
+        {
+            auto const mw = M.Word(w);
+            auto const pmw = pmRow ? pmRow[w] : uint64_t{0};
+            auto const X = mw | pmw;
+            auto const shifted = (mw << 1) | carryShift;
+            carryShift = mw >> 63;
+            auto const sub = X - shifted - borrowSub;
+            borrowSub = (X < shifted || (borrowSub != 0 && X == shifted)) ? 1ULL : 0ULL;
+            M.Word(w) = X & (sub ^ X);
+        }
+
+        if (((i + 1) & 15) == 0)
+        {
+            auto const currentLcs = M.Popcount();
+            auto const remainingA = m - (i + 1);
+            auto const maxAdditional = std::min(remainingA, n - currentLcs);
+            if (currentLcs + maxAdditional < minLcs)
+                return 0;
+        }
+    }
+
+    return M.Popcount();
+}
+
+} // anonymous namespace
+
+auto CloneDetector::ComputeSimilarityWithThreshold(std::vector<NormalizedTokenId> const& a,
+                                                    std::vector<NormalizedTokenId> const& b, double threshold) -> double
+{
+    if (a.empty() || b.empty())
+        return 0.0;
+
+    auto const m = a.size();
+    auto const n = b.size();
+
+    auto const& seqA = (m >= n) ? a : b;
+    auto const& seqB = (m >= n) ? b : a;
+    auto const shortLen = std::min(m, n);
+
+    // Pre-compute the minimum LCS length needed to reach the threshold.
+    // dice = 2 * lcs / (m + n) >= threshold  =>  lcs >= threshold * (m + n) / 2
+    auto const minLcs = static_cast<size_t>(
+        std::ceil(threshold * static_cast<double>(m + n) / 2.0));
+
+    size_t lcsLength = 0;
+    if (shortLen <= 64)
+        lcsLength = LcsLengthBitParallel64WithThreshold(seqA, seqB, minLcs);
+    else if (shortLen <= 256)
+        lcsLength = LcsLengthBitParallel256WithThreshold(seqA, seqB, minLcs);
+    else
+        lcsLength = LcsLengthBitParallelDynamicWithThreshold(seqA, seqB, minLcs);
+
+    return 2.0 * static_cast<double>(lcsLength) / static_cast<double>(m + n);
+}
+
+auto CloneDetector::ComputeBlendedSimilarityWithThreshold(std::vector<NormalizedTokenId> const& structuralA,
+                                                           std::vector<NormalizedTokenId> const& structuralB,
+                                                           std::vector<NormalizedTokenId> const& textPreservingA,
+                                                           std::vector<NormalizedTokenId> const& textPreservingB,
+                                                           double textSensitivity, double threshold) -> double
+{
+    // Short-circuit: no text sensitivity or text-preserving IDs not available
+    if (textSensitivity <= 0.0 || textPreservingA.empty() || textPreservingB.empty())
+        return ComputeSimilarityWithThreshold(structuralA, structuralB, threshold);
+
+    // With blended similarity: finalSim = (1-ts)*structSim + ts*textSim
+    // We need finalSim >= threshold.
+    // First compute structural similarity with early termination.
+    // The structural component alone needs: structSim >= (threshold - ts*1.0) / (1-ts) at minimum
+    // but since textSim <= 1.0, and we want to be conservative, just compute both with threshold.
+    auto const structuralSim = ComputeSimilarityWithThreshold(structuralA, structuralB, threshold);
+
+    // If structural sim is 0 (early-terminated), the blended result cannot reach threshold
+    // unless text sensitivity is very high. Check: best case textSim = 1.0.
+    if (structuralSim == 0.0)
+    {
+        auto const bestBlended = (1.0 - textSensitivity) * 0.0 + textSensitivity * 1.0;
+        if (bestBlended < threshold)
+            return 0.0;
+        // Rare case: text sensitivity is so high we still need to check.
+        // Fall back to non-threshold version.
+        return ComputeBlendedSimilarity(structuralA, structuralB, textPreservingA, textPreservingB, textSensitivity);
+    }
+
+    auto const textualSim = ComputeSimilarityWithThreshold(textPreservingA, textPreservingB, threshold);
+    auto const blended = (1.0 - textSensitivity) * structuralSim + textSensitivity * textualSim;
+    return blended;
 }
 
 } // namespace codedup
