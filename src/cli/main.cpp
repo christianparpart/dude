@@ -936,6 +936,9 @@ int main(int argc, char* argv[])
         auto candidateBar =
             opts.showProgress ? std::make_optional<codedup::ProgressBar>("Gather Candidates", size_t{0}) : std::nullopt;
 
+        auto collectBar =
+            opts.showProgress ? std::make_optional<codedup::ProgressBar>("Collecting", size_t{0}) : std::nullopt;
+
         auto detectBar =
             opts.showProgress ? std::make_optional<codedup::ProgressBar>("Detecting", size_t{0}) : std::nullopt;
 
@@ -967,6 +970,21 @@ int main(int argc, char* argv[])
                         candidateBar->Finish();
                         candidateBar.reset();
                     }
+                    if (collectBar)
+                        collectBar->Start();
+                }
+            },
+            [&](size_t current, size_t total)
+            {
+                if (collectBar)
+                    collectBar->Update(current, total);
+                if (current >= total)
+                {
+                    if (collectBar)
+                    {
+                        collectBar->Finish();
+                        collectBar.reset();
+                    }
                     if (detectBar)
                         detectBar->Start();
                 }
@@ -976,6 +994,8 @@ int main(int argc, char* argv[])
             fingerprintBar->Finish(); // safety: edge case with < 2 blocks
         if (candidateBar)
             candidateBar->Finish(); // safety: no fingerprints edge case
+        if (collectBar)
+            collectBar->Finish(); // safety: no candidates edge case
         if (detectBar)
             detectBar->Finish();
         timing.cloneDetection = Clock::now() - detectStart;

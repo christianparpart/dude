@@ -91,7 +91,8 @@ struct CandidatePair
 
 // NOLINTNEXTLINE(readability-function-cognitive-complexity)
 auto CloneDetector::Detect(std::vector<CodeBlock> const& blocks, ProgressCallback const& progressCallback,
-                           ProgressCallback const& fingerprintCallback, ProgressCallback const& candidateCallback)
+                           ProgressCallback const& fingerprintCallback, ProgressCallback const& candidateCallback,
+                           ProgressCallback const& collectCallback)
     -> std::vector<CloneGroup>
 {
     if (blocks.size() < 2)
@@ -127,19 +128,23 @@ auto CloneDetector::Detect(std::vector<CodeBlock> const& blocks, ProgressCallbac
 
     auto const fingerprintCount = fingerprintBlocks.size();
 
-    // Parallel candidate gathering: each worker builds a local pair-count map,
-    // then maps are merged. Uses stdexec::bulk for work distribution.
+    // Parallel candidate gathering with partitioned pair-count maps.
+    // Each worker uses numWorkers partition maps instead of a single map.
+    // Pairs are routed to partitions via PairHash(key) % numWorkers, so each
+    // partition is independently mergeable — enabling parallel merge + collect.
     auto const numWorkers = static_cast<size_t>(std::max(1U, std::thread::hardware_concurrency()));
     exec::static_thread_pool pool(std::max(1U, std::thread::hardware_concurrency()));
     auto sched = pool.get_scheduler();
 
-    std::vector<ankerl::unordered_dense::map<std::pair<size_t, size_t>, size_t, PairHash>> perWorkerPairCounts(
-        numWorkers);
+    using PairCountMap = ankerl::unordered_dense::map<std::pair<size_t, size_t>, size_t, PairHash>;
+
+    // perWorkerPartitions[workerIdx][partitionIdx] — numWorkers × numWorkers small maps
+    std::vector<std::vector<PairCountMap>> perWorkerPartitions(numWorkers, std::vector<PairCountMap>(numWorkers));
     std::atomic<size_t> fingerprintProcessed{0};
 
     auto const gatherRange = [&](std::size_t workerIdx)
     {
-        auto& localCounts = perWorkerPairCounts[workerIdx];
+        auto& partitions = perWorkerPartitions[workerIdx];
 
         // Interleaved (striped) assignment: worker i processes fingerprints i, i+N, i+2N, ...
         // This distributes expensive fingerprints (large block lists → O(n²) pairs) evenly
@@ -155,7 +160,8 @@ auto CloneDetector::Detect(std::vector<CodeBlock> const& blocks, ProgressCallbac
                     {
                         auto const key =
                             std::pair{std::min(blockList[ii], blockList[jj]), std::max(blockList[ii], blockList[jj])};
-                        ++localCounts[key];
+                        auto const partIdx = PairHash{}(key) % numWorkers;
+                        ++partitions[partIdx][key];
                     }
                 }
             }
@@ -174,37 +180,69 @@ auto CloneDetector::Detect(std::vector<CodeBlock> const& blocks, ProgressCallbac
         stdexec::sync_wait(work);
     }
 
-    // Merge per-worker pair counts into a single map.
-    // Start with the largest worker-local map to minimize rehashing.
-    size_t largestIdx = 0;
-    for (size_t t = 1; t < numWorkers; ++t)
+    // Parallel merge + collect: each partition is independently merged and filtered.
+    // perPartitionCandidates[partIdx] holds the candidates found in that partition.
+    std::vector<std::vector<CandidatePair>> perPartitionCandidates(numWorkers);
+    std::atomic<size_t> partitionsCompleted{0};
+
+    auto const collectPartition = [&](std::size_t partIdx)
     {
-        if (perWorkerPairCounts[t].size() > perWorkerPairCounts[largestIdx].size())
-            largestIdx = t;
-    }
-    ankerl::unordered_dense::map<std::pair<size_t, size_t>, size_t, PairHash> pairCounts =
-        std::move(perWorkerPairCounts[largestIdx]);
-    for (size_t t = 0; t < numWorkers; ++t)
+        // Find the worker with the largest contribution for this partition (move it).
+        size_t largestWorker = 0;
+        for (size_t w = 1; w < numWorkers; ++w)
+        {
+            if (perWorkerPartitions[w][partIdx].size() > perWorkerPartitions[largestWorker][partIdx].size())
+                largestWorker = w;
+        }
+
+        PairCountMap merged = std::move(perWorkerPartitions[largestWorker][partIdx]);
+
+        // Merge remaining workers' entries into the moved map.
+        for (size_t w = 0; w < numWorkers; ++w)
+        {
+            if (w == largestWorker)
+                continue;
+            for (auto& [key, count] : perWorkerPartitions[w][partIdx])
+                merged[key] += count;
+            // Free memory eagerly.
+            perWorkerPartitions[w][partIdx] = PairCountMap{};
+        }
+
+        // Filter by thresholds and produce candidates.
+        auto& localCandidates = perPartitionCandidates[partIdx];
+        for (auto const& [pair, count] : merged)
+        {
+            if (count < _config.minHashMatches)
+                continue;
+            if (!LengthsCompatible(blocks[pair.first].normalizedIds.size(),
+                                    blocks[pair.second].normalizedIds.size(), _config.similarityThreshold))
+                continue;
+            localCandidates.push_back(CandidatePair{.blockA = pair.first, .blockB = pair.second});
+        }
+
+        if (collectCallback)
+        {
+            auto const completed = partitionsCompleted.fetch_add(1, std::memory_order_relaxed) + 1;
+            collectCallback(completed, numWorkers);
+        }
+    };
+
     {
-        if (t == largestIdx)
-            continue;
-        for (auto& [key, count] : perWorkerPairCounts[t])
-            pairCounts[key] += count;
+        auto work = stdexec::starts_on(
+            sched, stdexec::just() | stdexec::bulk(stdexec::par, numWorkers, collectPartition));
+        stdexec::sync_wait(work);
     }
 
-    // Phase 2: Collect candidate pairs, applying length pre-filter and hash match threshold
+    // Lightweight sequential merge of per-partition candidate vectors.
     std::vector<CandidatePair> candidates;
-    for (auto const& [pair, count] : pairCounts)
     {
-        if (count < _config.minHashMatches)
-            continue;
-
-        // Optimization 1: O(1) length-ratio pre-filter
-        if (!LengthsCompatible(blocks[pair.first].normalizedIds.size(), blocks[pair.second].normalizedIds.size(),
-                               _config.similarityThreshold))
-            continue;
-
-        candidates.push_back(CandidatePair{.blockA = pair.first, .blockB = pair.second});
+        size_t totalCandidates = 0;
+        for (auto const& pc : perPartitionCandidates)
+            totalCandidates += pc.size();
+        candidates.reserve(totalCandidates);
+        for (auto& pc : perPartitionCandidates)
+            candidates.insert(candidates.end(), std::make_move_iterator(pc.begin()),
+                              std::make_move_iterator(pc.end()));
     }
 
     // Parallel similarity computation using stdexec::bulk.
