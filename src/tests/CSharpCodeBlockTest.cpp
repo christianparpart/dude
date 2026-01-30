@@ -151,3 +151,106 @@ public void Foo(int x) {
     REQUIRE(blocks.size() == 1);
     CHECK(!blocks[0].normalizedIds.empty());
 }
+
+TEST_CASE("CSharpCodeBlock.GenericMethod", "[csharp][codeblock]")
+{
+    auto blocks = ExtractBlocks(R"cs(
+public void Process<T>(T x) {
+    var a = x.ToString();
+    var b = a.Length;
+    var c = b + 1;
+    var d = c * 2;
+}
+)cs");
+
+    REQUIRE(blocks.size() == 1);
+    CHECK(blocks[0].name == "Process");
+}
+
+TEST_CASE("CSharpCodeBlock.WhereClause", "[csharp][codeblock]")
+{
+    auto blocks = ExtractBlocks(R"cs(
+public void Foo<T>() where T : class {
+    var a = default(T);
+    var b = a != null;
+    var c = b ? 1 : 0;
+    var d = c + 1;
+}
+)cs");
+
+    REQUIRE(blocks.size() == 1);
+    CHECK(blocks[0].name == "Foo");
+}
+
+TEST_CASE("CSharpCodeBlock.ConstructorChainingBase", "[csharp][codeblock]")
+{
+    auto blocks = ExtractBlocks(R"cs(
+public MyClass(int x) : base(x) {
+    var a = x + 1;
+    var b = a * 2;
+    var c = b - 3;
+    var d = c + 4;
+}
+)cs");
+
+    REQUIRE(blocks.size() == 1);
+    CHECK(blocks[0].name == "MyClass");
+}
+
+TEST_CASE("CSharpCodeBlock.ConstructorChainingThis", "[csharp][codeblock]")
+{
+    auto blocks = ExtractBlocks(R"cs(
+public MyClass() : this(0) {
+    var a = 1;
+    var b = a + 2;
+    var c = b * 3;
+    var d = c - 4;
+}
+)cs");
+
+    REQUIRE(blocks.size() == 1);
+    CHECK(blocks[0].name == "MyClass");
+}
+
+TEST_CASE("CSharpCodeBlock.PropertyAccessor", "[csharp][codeblock]")
+{
+    auto blocks = ExtractBlocks(R"cs(
+get {
+    var a = _value;
+    var b = a + 1;
+    var c = b * 2;
+    return c;
+}
+)cs");
+
+    REQUIRE(blocks.size() == 1);
+    CHECK(blocks[0].name == "get");
+}
+
+TEST_CASE("CSharpCodeBlock.ExplicitInterfaceImpl", "[csharp][codeblock]")
+{
+    auto blocks = ExtractBlocks(R"cs(
+void IFoo.Bar(int x) {
+    var a = x + 1;
+    var b = a * 2;
+    var c = b - 3;
+    var d = c + 4;
+}
+)cs");
+
+    REQUIRE(blocks.size() == 1);
+    CHECK(blocks[0].name == "IFoo.Bar");
+}
+
+TEST_CASE("CSharpCodeBlock.RejectsEnumBody", "[csharp][codeblock]")
+{
+    auto blocks = ExtractBlocks(R"cs(
+enum Color {
+    Red,
+    Green,
+    Blue
+}
+)cs");
+
+    CHECK(blocks.empty());
+}

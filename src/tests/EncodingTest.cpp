@@ -181,3 +181,54 @@ TEST_CASE("Encoding.ParseEncodingNameUnknown", "[encoding]")
     REQUIRE(!result.has_value());
     CHECK(result.error().message.contains("Unknown encoding"));
 }
+
+// ---- UTF-8 validation edge cases ----
+
+TEST_CASE("Encoding.Detect4ByteUtf8Valid", "[encoding]")
+{
+    // U+1F600 emoji = F0 9F 98 80 — valid 4-byte UTF-8
+    auto const input = std::string("\xF0\x9F\x98\x80");
+    CHECK(DetectEncoding(input) == InputEncoding::Utf8);
+}
+
+TEST_CASE("Encoding.DetectTruncatedUtf8", "[encoding]")
+{
+    // 3-byte sequence lead E0 A0 missing final continuation byte → invalid UTF-8
+    auto const input = std::string("\xE0\xA0");
+    CHECK(DetectEncoding(input) == InputEncoding::Windows1252);
+}
+
+TEST_CASE("Encoding.DetectInvalidContinuationByte", "[encoding]")
+{
+    // 2-byte lead C3 followed by 0x28 '(' instead of a continuation byte (0x80–0xBF) → invalid UTF-8
+    auto const input = std::string("\xC3\x28");
+    CHECK(DetectEncoding(input) == InputEncoding::Windows1252);
+}
+
+TEST_CASE("Encoding.DetectOverlongEncoding", "[encoding]")
+{
+    // C0 80 is an overlong encoding of U+0000 → invalid UTF-8
+    auto const input = std::string("\xC0\x80");
+    CHECK(DetectEncoding(input) == InputEncoding::Windows1252);
+}
+
+TEST_CASE("Encoding.DetectSurrogateCodePoint", "[encoding]")
+{
+    // ED A0 80 encodes U+D800 (surrogate) → invalid UTF-8
+    auto const input = std::string("\xED\xA0\x80");
+    CHECK(DetectEncoding(input) == InputEncoding::Windows1252);
+}
+
+TEST_CASE("Encoding.DetectAboveMaxCodePoint", "[encoding]")
+{
+    // F4 90 80 80 encodes U+110000 (above max) → invalid UTF-8
+    auto const input = std::string("\xF4\x90\x80\x80");
+    CHECK(DetectEncoding(input) == InputEncoding::Windows1252);
+}
+
+TEST_CASE("Encoding.DetectInvalidLeadByte", "[encoding]")
+{
+    // 0xFF is never a valid UTF-8 lead byte
+    auto const input = std::string("\xFF");
+    CHECK(DetectEncoding(input) == InputEncoding::Windows1252);
+}
