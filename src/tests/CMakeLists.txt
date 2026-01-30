@@ -43,16 +43,10 @@ add_executable(CodeDupTest
     ProgressBarTest.cpp
 )
 
-# GitDiffParser and GitFileFilter live in src/cli/ — compile their sources and expose headers to the test.
-target_sources(CodeDupTest PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../cli/GitDiffParser.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../cli/GitFileFilter.cpp
-)
-target_include_directories(CodeDupTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
-
 target_link_libraries(CodeDupTest PRIVATE
     codedup
     mcp
+    git
     Catch2::Catch2WithMain
 )
 

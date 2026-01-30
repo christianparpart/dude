@@ -9,7 +9,7 @@
 #include <string>
 #include <unordered_set>
 
-namespace cli
+namespace git
 {
 
 /// @brief Error information from git file-filter operations.
@@ -20,7 +20,6 @@ struct GitFileFilterError
 
 /// @brief Queries git for non-ignored files and produces a file filter predicate.
 ///
-/// Git interaction is isolated in the CLI layer; the core library remains git-free.
 /// Uses `git ls-files` to determine which files are tracked or untracked-but-not-ignored,
 /// correctly handling nested `.gitignore` files, global gitignore, and negation patterns.
 class GitFileFilter
@@ -53,4 +52,4 @@ public:
         -> std::optional<codedup::FileFilter>;
 };
 
-} // namespace cli
+} // namespace git

@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-namespace cli
+namespace git
 {
 
 /// @brief Error information from git diff operations.
@@ -19,15 +19,17 @@ struct GitDiffError
 
 /// @brief Runs git diff and parses the output into structured diff data.
 ///
-/// Git interaction is isolated in the CLI layer; the core library remains git-free.
+/// Git interaction is isolated from the core library, which remains git-free.
 class GitDiffParser
 {
 public:
-    /// @brief Executes `git diff --no-color -U0 <baseRef>...HEAD` in the given project root.
+    /// @brief Executes `git diff --no-color -U0 <baseRef>...<sourceRef>` in the given project root.
     /// @param projectRoot The directory in which to run git diff.
     /// @param baseRef The git ref to diff against (branch, tag, or SHA).
+    /// @param sourceRef The git ref for the source side of the diff (default: "HEAD").
     /// @return The raw diff output string, or an error if git fails.
-    [[nodiscard]] static auto RunGitDiff(std::filesystem::path const& projectRoot, std::string const& baseRef)
+    [[nodiscard]] static auto RunGitDiff(std::filesystem::path const& projectRoot, std::string const& baseRef,
+                                         std::string const& sourceRef = "HEAD")
         -> std::expected<std::string, GitDiffError>;
 
     /// @brief Parses unified diff output into structured file-change data.
@@ -43,4 +45,4 @@ public:
                                               std::vector<std::string> const& extensions = {}) -> codedup::DiffResult;
 };
 
-} // namespace cli
+} // namespace git

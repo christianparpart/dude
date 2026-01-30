@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <git/GitDiffParser.hpp>
 #include <mcp/McpTooling.hpp>
 
 #include <codedup/AnalysisScope.hpp>
+#include <codedup/DiffFilter.hpp>
 
 #include <algorithm>
 #include <chrono>
 #include <format>
 #include <ranges>
 #include <string>
+#include <unordered_set>
 
 namespace mcp
 {
@@ -555,6 +558,348 @@ auto HandleConfigureAnalysis(AnalysisSession& session, nlohmann::json const& arg
 }
 
 // ---------------------------------------------------------------------------
+// Tool: analyze_file
+// ---------------------------------------------------------------------------
+
+auto MakeAnalyzeFileDescriptor() -> mcpprotocol::ToolDescriptor
+{
+    return {
+        .name = "analyze_file",
+        .title = "Analyze File",
+        .description = "Analyze a single file for duplicates (within-file and cross-file). "
+                       "Automatically triggers project analysis if needed.",
+        .inputSchema =
+            nlohmann::json{
+                {"type", "object"},
+                {"required", nlohmann::json::array({"file_path"})},
+                {"properties",
+                 {
+                     {"file_path", {{"type", "string"}, {"description", "Absolute path to the file to analyze"}}},
+                     {"directory",
+                      {{"type", "string"},
+                       {"description", "Project root directory (defaults to file's parent directory)"}}},
+                     {"threshold",
+                      {{"type", "number"}, {"description", "Similarity threshold 0.0-1.0 (default: 0.80)"}}},
+                     {"min_tokens",
+                      {{"type", "integer"}, {"description", "Minimum block size in tokens (default: 30)"}}},
+                     {"text_sensitivity",
+                      {{"type", "number"}, {"description", "Text sensitivity 0.0-1.0 (default: 0.3)"}}},
+                 }},
+            },
+        .outputSchema = nullptr,
+        .annotations = {.readOnlyHint = true,
+                        .destructiveHint = false,
+                        .idempotentHint = false,
+                        .openWorldHint = false},
+    };
+}
+
+auto HandleAnalyzeFile(AnalysisSession& session, nlohmann::json const& args)
+    -> std::expected<nlohmann::json, std::string>
+{
+    auto const filePath =
+        std::filesystem::weakly_canonical(std::filesystem::path(args.at("file_path").get<std::string>()));
+
+    auto const directory = args.contains("directory") ? std::filesystem::path(args["directory"].get<std::string>())
+                                                      : filePath.parent_path();
+
+    // Auto-trigger analysis if needed or if directory differs.
+    if (!session.HasResults() ||
+        std::filesystem::weakly_canonical(session.Config().directory) != std::filesystem::weakly_canonical(directory))
+    {
+        AnalysisConfig config;
+        config.directory = directory;
+        config.threshold = args.value("threshold", 0.80);
+        config.minTokens = args.value("min_tokens", size_t{30});
+        config.textSensitivity = args.value("text_sensitivity", 0.3);
+        auto result = session.Analyze(config);
+        if (!result)
+            return std::unexpected(result.error().message);
+    }
+
+    // Resolve file_path to a file index.
+    auto const& files = session.Files();
+    std::optional<size_t> targetFileIndex;
+    for (size_t fi = 0; fi < files.size(); ++fi)
+    {
+        if (std::filesystem::weakly_canonical(files[fi]) == filePath)
+        {
+            targetFileIndex = fi;
+            break;
+        }
+    }
+
+    if (!targetFileIndex)
+        return std::unexpected(std::format("File not found in analysis results: {}", filePath.string()));
+
+    auto const& groups = session.CloneGroups();
+    auto const& blocks = session.AllBlocks();
+    auto const& blockToFileIndex = session.BlockToFileIndex();
+    auto const& intraResults = session.IntraResults();
+
+    // Categorize clone groups.
+    auto withinFileClones = nlohmann::json::array();
+    auto crossFileClones = nlohmann::json::array();
+
+    for (size_t gi = 0; gi < groups.size(); ++gi)
+    {
+        auto const& group = groups[gi];
+
+        // Check if target file is involved.
+        bool hasTargetFile = false;
+        bool hasOtherFile = false;
+        for (auto const bi : group.blockIndices)
+        {
+            if (blockToFileIndex[bi] == *targetFileIndex)
+                hasTargetFile = true;
+            else
+                hasOtherFile = true;
+        }
+
+        if (!hasTargetFile)
+            continue;
+
+        auto blocksArray = nlohmann::json::array();
+        for (auto const bi : group.blockIndices)
+        {
+            auto const fi = blockToFileIndex[bi];
+            blocksArray.push_back({
+                {"block_index", bi},
+                {"name", blocks[bi].name},
+                {"file", files[fi].string()},
+                {"start_line", blocks[bi].sourceRange.start.line},
+                {"end_line", blocks[bi].sourceRange.end.line},
+                {"token_count", blocks[bi].tokenEnd - blocks[bi].tokenStart},
+            });
+        }
+
+        auto groupJson = nlohmann::json{
+            {"group_index", gi},
+            {"block_count", group.blockIndices.size()},
+            {"avg_similarity", group.avgSimilarity},
+            {"blocks", blocksArray},
+        };
+
+        if (hasOtherFile)
+            crossFileClones.push_back(std::move(groupJson));
+        else
+            withinFileClones.push_back(std::move(groupJson));
+    }
+
+    // Filter intra-function clones to the target file.
+    auto intraArray = nlohmann::json::array();
+    for (auto const& result : intraResults)
+    {
+        if (blockToFileIndex[result.blockIndex] != *targetFileIndex)
+            continue;
+
+        auto pairsArray = nlohmann::json::array();
+        for (auto const& pair : result.pairs)
+        {
+            pairsArray.push_back({
+                {"region_a_start", pair.regionA.start},
+                {"region_a_length", pair.regionA.length},
+                {"region_b_start", pair.regionB.start},
+                {"region_b_length", pair.regionB.length},
+                {"similarity", pair.similarity},
+            });
+        }
+        intraArray.push_back({
+            {"block_index", result.blockIndex},
+            {"name", blocks[result.blockIndex].name},
+            {"file", files[*targetFileIndex].string()},
+            {"pairs", pairsArray},
+        });
+    }
+
+    return mcpprotocol::BuildToolResultJson(nlohmann::json{
+        {"file_path", filePath.string()},
+        {"within_file_clones", withinFileClones},
+        {"cross_file_clones", crossFileClones},
+        {"intra_function_clones", intraArray},
+        {"summary",
+         {
+             {"within_file_clone_groups", withinFileClones.size()},
+             {"cross_file_clone_groups", crossFileClones.size()},
+             {"intra_function_clone_count", intraArray.size()},
+         }},
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Tool: analyze_branch_duplicates
+// ---------------------------------------------------------------------------
+
+auto MakeAnalyzeBranchDuplicatesDescriptor() -> mcpprotocol::ToolDescriptor
+{
+    return {
+        .name = "analyze_branch_duplicates",
+        .title = "Analyze Branch Duplicates",
+        .description = "Check if a branch introduces code that already existed on the base branch. "
+                       "Compares a source ref against a base ref and reports duplicated code.",
+        .inputSchema =
+            nlohmann::json{
+                {"type", "object"},
+                {"required", nlohmann::json::array({"directory", "base_ref"})},
+                {"properties",
+                 {
+                     {"directory", {{"type", "string"}, {"description", "Path to the git project root directory"}}},
+                     {"base_ref",
+                      {{"type", "string"}, {"description", R"(Git ref to diff against (e.g. "main", "origin/main"))"}}},
+                     {"source_ref",
+                      {{"type", "string"}, {"description", "Git ref for the source branch (default: \"HEAD\")"}}},
+                     {"threshold",
+                      {{"type", "number"}, {"description", "Similarity threshold 0.0-1.0 (default: 0.80)"}}},
+                     {"min_tokens",
+                      {{"type", "integer"}, {"description", "Minimum block size in tokens (default: 30)"}}},
+                     {"text_sensitivity",
+                      {{"type", "number"}, {"description", "Text sensitivity 0.0-1.0 (default: 0.3)"}}},
+                     {"extensions",
+                      {{"type", "array"},
+                       {"items", {{"type", "string"}}},
+                       {"description", R"(File extensions to filter diff (e.g. [".cpp", ".hpp"]))"}}},
+                 }},
+            },
+        .outputSchema = nullptr,
+        .annotations = {.readOnlyHint = true, .destructiveHint = false, .idempotentHint = false, .openWorldHint = true},
+    };
+}
+
+auto HandleAnalyzeBranchDuplicates(AnalysisSession& session, nlohmann::json const& args)
+    -> std::expected<nlohmann::json, std::string>
+{
+    auto const directory = std::filesystem::path(args.at("directory").get<std::string>());
+    auto const baseRef = args.at("base_ref").get<std::string>();
+    auto const sourceRef = args.value("source_ref", std::string("HEAD"));
+
+    std::vector<std::string> extensions;
+    if (args.contains("extensions"))
+    {
+        for (auto const& ext : args["extensions"])
+            extensions.push_back(ext.get<std::string>());
+    }
+
+    // Step 1: Run git diff.
+    auto const projectRoot = std::filesystem::weakly_canonical(directory);
+    auto const diffOutput = git::GitDiffParser::RunGitDiff(projectRoot, baseRef, sourceRef);
+    if (!diffOutput)
+        return std::unexpected(diffOutput.error().message);
+
+    auto const diffResult = git::GitDiffParser::ParseDiffOutput(*diffOutput, extensions);
+
+    // Step 2: Run or reuse project analysis.
+    if (!session.HasResults() || std::filesystem::weakly_canonical(session.Config().directory) != projectRoot)
+    {
+        AnalysisConfig config;
+        config.directory = directory;
+        config.threshold = args.value("threshold", 0.80);
+        config.minTokens = args.value("min_tokens", size_t{30});
+        config.textSensitivity = args.value("text_sensitivity", 0.3);
+        auto result = session.Analyze(config);
+        if (!result)
+            return std::unexpected(result.error().message);
+    }
+
+    auto const& blocks = session.AllBlocks();
+    auto const& files = session.Files();
+    auto const& blockToFileIndex = session.BlockToFileIndex();
+
+    // Step 3: Find changed blocks.
+    auto const changedBlocks = codedup::DiffFilter::FindChangedBlocks(blocks, diffResult, projectRoot, files);
+
+    // Step 4: Filter clone groups.
+    auto const filteredGroups = codedup::DiffFilter::FilterCloneGroups(session.CloneGroups(), changedBlocks);
+
+    // Step 5: Categorize.
+    auto duplicatesExisting = nlohmann::json::array();
+    auto duplicatesNew = nlohmann::json::array();
+
+    for (size_t gi = 0; gi < filteredGroups.size(); ++gi)
+    {
+        auto const& group = filteredGroups[gi];
+
+        bool hasChangedBlock = false;
+        bool hasUnchangedBlock = false;
+        for (auto const bi : group.blockIndices)
+        {
+            if (changedBlocks.contains(bi))
+                hasChangedBlock = true;
+            else
+                hasUnchangedBlock = true;
+        }
+
+        auto blocksArray = nlohmann::json::array();
+        for (auto const bi : group.blockIndices)
+        {
+            auto const fi = blockToFileIndex[bi];
+            blocksArray.push_back({
+                {"block_index", bi},
+                {"name", blocks[bi].name},
+                {"file", files[fi].string()},
+                {"start_line", blocks[bi].sourceRange.start.line},
+                {"end_line", blocks[bi].sourceRange.end.line},
+                {"token_count", blocks[bi].tokenEnd - blocks[bi].tokenStart},
+                {"is_changed", changedBlocks.contains(bi)},
+            });
+        }
+
+        auto groupJson = nlohmann::json{
+            {"group_index", gi},
+            {"block_count", group.blockIndices.size()},
+            {"avg_similarity", group.avgSimilarity},
+            {"blocks", blocksArray},
+        };
+
+        if (hasChangedBlock && hasUnchangedBlock)
+            duplicatesExisting.push_back(std::move(groupJson));
+        else if (hasChangedBlock)
+            duplicatesNew.push_back(std::move(groupJson));
+    }
+
+    // Step 6: Filter intra-function clones for changed blocks.
+    auto const filteredIntra = codedup::DiffFilter::FilterIntraResults(session.IntraResults(), changedBlocks);
+    auto intraArray = nlohmann::json::array();
+    for (auto const& result : filteredIntra)
+    {
+        auto const fi = blockToFileIndex[result.blockIndex];
+        auto pairsArray = nlohmann::json::array();
+        for (auto const& pair : result.pairs)
+        {
+            pairsArray.push_back({
+                {"region_a_start", pair.regionA.start},
+                {"region_a_length", pair.regionA.length},
+                {"region_b_start", pair.regionB.start},
+                {"region_b_length", pair.regionB.length},
+                {"similarity", pair.similarity},
+            });
+        }
+        intraArray.push_back({
+            {"block_index", result.blockIndex},
+            {"name", blocks[result.blockIndex].name},
+            {"file", files[fi].string()},
+            {"pairs", pairsArray},
+        });
+    }
+
+    return mcpprotocol::BuildToolResultJson(nlohmann::json{
+        {"base_ref", baseRef},
+        {"source_ref", sourceRef},
+        {"directory", directory.string()},
+        {"changed_blocks_count", changedBlocks.size()},
+        {"duplicates_existing", duplicatesExisting},
+        {"duplicates_new", duplicatesNew},
+        {"intra_function_clones", intraArray},
+        {"summary",
+         {
+             {"changed_blocks", changedBlocks.size()},
+             {"groups_duplicating_existing", duplicatesExisting.size()},
+             {"groups_duplicating_new", duplicatesNew.size()},
+             {"intra_function_clones_in_changed", intraArray.size()},
+         }},
+    });
+}
+
+// ---------------------------------------------------------------------------
 // Prompt: analyze_and_report
 // ---------------------------------------------------------------------------
 
@@ -663,6 +1008,12 @@ void RegisterCodeDupTools(mcpprotocol::McpServer& server, AnalysisSession& sessi
 
     server.RegisterTool(MakeConfigureAnalysisDescriptor(),
                         [&session](auto const& args) { return HandleConfigureAnalysis(session, args); });
+
+    server.RegisterTool(MakeAnalyzeFileDescriptor(),
+                        [&session](auto const& args) { return HandleAnalyzeFile(session, args); });
+
+    server.RegisterTool(MakeAnalyzeBranchDuplicatesDescriptor(),
+                        [&session](auto const& args) { return HandleAnalyzeBranchDuplicates(session, args); });
 
     // Prompts
     server.RegisterPrompt(MakeAnalyzeAndReportDescriptor(),

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
-#include "GitDiffParser.hpp"
-#include "GitFileFilter.hpp"
 #include <exec/static_thread_pool.hpp>
 #include <fnmatch.h>
+#include <git/GitDiffParser.hpp>
+#include <git/GitFileFilter.hpp>
 #include <mcp/AnalysisSession.hpp>
 #include <mcp/McpTooling.hpp>
 #include <mcpprotocol/McpServer.hpp>
@@ -575,7 +575,7 @@ auto RunDiffSetup(CliOptions const& opts) -> std::expected<codedup::DiffResult, 
         std::println(stderr, "Running git diff against {}...", opts.diffBase);
 
     auto const projectRoot = std::filesystem::weakly_canonical(opts.directory);
-    auto const diffOutput = cli::GitDiffParser::RunGitDiff(projectRoot, opts.diffBase);
+    auto const diffOutput = git::GitDiffParser::RunGitDiff(projectRoot, opts.diffBase);
     if (!diffOutput)
     {
         std::println(stderr, "Error: {}", diffOutput.error().message);
@@ -584,7 +584,7 @@ auto RunDiffSetup(CliOptions const& opts) -> std::expected<codedup::DiffResult, 
 
     auto const extensions =
         opts.globPatterns.empty() ? codedup::FileScanner::DefaultExtensions() : std::vector<std::string>{};
-    auto diffResult = cli::GitDiffParser::ParseDiffOutput(*diffOutput, extensions);
+    auto diffResult = git::GitDiffParser::ParseDiffOutput(*diffOutput, extensions);
 
     // Post-filter by glob patterns when active
     if (!opts.globPatterns.empty())
@@ -638,7 +638,7 @@ auto ScanFiles(CliOptions const& opts, codedup::PerformanceTiming& timing)
 
     // Build an optional gitignore-aware filter.
     auto const gitFilter =
-        opts.respectGitignore ? cli::GitFileFilter::CreateFilter(opts.directory, opts.verbose) : std::nullopt;
+        opts.respectGitignore ? git::GitFileFilter::CreateFilter(opts.directory, opts.verbose) : std::nullopt;
 
     // Build an optional glob-based filename filter.
     auto const globFilter =

@@ -81,6 +81,7 @@ CPMAddPackage(
 
 add_subdirectory(src/codedup)
 add_subdirectory(src/mcpprotocol)
+add_subdirectory(src/git)
 add_subdirectory(src/mcp)
 add_subdirectory(src/cli)
 

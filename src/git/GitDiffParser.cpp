@@ -11,14 +11,15 @@
 #include <sstream>
 #include <string_view>
 
-namespace cli
+namespace git
 {
 
-auto GitDiffParser::RunGitDiff(std::filesystem::path const& projectRoot, std::string const& baseRef)
-    -> std::expected<std::string, GitDiffError>
+auto GitDiffParser::RunGitDiff(std::filesystem::path const& projectRoot, std::string const& baseRef,
+                               std::string const& sourceRef) -> std::expected<std::string, GitDiffError>
 {
-    // Build the command: git -C <dir> diff --no-color -U0 <baseRef>...HEAD
-    auto const command = std::format("git -C {} diff --no-color -U0 {}...HEAD 2>&1", projectRoot.string(), baseRef);
+    // Build the command: git -C <dir> diff --no-color -U0 <baseRef>...<sourceRef>
+    auto const command =
+        std::format("git -C {} diff --no-color -U0 {}...{} 2>&1", projectRoot.string(), baseRef, sourceRef);
 
     // NOLINTNEXTLINE(cert-env33-c) -- popen is intentional for git subprocess communication
     auto* pipe = popen(command.c_str(), "r");
@@ -72,10 +73,10 @@ auto MatchesExtension(std::filesystem::path const& filePath, std::vector<std::st
 /// @brief Parses a hunk header like "@@ -a,b +c,d @@" and extracts the new-file line range.
 ///
 /// Formats handled:
-///   @@ -a,b +c,d @@ ...    → LineRange{c, c+d-1}
-///   @@ -a,b +c @@           → LineRange{c, c}      (single line, count=1 implied)
-///   @@ -a +c,d @@           → (old side single line)
-///   @@ -a,b +c,0 @@        → skipped (pure deletion in new file)
+///   @@ -a,b +c,d @@ ...    -> LineRange{c, c+d-1}
+///   @@ -a,b +c @@           -> LineRange{c, c}      (single line, count=1 implied)
+///   @@ -a +c,d @@           -> (old side single line)
+///   @@ -a,b +c,0 @@        -> skipped (pure deletion in new file)
 auto ParseHunkHeader(std::string_view line) -> std::optional<codedup::LineRange>
 {
     // Find the "+start" or "+start,count" portion.
@@ -111,7 +112,7 @@ auto ParseHunkHeader(std::string_view line) -> std::optional<codedup::LineRange>
             return std::nullopt;
     }
 
-    // count=0 means pure deletion on new side — no added lines.
+    // count=0 means pure deletion on new side -- no added lines.
     if (count == 0)
         return std::nullopt;
 
@@ -198,4 +199,4 @@ auto GitDiffParser::ParseDiffOutput(std::string const& diffOutput, std::vector<s
     return result;
 }
 
-} // namespace cli
+} // namespace git

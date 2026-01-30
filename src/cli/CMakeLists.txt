@@ -1,9 +1,7 @@
 add_executable(codedupdetector
-    GitDiffParser.cpp
-    GitFileFilter.cpp
     main.cpp
 )
-target_link_libraries(codedupdetector PRIVATE codedup mcp)
+target_link_libraries(codedupdetector PRIVATE codedup mcp git)
 target_compile_definitions(codedupdetector PRIVATE
     CODEDUPDETECTOR_VERSION="${CMAKE_PROJECT_VERSION}"
 )

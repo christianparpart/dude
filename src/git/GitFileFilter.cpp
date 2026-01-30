@@ -8,7 +8,7 @@
 #include <memory>
 #include <print>
 
-namespace cli
+namespace git
 {
 
 auto GitFileFilter::FindGitRoot(std::filesystem::path const& directory)
@@ -118,4 +118,4 @@ auto GitFileFilter::CreateFilter(std::filesystem::path const& directory, bool ve
         });
 }
 
-} // namespace cli
+} // namespace git

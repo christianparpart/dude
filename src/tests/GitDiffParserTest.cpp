@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
-#include <cli/GitDiffParser.hpp>
+#include <git/GitDiffParser.hpp>
 
 #include <codedup/DiffRange.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
-using namespace cli;
+using namespace git;
 using namespace codedup;
 
 TEST_CASE("GitDiffParser.ParseSingleFileSingleHunk", "[gitdiff]")
