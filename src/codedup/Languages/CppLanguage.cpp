@@ -145,7 +145,7 @@ constexpr auto twoCharOperators = std::to_array<OperatorEntry>({
 /// @brief Looks up a keyword by text using binary search.
 [[nodiscard]] auto LookupKeyword(std::string_view text) -> TokenType
 {
-    auto const it = std::ranges::lower_bound(keywords, text, {}, &KeywordEntry::text);
+    auto const* const it = std::ranges::lower_bound(keywords, text, {}, &KeywordEntry::text);
     if (it != keywords.end() && it->text == text)
         return it->type;
     return TokenType::Identifier;
