@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <ankerl/unordered_dense.h>
-#include <experimental/simd>
 
 #include <codedup/IntraFunctionDetector.hpp>
 #include <codedup/RollingHash.hpp>
+#include <codedup/SimdCharClassifier.hpp> // for CODEDUP_HAS_SIMD
 
 #include <algorithm>
 #include <cstddef>
@@ -11,14 +11,21 @@
 #include <set>
 #include <vector>
 
+#if CODEDUP_HAS_SIMD
+#include <experimental/simd>
+#endif
+
 namespace codedup
 {
 
+#if CODEDUP_HAS_SIMD
 namespace stdx = std::experimental;
+#endif
 
 namespace
 {
 
+#if CODEDUP_HAS_SIMD
 /// @brief SIMD type for comparing NormalizedTokenId values in parallel using native ABI.
 ///
 /// Uses std::experimental::native_simd which auto-selects the optimal vector width
@@ -28,21 +35,23 @@ using NativeU32 = stdx::native_simd<uint32_t>;
 
 /// @brief Number of uint32_t elements per native SIMD register.
 constexpr auto kSimdWidth = NativeU32::size();
+#endif
 
-/// @brief SIMD-accelerated forward match extension between two token sequences.
+/// @brief Forward match extension between two token sequences.
 ///
-/// Compares kSimdWidth NormalizedTokenId values per iteration using native SIMD,
-/// finding the first mismatch position. Adapts to the target architecture:
-/// 4 elements/iter on SSE2, 8 on AVX2, 16 on AVX-512.
+/// When SIMD is available, compares kSimdWidth NormalizedTokenId values per iteration
+/// using native SIMD, finding the first mismatch position. Otherwise falls back to
+/// scalar comparison.
 ///
 /// @param a Pointer to the start of the first region.
 /// @param b Pointer to the start of the second region.
 /// @param maxLen Maximum number of elements to compare.
 /// @return The number of consecutive matching elements from the start.
-[[nodiscard]] auto SimdForwardMatch(NormalizedTokenId const* a, NormalizedTokenId const* b, size_t maxLen) -> size_t
+[[nodiscard]] auto ForwardMatch(NormalizedTokenId const* a, NormalizedTokenId const* b, size_t maxLen) -> size_t
 {
     size_t offset = 0;
 
+#if CODEDUP_HAS_SIMD
     // SIMD loop: compare kSimdWidth uint32_t values per iteration
     while (offset + kSimdWidth <= maxLen)
     {
@@ -56,31 +65,32 @@ constexpr auto kSimdWidth = NativeU32::size();
         }
         offset += kSimdWidth;
     }
+#endif
 
-    // Scalar tail loop: handle remaining elements (maxLen not divisible by kSimdWidth)
+    // Scalar tail loop: handle remaining elements
     while (offset < maxLen && a[offset] == b[offset])
         ++offset;
 
     return offset;
 }
 
-/// @brief SIMD-accelerated backward match extension between two token sequences.
+/// @brief Backward match extension between two token sequences.
 ///
-/// Similar to SimdForwardMatch but scans backward from the given positions. Compares
-/// kSimdWidth elements per iteration in reverse order, using SIMD to find the first
-/// mismatch when scanning toward the beginning of the sequences.
+/// When SIMD is available, compares kSimdWidth elements per iteration in reverse order.
+/// Otherwise falls back to scalar comparison.
 ///
 /// @param a Pointer to the start of the first region.
 /// @param b Pointer to the start of the second region.
 /// @param posA Current position in region A (extension starts at posA-1 going backward).
 /// @param posB Current position in region B (extension starts at posB-1 going backward).
 /// @return The number of consecutive matching elements going backward.
-[[nodiscard]] auto SimdBackwardMatch(NormalizedTokenId const* a, NormalizedTokenId const* b, size_t posA, size_t posB)
+[[nodiscard]] auto BackwardMatch(NormalizedTokenId const* a, NormalizedTokenId const* b, size_t posA, size_t posB)
     -> size_t
 {
     auto const maxLen = std::min(posA, posB);
     size_t matched = 0;
 
+#if CODEDUP_HAS_SIMD
     // SIMD loop: compare kSimdWidth elements at a time going backward.
     // We load kSimdWidth elements ending at the current backward scan position.
     while (matched + kSimdWidth <= maxLen)
@@ -105,6 +115,7 @@ constexpr auto kSimdWidth = NativeU32::size();
         }
         matched += kSimdWidth;
     }
+#endif
 
     // Scalar tail loop
     while (matched < maxLen && a[posA - matched - 1] == b[posB - matched - 1])
@@ -142,15 +153,17 @@ constexpr auto kSimdWidth = NativeU32::size();
         return 1.0;
 
     size_t matches = 0;
-
-    // SIMD loop: compare kSimdWidth text-preserving IDs per iteration
     size_t i = 0;
+
+#if CODEDUP_HAS_SIMD
+    // SIMD loop: compare kSimdWidth text-preserving IDs per iteration
     for (; i + kSimdWidth <= length; i += kSimdWidth)
     {
         NativeU32 const va(textIds.data() + startA + i, stdx::element_aligned);
         NativeU32 const vb(textIds.data() + startB + i, stdx::element_aligned);
         matches += static_cast<size_t>(stdx::popcount(va == vb));
     }
+#endif
 
     // Scalar tail loop for remainder
     for (; i < length; ++i)
@@ -259,10 +272,10 @@ auto IntraFunctionDetector::DetectInBlock(CodeBlock const& block, size_t blockIn
         // Forward extension limit: don't cross posJ from posI, and stay within bounds
         auto const fwdLimit = std::min({ids.size() - posI, ids.size() - posJ, posJ - posI});
         // Extend forward using SIMD-accelerated comparison (8 elements per iteration)
-        auto const fwdLen = SimdForwardMatch(ids.data() + posI, ids.data() + posJ, fwdLimit);
+        auto const fwdLen = ForwardMatch(ids.data() + posI, ids.data() + posJ, fwdLimit);
 
         // Backward extension: SIMD-accelerated, comparing ids[posI-k-1] vs ids[posJ-k-1]
-        auto const bwdLen = SimdBackwardMatch(ids.data(), ids.data(), posI, posJ);
+        auto const bwdLen = BackwardMatch(ids.data(), ids.data(), posI, posJ);
 
         auto const startA = posI - bwdLen;
         auto const startB = posJ - bwdLen;

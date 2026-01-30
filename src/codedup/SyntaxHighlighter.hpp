@@ -4,8 +4,14 @@
 #include <codedup/Token.hpp>
 
 #include <cstdint>
+#include <cstdlib>
 #include <format>
 #include <string>
+
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996) // getenv: This function or variable may be unsafe
+#endif
 
 namespace codedup
 {
@@ -157,3 +163,7 @@ struct ThemeColors
 constexpr auto ansiReset = "\033[0m";
 
 } // namespace codedup
+
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif

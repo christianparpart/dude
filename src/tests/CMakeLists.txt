@@ -23,6 +23,7 @@ add_executable(CodeDupTest
     CodeBlockTest.cpp
     CloneDetectorTest.cpp
     IntraFunctionDetectorTest.cpp
+    GlobMatchTest.cpp
     FileScannerTest.cpp
     ReporterTest.cpp
     JsonReporterTest.cpp

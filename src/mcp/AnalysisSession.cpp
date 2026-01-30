@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-#include <fnmatch.h>
+#include <codedup/GlobMatch.hpp>
 #include <mcp/AnalysisSession.hpp>
 
 #include <codedup/FileScanner.hpp>
@@ -39,7 +39,7 @@ auto AnalysisSession::Analyze(AnalysisConfig const& config) -> std::expected<voi
                   {
                       auto const filename = path.filename().string();
                       return std::ranges::any_of(patterns, [&filename](std::string const& pattern)
-                                                 { return fnmatch(pattern.c_str(), filename.c_str(), 0) == 0; });
+                                                 { return codedup::GlobMatch(pattern, filename); });
                   });
 
     auto const filesResult = codedup::FileScanner::Scan(config.directory, extensions, globFilter);

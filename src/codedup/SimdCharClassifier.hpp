@@ -153,14 +153,13 @@ inline auto SimdCharClassifier::ScanHexDigits(std::string_view source, size_t po
 
     auto const* data = source.data() + pos;
     auto const length = source.size() - pos;
-    auto const sep = static_cast<uint8_t>(separator);
-
     auto const scalarCheck = [separator](char ch) -> bool
     { return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F') || ch == separator; };
 
     size_t offset = 0;
 
 #if CODEDUP_HAS_SIMD
+    auto const sep = static_cast<uint8_t>(separator);
     offset = SimdScan(data, length,
                       [sep](SimdU8 const& chars) -> decltype(chars == chars)
                       {
@@ -183,13 +182,12 @@ inline auto SimdCharClassifier::ScanBinaryDigits(std::string_view source, size_t
 
     auto const* data = source.data() + pos;
     auto const length = source.size() - pos;
-    auto const sep = static_cast<uint8_t>(separator);
-
     auto const scalarCheck = [separator](char ch) -> bool { return ch == '0' || ch == '1' || ch == separator; };
 
     size_t offset = 0;
 
 #if CODEDUP_HAS_SIMD
+    auto const sep = static_cast<uint8_t>(separator);
     offset = SimdScan(data, length,
                       [sep](SimdU8 const& chars) -> decltype(chars == chars)
                       {
@@ -211,13 +209,12 @@ inline auto SimdCharClassifier::ScanOctalDigits(std::string_view source, size_t 
 
     auto const* data = source.data() + pos;
     auto const length = source.size() - pos;
-    auto const sep = static_cast<uint8_t>(separator);
-
     auto const scalarCheck = [separator](char ch) -> bool { return (ch >= '0' && ch <= '7') || ch == separator; };
 
     size_t offset = 0;
 
 #if CODEDUP_HAS_SIMD
+    auto const sep = static_cast<uint8_t>(separator);
     offset = SimdScan(data, length,
                       [sep](SimdU8 const& chars) -> decltype(chars == chars)
                       {
@@ -267,13 +264,12 @@ inline auto SimdCharClassifier::ScanDecimalDigits(std::string_view source, size_
 
     auto const* data = source.data() + pos;
     auto const length = source.size() - pos;
-    auto const sep = static_cast<uint8_t>(separator);
-
     auto const scalarCheck = [separator](char ch) -> bool { return (ch >= '0' && ch <= '9') || ch == separator; };
 
     size_t offset = 0;
 
 #if CODEDUP_HAS_SIMD
+    auto const sep = static_cast<uint8_t>(separator);
     offset = SimdScan(data, length,
                       [sep](SimdU8 const& chars) -> decltype(chars == chars)
                       {

@@ -8,13 +8,24 @@
 #include <memory>
 #include <print>
 
+#ifdef _WIN32
+#define popen _popen
+#define pclose _pclose
+#endif
+
 namespace git
 {
+
+#ifdef _WIN32
+constexpr auto nullDevice = "NUL";
+#else
+constexpr auto nullDevice = "/dev/null";
+#endif
 
 auto GitFileFilter::FindGitRoot(std::filesystem::path const& directory)
     -> std::expected<std::filesystem::path, GitFileFilterError>
 {
-    auto const command = std::format("git -C {} rev-parse --show-toplevel 2>/dev/null", directory.string());
+    auto const command = std::format("git -C {} rev-parse --show-toplevel 2>{}", directory.string(), nullDevice);
 
     // NOLINTNEXTLINE(cert-env33-c) -- popen is intentional for git subprocess communication
     auto* pipe = popen(command.c_str(), "r");
@@ -45,8 +56,8 @@ auto GitFileFilter::QueryNonIgnoredFiles(std::filesystem::path const& gitRoot, s
 {
     // --cached: tracked files, --others: untracked files, --exclude-standard: respect .gitignore
     // -z: NUL-delimited output for safe parsing of paths with spaces
-    auto const command = std::format("git -C {} ls-files --cached --others --exclude-standard -z -- {} 2>/dev/null",
-                                     gitRoot.string(), directory.string());
+    auto const command = std::format("git -C {} ls-files --cached --others --exclude-standard -z -- {} 2>{}",
+                                     gitRoot.string(), directory.string(), nullDevice);
 
     // NOLINTNEXTLINE(cert-env33-c) -- popen is intentional for git subprocess communication
     auto* pipe = popen(command.c_str(), "r");
@@ -73,8 +84,17 @@ auto GitFileFilter::QueryNonIgnoredFiles(std::filesystem::path const& gitRoot, s
         if (!pathStr.empty())
         {
             // git ls-files outputs paths relative to the git root.
-            auto const fullPath = std::filesystem::weakly_canonical(gitRoot / pathStr);
-            files.insert(fullPath.string());
+            // On Windows, paths containing reserved device names (NUL, CON, PRN, etc.)
+            // cause weakly_canonical to throw. Skip such paths gracefully.
+            try
+            {
+                auto const fullPath = std::filesystem::weakly_canonical(gitRoot / pathStr);
+                files.insert(fullPath.string());
+            }
+            catch (std::filesystem::filesystem_error const&)
+            {
+                // Skip paths that cannot be canonicalized (e.g. reserved device names on Windows).
+            }
         }
         start = (end == std::string::npos) ? output.size() : end + 1;
     }

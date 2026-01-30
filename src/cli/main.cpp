@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include <exec/static_thread_pool.hpp>
-#include <fnmatch.h>
+#include <codedup/GlobMatch.hpp>
 #include <git/GitDiffParser.hpp>
 #include <git/GitFileFilter.hpp>
 #include <mcp/AnalysisSession.hpp>
@@ -594,7 +594,7 @@ auto RunDiffSetup(CliOptions const& opts) -> std::expected<codedup::DiffResult, 
                       {
                           auto const filename = fc.filePath.filename().string();
                           return !std::ranges::any_of(opts.globPatterns, [&filename](std::string const& pattern)
-                                                      { return fnmatch(pattern.c_str(), filename.c_str(), 0) == 0; });
+                                                      { return codedup::GlobMatch(pattern, filename); });
                       });
     }
 
@@ -649,7 +649,7 @@ auto ScanFiles(CliOptions const& opts, codedup::PerformanceTiming& timing)
                   {
                       auto const filename = path.filename().string();
                       return std::ranges::any_of(patterns, [&filename](std::string const& pattern)
-                                                 { return fnmatch(pattern.c_str(), filename.c_str(), 0) == 0; });
+                                                 { return codedup::GlobMatch(pattern, filename); });
                   });
 
     // Compose all filters into a single predicate.
@@ -936,6 +936,9 @@ int main(int argc, char* argv[])
         auto candidateBar =
             opts.showProgress ? std::make_optional<codedup::ProgressBar>("Gather Candidates", size_t{0}) : std::nullopt;
 
+        auto collectBar =
+            opts.showProgress ? std::make_optional<codedup::ProgressBar>("Collecting", size_t{0}) : std::nullopt;
+
         auto detectBar =
             opts.showProgress ? std::make_optional<codedup::ProgressBar>("Detecting", size_t{0}) : std::nullopt;
 
@@ -967,6 +970,21 @@ int main(int argc, char* argv[])
                         candidateBar->Finish();
                         candidateBar.reset();
                     }
+                    if (collectBar)
+                        collectBar->Start();
+                }
+            },
+            [&](size_t current, size_t total)
+            {
+                if (collectBar)
+                    collectBar->Update(current, total);
+                if (current >= total)
+                {
+                    if (collectBar)
+                    {
+                        collectBar->Finish();
+                        collectBar.reset();
+                    }
                     if (detectBar)
                         detectBar->Start();
                 }
@@ -976,6 +994,8 @@ int main(int argc, char* argv[])
             fingerprintBar->Finish(); // safety: edge case with < 2 blocks
         if (candidateBar)
             candidateBar->Finish(); // safety: no fingerprints edge case
+        if (collectBar)
+            collectBar->Finish(); // safety: no candidates edge case
         if (detectBar)
             detectBar->Finish();
         timing.cloneDetection = Clock::now() - detectStart;

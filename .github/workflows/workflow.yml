@@ -1,0 +1,52 @@
+name: Build
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - preset: cl-release
+            compiler: MSVC
+          - preset: clangcl-release
+            compiler: Clang-CL
+
+    name: ${{ matrix.compiler }}
+
+    env:
+      CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CPM_SOURCE_CACHE }}
+          key: cpm-${{ hashFiles('CMakeLists.txt') }}
+          restore-keys: cpm-
+
+      - name: Configure
+        run: cmake --preset ${{ matrix.preset }}
+
+      - name: Build
+        run: cmake --build --preset ${{ matrix.preset }}
+
+      - name: Test
+        run: ctest --preset ${{ matrix.preset }}
+
+      - name: Upload CLI executable
+        if: matrix.preset == 'clangcl-release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: codedupdetector
+          path: build/${{ matrix.preset }}/src/cli/codedupdetector.exe

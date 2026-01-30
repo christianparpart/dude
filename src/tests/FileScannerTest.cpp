@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-#include <fnmatch.h>
+#include <codedup/GlobMatch.hpp>
 
 #include <codedup/FileScanner.hpp>
 
@@ -155,7 +155,7 @@ TEST_CASE("FileScanner.WithGlobFilter", "[scanner]")
 
     // Glob filter that matches filenames containing "Bit".
     auto const filter = codedup::FileFilter([](std::filesystem::path const& path) -> bool
-                                            { return fnmatch("*Bit*", path.filename().string().c_str(), 0) == 0; });
+                                            { return codedup::GlobMatch("*Bit*", path.filename().string()); });
 
     auto result = FileScanner::Scan(dir.Path(), FileScanner::DefaultExtensions(), filter);
     REQUIRE(result.has_value());
@@ -183,7 +183,7 @@ TEST_CASE("FileScanner.EmptyExtensionsWithGlobFilter", "[scanner]")
     dir.CreateFile("notes.txt");
 
     auto const filter = codedup::FileFilter([](std::filesystem::path const& path) -> bool
-                                            { return fnmatch("*.cpp", path.filename().string().c_str(), 0) == 0; });
+                                            { return codedup::GlobMatch("*.cpp", path.filename().string()); });
 
     auto result = FileScanner::Scan(dir.Path(), {}, filter);
     REQUIRE(result.has_value());
@@ -204,7 +204,7 @@ TEST_CASE("FileScanner.WithMultipleGlobPatterns", "[scanner]")
         {
             auto const filename = path.filename().string();
             return std::ranges::any_of(patterns, [&filename](std::string const& pattern)
-                                       { return fnmatch(pattern.c_str(), filename.c_str(), 0) == 0; });
+                                       { return codedup::GlobMatch(pattern, filename); });
         });
 
     auto result = FileScanner::Scan(dir.Path(), FileScanner::DefaultExtensions(), filter);

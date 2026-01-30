@@ -39,7 +39,10 @@ function(GetVersionInformation VersionTripleVar VersionStringVar)
     endif()
 
     if("${THE_VERSION}" STREQUAL "" OR "${THE_VERSION_STRING}" STREQUAL "")
-        message(FATAL_ERROR "Cannot extract version information. No version.txt or matching git tag found.")
+        set(THE_VERSION "0.0.0")
+        set(THE_VERSION_STRING "0.0.0")
+        set(THE_SOURCE "default fallback")
+        message(STATUS "Warning: No version.txt or matching git tag found. Defaulting to ${THE_VERSION}.")
     endif()
 
     message(STATUS "[Version] version source: ${THE_SOURCE}")

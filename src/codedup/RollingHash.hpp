@@ -9,6 +9,10 @@
 #include <span>
 #include <vector>
 
+#if defined(_MSC_VER)
+#include <intrin.h>
+#endif
+
 namespace codedup
 {
 
@@ -34,13 +38,22 @@ constexpr uint64_t hashPrime = (1ULL << 61) - 1;
 /// @param a First operand (must be < hashPrime).
 /// @param b Second operand (must be < hashPrime).
 /// @return (a * b) % hashPrime.
-[[nodiscard]] constexpr auto Mulmod(uint64_t a, uint64_t b) -> uint64_t
+[[nodiscard]] inline auto Mulmod(uint64_t a, uint64_t b) -> uint64_t
 {
+#if defined(_MSC_VER)
+    uint64_t hi = 0;
+    uint64_t const lo_full = _umul128(a, b, &hi);
+    auto const lo = lo_full & hashPrime;
+    auto const upper = (hi << 3) | (lo_full >> 61);
+    auto const result = lo + upper;
+    return result >= hashPrime ? result - hashPrime : result;
+#else
     auto const product = static_cast<__int128>(a) * static_cast<__int128>(b);
     auto const lo = static_cast<uint64_t>(product) & hashPrime;
     auto const hi = static_cast<uint64_t>(static_cast<unsigned __int128>(product) >> 61);
     auto const result = lo + hi;
     return result >= hashPrime ? result - hashPrime : result;
+#endif
 }
 
 /// @brief Computes rolling hash fingerprints over a sliding window of normalized token IDs.
