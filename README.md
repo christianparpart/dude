@@ -1,32 +1,53 @@
-# Code Duplication Analysis Tool
+# dude — Code Duplication Detector
+
+![C++23](https://img.shields.io/badge/standard-C%2B%2B23-blue.svg)
+![Build](https://github.com/LASTRADA-Software/dude/actions/workflows/workflow.yml/badge.svg?branch=master)
+![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)
 
 A platform-independent C++23 CLI tool for **Type-2 clone detection** across multiple programming languages.
-It identifies duplicated code blocks even when identifiers, types, or function names differ,
-and supports interactive use via the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP).
+It identifies duplicated code blocks even when identifiers, types, or literal values differ —
+useful for code reviews, refactoring, and CI quality gates.
+Integrates with AI coding assistants via the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP).
 
 ## Features
 
-- **Multi-Language Support**: Built-in tokenizers and block extractors for C++, C#, and Python.
-- **Type-2 Clone Detection**: Finds structurally identical code blocks regardless of renamed variables, types, or functions.
-- **Function-Level Analysis**: Extracts and compares function bodies for meaningful, actionable results.
-- **Intra-Function Clone Detection**: Finds duplicated regions within large functions using fingerprint self-join and maximal match extension.
-- **Text Sensitivity Blending**: Configurable blend between structural and textual similarity scoring.
-- **Analysis Scopes**: Selectively detect inter-file, intra-file, inter-function, or intra-function clones.
-- **CI / Diff Mode**: Restrict analysis to code changed relative to a Git branch, suitable for CI gates.
-- **Multiple Output Formats**: Human-readable console output with syntax highlighting, or structured JSON for tooling.
-- **MCP Server Mode**: Expose analysis tools to AI coding assistants via JSON-RPC over stdio.
-- **Git-Aware Scanning**: Respects `.gitignore` rules and supports glob-based filename filtering.
-- **Syntax-Highlighted Output**: Truecolor (24-bit RGB) ANSI output with dark and light theme support.
-- **Fast Fingerprint Filtering**: Rabin-Karp rolling hash fingerprints avoid expensive all-pairs comparison.
-- **No External Dependencies**: Custom tokenizer, hand-written argument parser, no heavyweight libraries required.
+- **Type-2 Clone Detection** — finds structurally identical code blocks regardless of renamed variables, types, or functions.
+- **Multi-Language Support** — built-in tokenizers for C++, C#, and Python.
+- **Function-Level & Intra-Function Analysis** — extracts and compares function bodies, and detects duplicated regions within large functions.
+- **Text Sensitivity Blending** — configurable blend between structural and textual similarity scoring.
+- **Analysis Scopes** — selectively detect inter-file, intra-file, inter-function, or intra-function clones.
+- **CI / Diff Mode** — restrict analysis to code changed relative to a Git branch, suitable for CI gates.
+- **Multiple Output Formats** — human-readable console output with syntax highlighting, or structured JSON for tooling.
+- **MCP Server Mode** — expose analysis tools to AI coding assistants via JSON-RPC over stdio.
+- **Git-Aware Scanning** — respects `.gitignore` rules and supports glob-based filename filtering.
+- **Syntax-Highlighted Output** — truecolor (24-bit RGB) ANSI output with dark and light theme support.
+- **Fast Fingerprint Filtering** — Rabin-Karp rolling hash fingerprints with a five-stage filter cascade to avoid expensive all-pairs comparison.
+- **No External Runtime Dependencies** — custom tokenizer, hand-written argument parser; build dependencies are fetched automatically.
+
+## Quick Start
+
+```bash
+# Build
+cmake --preset clang-release
+cmake --build --preset clang-release
+
+# Scan a project for duplicated code
+./build/clang-release/src/cli/dude /path/to/project/src/
+
+# Only C++ files, high similarity threshold
+./build/clang-release/src/cli/dude -t 0.95 -g '*.cpp' -g '*.hpp' /path/to/project/
+
+# CI gate: check for duplicates in changed code
+./build/clang-release/src/cli/dude --diff-base origin/main --no-color --no-source /path/to/project/
+```
 
 ## Supported Languages
 
-| Language | Extensions | Block Extraction |
-|----------|-----------|------------------|
-| C++      | `.cpp`, `.cxx`, `.cc`, `.c`, `.h`, `.hpp`, `.hxx` | Brace-delimited function bodies |
-| C#       | `.cs` | Brace-delimited method bodies |
-| Python   | `.py`, `.pyw` | Indentation-based `def`/`class` blocks |
+| Language | Extensions |
+|----------|------------|
+| C++ | `.cpp`, `.hpp`, `.cc`, `.cxx`, `.h` |
+| C# | `.cs` |
+| Python | `.py` |
 
 ## Building
 
@@ -34,38 +55,62 @@ and supports interactive use via the [Model Context Protocol](https://modelconte
 
 - C++23 compatible compiler (Clang 17+ or GCC 13+)
 - CMake 3.25+
-- Catch2 v3 (fetched automatically via CPM)
-- `nlohman-json` (fetched automatically via CPM)
-- `unordered_dense` (fetched automatically via CPM)
-- `NVIDIA/stdexec` (fetched automatically via CPM)
-- Git (for gitignore support)
+- Ninja (recommended)
+
+All library dependencies are fetched automatically at configure time via [CPM](https://github.com/cpm-cmake/CPM.cmake):
+Catch2 v3, nlohmann/json, unordered\_dense, NVIDIA/stdexec.
 
 ### Build Commands
 
 ```bash
-# Configure and build (debug, with ASAN/UBSAN/clang-tidy)
+# Release build
+cmake --preset clang-release
+cmake --build --preset clang-release
+
+# Debug build (with ASAN, UBSAN, clang-tidy)
 cmake --preset clang-debug
 cmake --build --preset clang-debug
 
 # Run tests
 ctest --preset clang-debug
 
-# Release build
-cmake --preset clang-release
-cmake --build --preset clang-release
+# Release with native arch tuning (for benchmarking)
+cmake --preset clang-release-native
+cmake --build --preset clang-release-native
+
+# Static binary (single portable executable)
+cmake --preset clang-release-static
+cmake --build --preset clang-release-static
 ```
 
-### Additional Build Presets
+Additional presets are available for code coverage (`clang-coverage`), ThreadSanitizer (`clang-tsan`),
+Profile-Guided Optimization (`clang-pgo-instrument`, `clang-pgo-optimize`), GCC (`gcc-debug`), and Windows (MSVC / Clang-CL).
+See `CMakePresets.json` for the full list.
 
-| Preset | Purpose |
-|--------|---------|
-| `clang-debug` | Debug with ASAN, UBSAN, clang-tidy |
-| `clang-release` | Optimized release build |
-| `clang-release-native` | Release with `-march=native` |
-| `clang-release-static` | Statically linked release build |
-| `clang-coverage` | Code coverage instrumentation |
-| `clang-tsan` | ThreadSanitizer build |
-| `gcc-debug` | GCC debug build |
+## Installation
+
+### From Source
+
+```bash
+cmake --preset clang-release
+cmake --build --preset clang-release
+sudo cmake --install build/clang-release --prefix /usr/local
+```
+
+This installs the `dude` binary to `/usr/local/bin/`.
+
+### Static Binary
+
+Build a fully static executable that can be copied to any Linux machine without runtime dependencies:
+
+```bash
+cmake --preset clang-release-static
+cmake --build --preset clang-release-static
+cp build/clang-release-static/src/cli/dude /usr/local/bin/
+```
+
+Pre-built static binaries for Linux and Windows are available as
+[CI build artifacts](https://github.com/LASTRADA-Software/dude/actions).
 
 ## Usage
 
@@ -77,9 +122,9 @@ dude [OPTIONS] <directory>
 
 | Option | Description |
 |--------|-------------|
-| `-t, --threshold <N>` | Similarity threshold 0.0-1.0 (default: `0.80`) |
+| `-t, --threshold <N>` | Similarity threshold 0.0–1.0 (default: `0.80`) |
 | `-m, --min-tokens <N>` | Minimum block size in tokens (default: `30`) |
-| `--text-sensitivity <N>` | Text sensitivity blend factor 0.0-1.0 (default: `0.3`) |
+| `--text-sensitivity <N>` | Text sensitivity blend factor 0.0–1.0 (default: `0.3`) |
 
 ### File Filtering
 
@@ -133,7 +178,7 @@ dude /path/to/project/src/
 # Higher threshold (only report near-identical clones)
 dude -t 0.95 /path/to/project/
 
-# Structural-only detection (ignore identifier names)
+# Structural-only detection (ignore identifier names entirely)
 dude --text-sensitivity 0.0 /path/to/project/
 
 # Scan only C# files
@@ -236,34 +281,18 @@ Edit `~/.gemini/settings.json` or the MCP config (open via **Manage MCP Servers*
 
 Restart the IDE for changes to take effect.
 
-## Algorithm
+## How It Works
 
-### Pipeline
+The detection pipeline runs in five phases:
 
-1. **File Scanning**: Recursively find source files by extension, respecting `.gitignore` and glob filters.
-2. **Tokenization**: Language-specific hand-written lexers produce token streams with source location tracking.
-3. **Normalization**: Tokens are mapped to integer IDs. All identifiers map to a single generic ID; all numeric, string, and character literals to their respective generic IDs. Comments and preprocessor directives are stripped. This enables Type-2 clone detection. A parallel text-preserving normalization is computed for blended similarity scoring.
-4. **Block Extraction**: Language-aware extraction of function/method bodies (brace-delimited for C++/C#, indentation-based for Python).
-5. **Inter-Function Clone Detection** (two phases):
-   - **Phase 1 - Fingerprinting**: Rabin-Karp rolling hash over sliding windows of normalized token IDs builds an inverted index. Candidate pairs share a minimum number of fingerprints.
-   - **Phase 2 - LCS Similarity**: Longest Common Subsequence with Dice coefficient scoring on candidate pairs only.
-6. **Grouping**: Union-Find merges clone pairs into connected components.
-7. **Intra-Function Clone Detection** (three phases):
-   - **Phase 1 - Fingerprint Self-Join**: Rolling hash fingerprints within a single block build an inverted index to find candidate position pairs.
-   - **Phase 2 - Match Extension**: Candidate pairs are extended to maximal regions by matching tokens forward and backward.
-   - **Phase 3 - Deduplication**: Redundant pairs (both regions substantially overlap) are merged, keeping all distinct clone pairs.
-8. **Scope Filtering**: Results are filtered by the requested analysis scopes.
-9. **Diff Filtering**: In diff mode, results are restricted to blocks touched by the diff.
-10. **Reporting**: Results are formatted as syntax-highlighted console output or structured JSON.
+1. **File Scanning** — recursive directory walk with `.gitignore` and glob filtering.
+2. **Tokenization** — parallelized across all CPU cores via the stdexec P2300 execution framework.
+3. **Normalization & Block Extraction** — structural (Type-2) and text-preserving normalization; function-level block extraction.
+4. **Clone Detection** — five-stage filter cascade (static fingerprint, adaptive fingerprint, length-ratio, bag-of-tokens Dice, threshold-aware bit-parallel LCS), with Union-Find grouping into connected components.
+5. **Reporting** — console output with syntax-highlighted diffs, or structured JSON.
 
-### Key Design Decisions
-
-- **Custom tokenizers** (no libclang): No heavyweight dependency, works on incomplete code, fast.
-- **Function-level blocks**: More meaningful results than sliding-window approaches.
-- **Dice coefficient**: `2 * |LCS| / (|A| + |B|)` handles different-length blocks well.
-- **Fingerprint pre-filtering**: O(total_tokens) to build the index; LCS only computed for candidates.
-- **Pluggable language system**: Adding a new language requires implementing a tokenizer and block extractor.
-- **Blended similarity**: Weighted combination of structural and text-preserving similarity allows tuning for different use cases.
+For the full algorithm description, including mathematical foundations and performance engineering details,
+see [`docs/algorithm.md`](docs/algorithm.md).
 
 ## License
 
