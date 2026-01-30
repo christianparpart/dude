@@ -25,6 +25,10 @@ jobs:
             compiler: Clang 21 (Release, static)
             install: clang
             extra_cmake_args: -DCMAKE_C_COMPILER=clang-21 -DCMAKE_CXX_COMPILER=clang++-21
+          - preset: clang-tsan
+            compiler: Clang 21 (ThreadSanitizer)
+            install: clang
+            extra_cmake_args: -DCMAKE_C_COMPILER=clang-21 -DCMAKE_CXX_COMPILER=clang++-21
           - preset: gcc-debug
             compiler: GCC 14
             install: gcc
