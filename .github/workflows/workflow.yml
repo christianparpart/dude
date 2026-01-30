@@ -16,15 +16,19 @@ jobs:
           - preset: clang-debug
             compiler: Clang 21 (Debug)
             install: clang
+            extra_cmake_args: -DCMAKE_CXX_FLAGS=-stdlib=libc++ -DCMAKE_EXE_LINKER_FLAGS=-stdlib=libc++ -DCMAKE_SHARED_LINKER_FLAGS=-stdlib=libc++
           - preset: clang-release
             compiler: Clang 21 (Release)
             install: clang
+            extra_cmake_args: -DCMAKE_CXX_FLAGS=-stdlib=libc++ -DCMAKE_EXE_LINKER_FLAGS=-stdlib=libc++ -DCMAKE_SHARED_LINKER_FLAGS=-stdlib=libc++
           - preset: clang-release-static
             compiler: Clang 21 (Release, static)
             install: clang
+            extra_cmake_args: -DCMAKE_CXX_FLAGS=-stdlib=libc++ -DCMAKE_EXE_LINKER_FLAGS=-stdlib=libc++ -DCMAKE_SHARED_LINKER_FLAGS=-stdlib=libc++
           - preset: gcc-debug
-            compiler: GCC 15
+            compiler: GCC 14
             install: gcc
+            extra_cmake_args:
 
     name: ${{ matrix.compiler }}
 
@@ -38,19 +42,18 @@ jobs:
         if: matrix.install == 'clang'
         run: |
           wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- 21
-          sudo apt-get install -y clang-tidy-21
+          sudo apt-get install -y clang-tidy-21 libc++-21-dev libc++abi-21-dev
           sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-21 100
           sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-21 100
           sudo update-alternatives --install /usr/bin/clang-tidy clang-tidy /usr/bin/clang-tidy-21 100
 
-      - name: Install GCC 15
+      - name: Install GCC 14
         if: matrix.install == 'gcc'
         run: |
-          sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
           sudo apt-get update
-          sudo apt-get install -y gcc-15 g++-15
-          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-15 100
-          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-15 100
+          sudo apt-get install -y gcc-14 g++-14
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
+          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
 
       - name: Install Ninja
         run: sudo apt-get install -y ninja-build
@@ -63,7 +66,7 @@ jobs:
           restore-keys: cpm-${{ matrix.preset }}-
 
       - name: Configure
-        run: cmake --preset ${{ matrix.preset }}
+        run: cmake --preset ${{ matrix.preset }} ${{ matrix.extra_cmake_args }}
 
       - name: Build
         run: cmake --build --preset ${{ matrix.preset }}

@@ -186,9 +186,9 @@ constexpr auto twoCharOperators = std::to_array<OperatorEntry>({
 /// @return The corresponding TokenType, or TokenType::Identifier if not a keyword.
 [[nodiscard]] auto LookupKeyword(std::string_view text) -> TokenType
 {
-    auto const* const it = std::ranges::lower_bound(keywords, text, {}, &KeywordEntry::text);
-    if (it != keywords.end() && it->text == text)
-        return it->type;
+    auto const range = std::ranges::equal_range(keywords, text, {}, &KeywordEntry::text);
+    if (!range.empty())
+        return range.front().type;
     return TokenType::Identifier;
 }
 
