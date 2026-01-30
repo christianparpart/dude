@@ -2,8 +2,8 @@
 #include <git/GitDiffParser.hpp>
 #include <mcp/McpTooling.hpp>
 
-#include <codedup/AnalysisScope.hpp>
-#include <codedup/DiffFilter.hpp>
+#include <dude/AnalysisScope.hpp>
+#include <dude/DiffFilter.hpp>
 
 #include <algorithm>
 #include <chrono>
@@ -109,7 +109,7 @@ auto HandleAnalyzeDirectory(AnalysisSession& session, nlohmann::json const& args
 
     if (args.contains("scope"))
     {
-        auto const scopeResult = codedup::ParseAnalysisScope(args["scope"].get<std::string>());
+        auto const scopeResult = dude::ParseAnalysisScope(args["scope"].get<std::string>());
         if (!scopeResult)
             return std::unexpected(std::string("Invalid scope: ") + scopeResult.error().message);
         config.scope = *scopeResult;
@@ -465,7 +465,7 @@ auto HandleGetSummary(AnalysisSession const& session, nlohmann::json const& args
         stats["threshold"] = session.Config().threshold;
         stats["min_tokens"] = session.Config().minTokens;
         stats["text_sensitivity"] = session.Config().textSensitivity;
-        stats["scope"] = codedup::FormatAnalysisScope(session.Config().scope);
+        stats["scope"] = dude::FormatAnalysisScope(session.Config().scope);
         return mcpprotocol::BuildToolResultJson(stats);
     }
 
@@ -503,7 +503,7 @@ auto HandleGetSummary(AnalysisSession const& session, nlohmann::json const& args
                             session.Config().directory.string(), session.Files().size(), session.AllBlocks().size(),
                             session.CloneGroups().size(), totalDuplicatedLines, totalFunctions, totalIntraPairs,
                             totalMs, session.Config().threshold, session.Config().minTokens,
-                            session.Config().textSensitivity, codedup::FormatAnalysisScope(session.Config().scope));
+                            session.Config().textSensitivity, dude::FormatAnalysisScope(session.Config().scope));
 
     return mcpprotocol::BuildToolResult(text);
 }
@@ -552,7 +552,7 @@ auto HandleConfigureAnalysis(AnalysisSession& session, nlohmann::json const& arg
 
     if (args.contains("scope"))
     {
-        auto const scopeResult = codedup::ParseAnalysisScope(args["scope"].get<std::string>());
+        auto const scopeResult = dude::ParseAnalysisScope(args["scope"].get<std::string>());
         if (!scopeResult)
             return std::unexpected(std::string("Invalid scope: ") + scopeResult.error().message);
         scope = *scopeResult;
@@ -832,10 +832,10 @@ auto HandleAnalyzeBranchDuplicates(AnalysisSession& session, nlohmann::json cons
     auto const& blockToFileIndex = session.BlockToFileIndex();
 
     // Step 3: Find changed blocks.
-    auto const changedBlocks = codedup::DiffFilter::FindChangedBlocks(blocks, diffResult, projectRoot, files);
+    auto const changedBlocks = dude::DiffFilter::FindChangedBlocks(blocks, diffResult, projectRoot, files);
 
     // Step 4: Filter clone groups.
-    auto const filteredGroups = codedup::DiffFilter::FilterCloneGroups(session.CloneGroups(), changedBlocks);
+    auto const filteredGroups = dude::DiffFilter::FilterCloneGroups(session.CloneGroups(), changedBlocks);
 
     // Step 5: Categorize.
     auto const limit = args.value("limit", size_t{0});
@@ -894,7 +894,7 @@ auto HandleAnalyzeBranchDuplicates(AnalysisSession& session, nlohmann::json cons
     }
 
     // Step 6: Filter intra-function clones for changed blocks.
-    auto const filteredIntra = codedup::DiffFilter::FilterIntraResults(session.IntraResults(), changedBlocks);
+    auto const filteredIntra = dude::DiffFilter::FilterIntraResults(session.IntraResults(), changedBlocks);
     auto intraArray = nlohmann::json::array();
     for (auto const& result : filteredIntra)
     {
@@ -1025,7 +1025,7 @@ auto HandleReviewFile(nlohmann::json const& args) -> std::expected<nlohmann::jso
 
 } // anonymous namespace
 
-void RegisterCodeDupTools(mcpprotocol::McpServer& server, AnalysisSession& session)
+void RegisterDudeTools(mcpprotocol::McpServer& server, AnalysisSession& session)
 {
     // Tools
     server.RegisterTool(MakeAnalyzeDirectoryDescriptor(),

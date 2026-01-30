@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
-#include <codedup/LanguageRegistry.hpp>
+#include <dude/LanguageRegistry.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
 
-using namespace codedup;
+using namespace dude;
 
 TEST_CASE("LanguageRegistry.FindByExtension.Cpp", "[registry]")
 {

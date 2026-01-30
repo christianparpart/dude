@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-#include <codedup/GlobMatch.hpp>
-
-#include <codedup/FileScanner.hpp>
+#include <dude/FileScanner.hpp>
+#include <dude/GlobMatch.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -12,7 +11,7 @@
 #include <string>
 #include <vector>
 
-using namespace codedup;
+using namespace dude;
 
 namespace
 {
@@ -21,7 +20,7 @@ namespace
 class TempDir
 {
 public:
-    TempDir() : _path(std::filesystem::temp_directory_path() / "codedup_test")
+    TempDir() : _path(std::filesystem::temp_directory_path() / "dude_test")
     {
         std::filesystem::create_directories(_path);
     }
@@ -125,8 +124,8 @@ TEST_CASE("FileScanner.WithFilter", "[scanner]")
     dir.CreateFile("also_keep.cpp");
 
     // Filter that rejects files containing "skip" in the filename.
-    auto const filter = codedup::FileFilter([](std::filesystem::path const& path)
-                                            { return !path.filename().string().contains("skip"); });
+    auto const filter =
+        dude::FileFilter([](std::filesystem::path const& path) { return !path.filename().string().contains("skip"); });
 
     auto result = FileScanner::Scan(dir.Path(), FileScanner::DefaultExtensions(), filter);
     REQUIRE(result.has_value());
@@ -154,8 +153,8 @@ TEST_CASE("FileScanner.WithGlobFilter", "[scanner]")
     dir.CreateFile("Helper.hpp");
 
     // Glob filter that matches filenames containing "Bit".
-    auto const filter = codedup::FileFilter([](std::filesystem::path const& path) -> bool
-                                            { return codedup::GlobMatch("*Bit*", path.filename().string()); });
+    auto const filter = dude::FileFilter([](std::filesystem::path const& path) -> bool
+                                         { return dude::GlobMatch("*Bit*", path.filename().string()); });
 
     auto result = FileScanner::Scan(dir.Path(), FileScanner::DefaultExtensions(), filter);
     REQUIRE(result.has_value());
@@ -182,8 +181,8 @@ TEST_CASE("FileScanner.EmptyExtensionsWithGlobFilter", "[scanner]")
     dir.CreateFile("Main.cpp");
     dir.CreateFile("notes.txt");
 
-    auto const filter = codedup::FileFilter([](std::filesystem::path const& path) -> bool
-                                            { return codedup::GlobMatch("*.cpp", path.filename().string()); });
+    auto const filter = dude::FileFilter([](std::filesystem::path const& path) -> bool
+                                         { return dude::GlobMatch("*.cpp", path.filename().string()); });
 
     auto result = FileScanner::Scan(dir.Path(), {}, filter);
     REQUIRE(result.has_value());
@@ -199,12 +198,12 @@ TEST_CASE("FileScanner.WithMultipleGlobPatterns", "[scanner]")
 
     // Glob filter with OR semantics: matches "*Bit*" or "*Probe*".
     auto const patterns = std::vector<std::string>{"*Bit*", "*Probe*"};
-    auto const filter = codedup::FileFilter(
+    auto const filter = dude::FileFilter(
         [patterns](std::filesystem::path const& path) -> bool
         {
             auto const filename = path.filename().string();
             return std::ranges::any_of(patterns, [&filename](std::string const& pattern)
-                                       { return codedup::GlobMatch(pattern, filename); });
+                                       { return dude::GlobMatch(pattern, filename); });
         });
 
     auto result = FileScanner::Scan(dir.Path(), FileScanner::DefaultExtensions(), filter);

@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
-#include <codedup/GlobMatch.hpp>
 #include <mcp/AnalysisSession.hpp>
 
-#include <codedup/FileScanner.hpp>
-#include <codedup/Language.hpp>
-#include <codedup/LanguageRegistry.hpp>
-#include <codedup/ScopeFilter.hpp>
-#include <codedup/TokenNormalizer.hpp>
+#include <dude/FileScanner.hpp>
+#include <dude/GlobMatch.hpp>
+#include <dude/Language.hpp>
+#include <dude/LanguageRegistry.hpp>
+#include <dude/ScopeFilter.hpp>
+#include <dude/TokenNormalizer.hpp>
 
 #include <algorithm>
 #include <chrono>
@@ -29,20 +29,19 @@ auto AnalysisSession::Analyze(AnalysisConfig const& config) -> std::expected<voi
     // Step 1: Scan files
     auto const scanStart = Clock::now();
     auto const extensions =
-        config.globPatterns.empty() ? codedup::FileScanner::DefaultExtensions() : std::vector<std::string>{};
+        config.globPatterns.empty() ? dude::FileScanner::DefaultExtensions() : std::vector<std::string>{};
 
-    auto const globFilter =
-        config.globPatterns.empty()
-            ? std::optional<codedup::FileFilter>(std::nullopt)
-            : std::optional<codedup::FileFilter>(
-                  [&patterns = config.globPatterns](std::filesystem::path const& path) -> bool
-                  {
-                      auto const filename = path.filename().string();
-                      return std::ranges::any_of(patterns, [&filename](std::string const& pattern)
-                                                 { return codedup::GlobMatch(pattern, filename); });
-                  });
+    auto const globFilter = config.globPatterns.empty()
+                                ? std::optional<dude::FileFilter>(std::nullopt)
+                                : std::optional<dude::FileFilter>(
+                                      [&patterns = config.globPatterns](std::filesystem::path const& path) -> bool
+                                      {
+                                          auto const filename = path.filename().string();
+                                          return std::ranges::any_of(patterns, [&filename](std::string const& pattern)
+                                                                     { return dude::GlobMatch(pattern, filename); });
+                                      });
 
-    auto const filesResult = codedup::FileScanner::Scan(config.directory, extensions, globFilter);
+    auto const filesResult = dude::FileScanner::Scan(config.directory, extensions, globFilter);
     _timing.scanning = Clock::now() - scanStart;
 
     if (!filesResult)
@@ -57,7 +56,7 @@ auto AnalysisSession::Analyze(AnalysisConfig const& config) -> std::expected<voi
     _allTokens.reserve(_files.size());
     _fileLanguages.reserve(_files.size());
 
-    auto const& registry = codedup::LanguageRegistry::Instance();
+    auto const& registry = dude::LanguageRegistry::Instance();
     for (auto const& file : _files)
     {
         auto const* language = registry.FindByPath(file);
@@ -89,8 +88,8 @@ auto AnalysisSession::Analyze(AnalysisConfig const& config) -> std::expected<voi
 }
 
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
-auto AnalysisSession::Reconfigure(double threshold, size_t minTokens, double textSensitivity,
-                                  codedup::AnalysisScope scope) -> std::expected<void, AnalysisError>
+auto AnalysisSession::Reconfigure(double threshold, size_t minTokens, double textSensitivity, dude::AnalysisScope scope)
+    -> std::expected<void, AnalysisError>
 {
     if (!_hasResults)
         return std::unexpected(AnalysisError{.message = "No analysis results available. Run analyze_directory first."});
@@ -111,8 +110,8 @@ void AnalysisSession::RunBlockExtractionAndDetection()
 
     // Step 3: Normalize and extract blocks
     auto const normalizeStart = Clock::now();
-    codedup::TokenNormalizer normalizer;
-    codedup::CodeBlockExtractorConfig const blockConfig{.minTokens = _config.minTokens};
+    dude::TokenNormalizer normalizer;
+    dude::CodeBlockExtractorConfig const blockConfig{.minTokens = _config.minTokens};
     auto const useTextSensitivity = _config.textSensitivity > 0.0;
 
     _allBlocks.clear();
@@ -129,7 +128,7 @@ void AnalysisSession::RunBlockExtractionAndDetection()
 
         auto normalized = normalizer.Normalize(_allTokens[fi], language);
         auto textPreserving = useTextSensitivity ? normalizer.NormalizeTextPreserving(_allTokens[fi], language)
-                                                 : std::vector<codedup::NormalizedToken>{};
+                                                 : std::vector<dude::NormalizedToken>{};
         auto blocks = language->ExtractBlocks(_allTokens[fi], normalized, textPreserving, blockConfig);
 
         for (auto& block : blocks)
@@ -142,10 +141,10 @@ void AnalysisSession::RunBlockExtractionAndDetection()
 
     // Step 4: Detect inter-function clones
     _groups.clear();
-    if (codedup::HasInterFunctionScope(_config.scope))
+    if (dude::HasInterFunctionScope(_config.scope))
     {
         auto const detectStart = Clock::now();
-        codedup::CloneDetector detector({
+        dude::CloneDetector detector({
             .similarityThreshold = _config.threshold,
             .minTokens = _config.minTokens,
             .textSensitivity = _config.textSensitivity,
@@ -154,7 +153,7 @@ void AnalysisSession::RunBlockExtractionAndDetection()
         _groups = detector.Detect(_allBlocks);
         _timing.cloneDetection = Clock::now() - detectStart;
 
-        _groups = codedup::ScopeFilter::FilterCloneGroups(_groups, _blockToFileIndex, _config.scope);
+        _groups = dude::ScopeFilter::FilterCloneGroups(_groups, _blockToFileIndex, _config.scope);
 
         std::ranges::sort(_groups,
                           [this](auto const& a, auto const& b)
@@ -169,10 +168,10 @@ void AnalysisSession::RunBlockExtractionAndDetection()
 
     // Step 4b: Detect intra-function clones
     _intraResults.clear();
-    if (codedup::HasScope(_config.scope, codedup::AnalysisScope::IntraFunction))
+    if (dude::HasScope(_config.scope, dude::AnalysisScope::IntraFunction))
     {
         auto const intraStart = Clock::now();
-        codedup::IntraFunctionDetector intraDetector({
+        dude::IntraFunctionDetector intraDetector({
             .minRegionTokens = _config.minTokens,
             .similarityThreshold = _config.threshold,
             .textSensitivity = _config.textSensitivity,

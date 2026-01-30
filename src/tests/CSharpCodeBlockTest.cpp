@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
-#include <codedup/CodeBlock.hpp>
-#include <codedup/Languages/CSharpLanguage.hpp>
-#include <codedup/TokenNormalizer.hpp>
+#include <dude/CodeBlock.hpp>
+#include <dude/Languages/CSharpLanguage.hpp>
+#include <dude/TokenNormalizer.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
-using namespace codedup;
+using namespace dude;
 
 namespace
 {

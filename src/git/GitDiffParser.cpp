@@ -82,7 +82,7 @@ auto MatchesExtension(std::filesystem::path const& filePath, std::vector<std::st
 ///   @@ -a,b +c @@           -> LineRange{c, c}      (single line, count=1 implied)
 ///   @@ -a +c,d @@           -> (old side single line)
 ///   @@ -a,b +c,0 @@        -> skipped (pure deletion in new file)
-auto ParseHunkHeader(std::string_view line) -> std::optional<codedup::LineRange>
+auto ParseHunkHeader(std::string_view line) -> std::optional<dude::LineRange>
 {
     // Find the "+start" or "+start,count" portion.
     auto const plusPos = line.find('+', 3); // Skip past "@@ -"
@@ -121,15 +121,15 @@ auto ParseHunkHeader(std::string_view line) -> std::optional<codedup::LineRange>
     if (count == 0)
         return std::nullopt;
 
-    return codedup::LineRange{.startLine = start, .endLine = start + count - 1};
+    return dude::LineRange{.startLine = start, .endLine = start + count - 1};
 }
 
 } // namespace
 
 auto GitDiffParser::ParseDiffOutput(std::string const& diffOutput, std::vector<std::string> const& extensions)
-    -> codedup::DiffResult
+    -> dude::DiffResult
 {
-    codedup::DiffResult result;
+    dude::DiffResult result;
     std::filesystem::path currentFile;
     bool skipCurrentFile = false;
 

@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
-#include <codedup/CodeBlock.hpp>
-#include <codedup/IntraFunctionDetector.hpp>
-#include <codedup/Languages/CppLanguage.hpp>
-#include <codedup/TokenNormalizer.hpp>
+#include <dude/CodeBlock.hpp>
+#include <dude/IntraFunctionDetector.hpp>
+#include <dude/Languages/CppLanguage.hpp>
+#include <dude/TokenNormalizer.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
-using namespace codedup;
+using namespace dude;
 
 namespace
 {

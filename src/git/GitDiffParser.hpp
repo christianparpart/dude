@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
-#include <codedup/DiffRange.hpp>
+#include <dude/DiffRange.hpp>
 
 #include <expected>
 #include <filesystem>
@@ -42,7 +42,7 @@ public:
     /// @param extensions File extensions to include (e.g., ".cpp"). Empty means include all.
     /// @return Parsed diff result with per-file changed line ranges.
     [[nodiscard]] static auto ParseDiffOutput(std::string const& diffOutput,
-                                              std::vector<std::string> const& extensions = {}) -> codedup::DiffResult;
+                                              std::vector<std::string> const& extensions = {}) -> dude::DiffResult;
 };
 
 } // namespace git

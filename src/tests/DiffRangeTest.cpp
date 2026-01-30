@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
-#include <codedup/DiffRange.hpp>
+#include <dude/DiffRange.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
-using namespace codedup;
+using namespace dude;
 
 TEST_CASE("DiffRange.OverlapsExactMatch", "[diffrange]")
 {

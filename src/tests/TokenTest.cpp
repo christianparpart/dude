@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
-#include <codedup/Token.hpp>
+#include <dude/Token.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
-using namespace codedup;
+using namespace dude;
 
 // ---------------------------------------------------------------------------
 // TokenTypeName

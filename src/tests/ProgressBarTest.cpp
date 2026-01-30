@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-#include <codedup/ProgressBar.hpp>
+#include <dude/ProgressBar.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -7,7 +7,7 @@
 #include <thread>
 #include <vector>
 
-using namespace codedup;
+using namespace dude;
 
 namespace
 {

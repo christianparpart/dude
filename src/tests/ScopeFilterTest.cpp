@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
-#include <codedup/AnalysisScope.hpp>
-#include <codedup/CloneDetector.hpp>
-#include <codedup/ScopeFilter.hpp>
+#include <dude/AnalysisScope.hpp>
+#include <dude/CloneDetector.hpp>
+#include <dude/ScopeFilter.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <vector>
 
-using namespace codedup;
+using namespace dude;
 
 // ---------------------------------------------------------------------------
 // Helper: block-to-file index for tests

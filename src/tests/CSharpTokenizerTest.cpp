@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
-#include <codedup/Languages/CSharpLanguage.hpp>
+#include <dude/Languages/CSharpLanguage.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
-using namespace codedup;
+using namespace dude;
 
 TEST_CASE("CSharpTokenizer.EmptyInput", "[csharp][tokenizer]")
 {

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
-#include <codedup/Languages/CppLanguage.hpp>
+#include <dude/Languages/CppLanguage.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
-using namespace codedup;
+using namespace dude;
 
 TEST_CASE("Tokenizer.EmptyInput", "[tokenizer]")
 {

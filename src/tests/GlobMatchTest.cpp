@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
-#include <codedup/GlobMatch.hpp>
+#include <dude/GlobMatch.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
-using codedup::GlobMatch;
+using dude::GlobMatch;
 
 TEST_CASE("GlobMatch.ExactMatch", "[GlobMatch]")
 {

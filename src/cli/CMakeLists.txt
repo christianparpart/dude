@@ -1,7 +1,7 @@
 add_executable(dude
     main.cpp
 )
-target_link_libraries(dude PRIVATE codedup mcp git)
+target_link_libraries(dude PRIVATE dude-lib mcp git)
 target_compile_definitions(dude PRIVATE
     DUDE_VERSION="${CMAKE_PROJECT_VERSION}"
 )

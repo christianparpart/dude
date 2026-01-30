@@ -32,7 +32,7 @@ DerivePointerAlignment: false
 FixNamespaceComments: true
 IncludeBlocks: Regroup
 IncludeCategories:
-  - Regex: '^<codedup/'
+  - Regex: '^<dude/'
     Priority: 2
   - Regex: '^<catch2/'
     Priority: 3

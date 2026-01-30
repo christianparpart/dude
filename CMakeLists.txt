@@ -96,7 +96,7 @@ CPMAddPackage(
     OPTIONS "STDEXEC_BUILD_TESTS OFF" "STDEXEC_BUILD_EXAMPLES OFF"
 )
 
-add_subdirectory(src/codedup)
+add_subdirectory(src/dude)
 add_subdirectory(src/mcpprotocol)
 add_subdirectory(src/git)
 add_subdirectory(src/mcp)

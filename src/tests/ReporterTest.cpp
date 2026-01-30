@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
-#include <codedup/AnalysisScope.hpp>
-#include <codedup/ConsoleReporter.hpp>
-#include <codedup/IntraFunctionDetector.hpp>
+#include <dude/AnalysisScope.hpp>
+#include <dude/ConsoleReporter.hpp>
+#include <dude/IntraFunctionDetector.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -10,7 +10,7 @@
 #include <sstream>
 #include <string>
 
-using namespace codedup;
+using namespace dude;
 
 TEST_CASE("Reporter.SummaryNoColor", "[reporter]")
 {
@@ -602,10 +602,8 @@ TEST_CASE("Reporter.SummaryWithMultiSecondTiming", "[reporter]")
 TEST_CASE("Reporter.SummaryWithNonDefaultScope", "[reporter]")
 {
     ConsoleReporter reporter({.useColor = false});
-    reporter.ReportSummary({.totalFiles = 10,
-                            .totalBlocks = 50,
-                            .totalGroups = 3,
-                            .activeScope = AnalysisScope::InterFile});
+    reporter.ReportSummary(
+        {.totalFiles = 10, .totalBlocks = 50, .totalGroups = 3, .activeScope = AnalysisScope::InterFile});
 
     auto const out = reporter.Render();
     CHECK(out.contains("Scope:"));

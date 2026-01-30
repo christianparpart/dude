@@ -11,7 +11,7 @@ if(NOT Catch2_FOUND)
     )
 endif()
 
-add_executable(CodeDupTest
+add_executable(dude_test
     AnalysisScopeTest.cpp
     DiffRangeTest.cpp
     DiffFilterTest.cpp
@@ -47,25 +47,25 @@ add_executable(CodeDupTest
     SyntaxHighlighterTest.cpp
 )
 
-target_link_libraries(CodeDupTest PRIVATE
-    codedup
+target_link_libraries(dude_test PRIVATE
+    dude-lib
     mcp
     git
     Catch2::Catch2WithMain
 )
 
-target_compile_definitions(CodeDupTest PRIVATE
-    CODEDUPDETECTOR_VERSION="${CMAKE_PROJECT_VERSION}"
+target_compile_definitions(dude_test PRIVATE
+    DUDE_VERSION="${CMAKE_PROJECT_VERSION}"
 )
 
-set_pedantic_compiler_warnings(CodeDupTest)
-enable_sanitizers(CodeDupTest)
-enable_coverage(CodeDupTest)
-enable_clang_tidy(CodeDupTest)
+set_pedantic_compiler_warnings(dude_test)
+enable_sanitizers(dude_test)
+enable_coverage(dude_test)
+enable_clang_tidy(dude_test)
 
 include(CTest)
 list(APPEND CMAKE_MODULE_PATH ${Catch2_SOURCE_DIR}/extras)
 include(Catch)
-catch_discover_tests(CodeDupTest)
+catch_discover_tests(dude_test)
 
-add_coverage_target(CodeDupTest)
+add_coverage_target(dude_test)

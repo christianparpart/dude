@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
-#include <codedup/FileScanner.hpp>
+#include <dude/FileScanner.hpp>
 
 #include <expected>
 #include <filesystem>
@@ -49,7 +49,7 @@ public:
     /// @param verbose If true, prints diagnostic messages to stderr.
     /// @return A FileFilter predicate, or std::nullopt if git filtering is unavailable.
     [[nodiscard]] static auto CreateFilter(std::filesystem::path const& directory, bool verbose = false)
-        -> std::optional<codedup::FileFilter>;
+        -> std::optional<dude::FileFilter>;
 };
 
 } // namespace git

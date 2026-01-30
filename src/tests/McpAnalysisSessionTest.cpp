@@ -117,7 +117,7 @@ TEST_CASE("AnalysisSession.DetectsClones", "[mcp][session]")
 TEST_CASE("AnalysisSession.ReconfigureWithoutAnalysis", "[mcp][session]")
 {
     AnalysisSession session;
-    auto const result = session.Reconfigure(0.90, 20, 0.0, codedup::AnalysisScope::All);
+    auto const result = session.Reconfigure(0.90, 20, 0.0, dude::AnalysisScope::All);
     CHECK_FALSE(result.has_value());
 }
 
@@ -134,7 +134,7 @@ TEST_CASE("AnalysisSession.ReconfigureAfterAnalysis", "[mcp][session]")
     REQUIRE(session.Analyze(config).has_value());
 
     auto const originalGroups = session.CloneGroups().size();
-    auto const result = session.Reconfigure(0.99, 10, 0.0, codedup::AnalysisScope::All);
+    auto const result = session.Reconfigure(0.99, 10, 0.0, dude::AnalysisScope::All);
     REQUIRE(result.has_value());
     // With a very high threshold, fewer or equal groups should remain
     CHECK(session.CloneGroups().size() <= originalGroups);

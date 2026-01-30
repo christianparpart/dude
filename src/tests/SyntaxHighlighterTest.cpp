@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
-#include <codedup/SyntaxHighlighter.hpp>
+#include <dude/SyntaxHighlighter.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <format>
 #include <string>
 
-using namespace codedup;
+using namespace dude;
 
 namespace
 {

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-#include <codedup/MappedFile.hpp>
+#include <dude/MappedFile.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -7,7 +7,7 @@
 #include <fstream>
 #include <string>
 
-using namespace codedup;
+using namespace dude;
 
 namespace
 {
@@ -19,7 +19,7 @@ struct TempFile
 
     explicit TempFile(std::string const& content)
     {
-        path = std::filesystem::temp_directory_path() / "codedup_mapped_file_test.tmp";
+        path = std::filesystem::temp_directory_path() / "dude_mapped_file_test.tmp";
         std::ofstream ofs(path, std::ios::binary);
         ofs << content;
     }
@@ -39,7 +39,7 @@ struct EmptyTempFile
 
     EmptyTempFile()
     {
-        path = std::filesystem::temp_directory_path() / "codedup_mapped_file_empty_test.tmp";
+        path = std::filesystem::temp_directory_path() / "dude_mapped_file_empty_test.tmp";
         std::ofstream ofs(path, std::ios::binary);
         // write nothing
     }
@@ -83,7 +83,7 @@ TEST_CASE("MappedFile.OpenEmptyFile", "[MappedFile]")
 
 TEST_CASE("MappedFile.OpenNonexistentFile", "[MappedFile]")
 {
-    auto result = MappedFile::Open("/tmp/codedup_nonexistent_file_that_does_not_exist.xyz");
+    auto result = MappedFile::Open("/tmp/dude_nonexistent_file_that_does_not_exist.xyz");
     REQUIRE_FALSE(result.has_value());
     CHECK_FALSE(result.error().empty());
 }
@@ -151,8 +151,8 @@ TEST_CASE("MappedFile.MoveSelfAssignment", "[MappedFile]")
 
     // Self-move-assignment should be a no-op
     auto* ptr = &mapped;
-    *ptr = std::move(mapped); // NOLINT(bugprone-use-after-move,clang-diagnostic-self-move)
-    CHECK(mapped.IsValid());                   // NOLINT(bugprone-use-after-move)
-    CHECK(mapped.Size() == content.size());     // NOLINT(bugprone-use-after-move)
-    CHECK(mapped.View() == content);            // NOLINT(bugprone-use-after-move)
+    *ptr = std::move(mapped);               // NOLINT(bugprone-use-after-move,clang-diagnostic-self-move)
+    CHECK(mapped.IsValid());                // NOLINT(bugprone-use-after-move)
+    CHECK(mapped.Size() == content.size()); // NOLINT(bugprone-use-after-move)
+    CHECK(mapped.View() == content);        // NOLINT(bugprone-use-after-move)
 }

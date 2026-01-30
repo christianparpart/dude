@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
-#include <codedup/AnalysisScope.hpp>
-#include <codedup/CloneDetector.hpp>
-#include <codedup/CodeBlock.hpp>
-#include <codedup/Encoding.hpp>
-#include <codedup/IntraFunctionDetector.hpp>
-#include <codedup/Reporter.hpp>
-#include <codedup/Token.hpp>
+#include <dude/AnalysisScope.hpp>
+#include <dude/CloneDetector.hpp>
+#include <dude/CodeBlock.hpp>
+#include <dude/Encoding.hpp>
+#include <dude/IntraFunctionDetector.hpp>
+#include <dude/Reporter.hpp>
+#include <dude/Token.hpp>
 
 #include <cstddef>
 #include <expected>
@@ -21,13 +21,13 @@ namespace mcp
 /// @brief Configuration for a code duplication analysis run.
 struct AnalysisConfig
 {
-    std::filesystem::path directory;                                ///< Directory to scan.
-    double threshold = 0.80;                                        ///< Similarity threshold.
-    size_t minTokens = 30;                                          ///< Minimum block size in tokens.
-    double textSensitivity = 0.3;                                   ///< Text sensitivity blend factor.
-    codedup::AnalysisScope scope = codedup::AnalysisScope::All;     ///< Analysis scope bitmask.
-    std::vector<std::string> globPatterns;                          ///< Filename glob patterns (empty = defaults).
-    codedup::InputEncoding encoding = codedup::InputEncoding::Auto; ///< Input encoding.
+    std::filesystem::path directory;                          ///< Directory to scan.
+    double threshold = 0.80;                                  ///< Similarity threshold.
+    size_t minTokens = 30;                                    ///< Minimum block size in tokens.
+    double textSensitivity = 0.3;                             ///< Text sensitivity blend factor.
+    dude::AnalysisScope scope = dude::AnalysisScope::All;     ///< Analysis scope bitmask.
+    std::vector<std::string> globPatterns;                    ///< Filename glob patterns (empty = defaults).
+    dude::InputEncoding encoding = dude::InputEncoding::Auto; ///< Input encoding.
 };
 
 /// @brief Error from an analysis operation.
@@ -58,7 +58,7 @@ public:
     /// @param textSensitivity New text sensitivity.
     /// @param scope New analysis scope.
     /// @return void on success, or an AnalysisError on failure.
-    auto Reconfigure(double threshold, size_t minTokens, double textSensitivity, codedup::AnalysisScope scope)
+    auto Reconfigure(double threshold, size_t minTokens, double textSensitivity, dude::AnalysisScope scope)
         -> std::expected<void, AnalysisError>;
 
     /// @brief Returns whether analysis results are available.
@@ -71,22 +71,22 @@ public:
     [[nodiscard]] auto Files() const -> std::vector<std::filesystem::path> const& { return _files; }
 
     /// @brief Returns the token vectors for all files.
-    [[nodiscard]] auto AllTokens() const -> std::vector<std::vector<codedup::Token>> const& { return _allTokens; }
+    [[nodiscard]] auto AllTokens() const -> std::vector<std::vector<dude::Token>> const& { return _allTokens; }
 
     /// @brief Returns all extracted code blocks.
-    [[nodiscard]] auto AllBlocks() const -> std::vector<codedup::CodeBlock> const& { return _allBlocks; }
+    [[nodiscard]] auto AllBlocks() const -> std::vector<dude::CodeBlock> const& { return _allBlocks; }
 
     /// @brief Returns the detected inter-function clone groups.
-    [[nodiscard]] auto CloneGroups() const -> std::vector<codedup::CloneGroup> const& { return _groups; }
+    [[nodiscard]] auto CloneGroups() const -> std::vector<dude::CloneGroup> const& { return _groups; }
 
     /// @brief Returns the detected intra-function clone results.
-    [[nodiscard]] auto IntraResults() const -> std::vector<codedup::IntraCloneResult> const& { return _intraResults; }
+    [[nodiscard]] auto IntraResults() const -> std::vector<dude::IntraCloneResult> const& { return _intraResults; }
 
     /// @brief Returns the block-to-file-index mapping.
     [[nodiscard]] auto BlockToFileIndex() const -> std::vector<size_t> const& { return _blockToFileIndex; }
 
     /// @brief Returns the performance timing data.
-    [[nodiscard]] auto Timing() const -> codedup::PerformanceTiming const& { return _timing; }
+    [[nodiscard]] auto Timing() const -> dude::PerformanceTiming const& { return _timing; }
 
     /// @brief Reads the source code for a code block from disk.
     /// @param blockIndex Index of the block in AllBlocks().
@@ -97,13 +97,13 @@ private:
     bool _hasResults = false;
     AnalysisConfig _config;
     std::vector<std::filesystem::path> _files;
-    std::vector<std::vector<codedup::Token>> _allTokens;
-    std::vector<codedup::Language const*> _fileLanguages;
-    std::vector<codedup::CodeBlock> _allBlocks;
+    std::vector<std::vector<dude::Token>> _allTokens;
+    std::vector<dude::Language const*> _fileLanguages;
+    std::vector<dude::CodeBlock> _allBlocks;
     std::vector<size_t> _blockToFileIndex;
-    std::vector<codedup::CloneGroup> _groups;
-    std::vector<codedup::IntraCloneResult> _intraResults;
-    codedup::PerformanceTiming _timing{};
+    std::vector<dude::CloneGroup> _groups;
+    std::vector<dude::IntraCloneResult> _intraResults;
+    dude::PerformanceTiming _timing{};
 
     void RunBlockExtractionAndDetection();
 };

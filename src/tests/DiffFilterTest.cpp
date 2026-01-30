@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
-#include <codedup/CloneDetector.hpp>
-#include <codedup/CodeBlock.hpp>
-#include <codedup/DiffFilter.hpp>
-#include <codedup/DiffRange.hpp>
-#include <codedup/IntraFunctionDetector.hpp>
+#include <dude/CloneDetector.hpp>
+#include <dude/CodeBlock.hpp>
+#include <dude/DiffFilter.hpp>
+#include <dude/DiffRange.hpp>
+#include <dude/IntraFunctionDetector.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <filesystem>
 
-using namespace codedup;
+using namespace dude;
 
 namespace
 {

@@ -56,7 +56,7 @@ Checks: >-
   -readability-redundant-parentheses
 WarningsAsErrors: "*"
 UseColor: true
-HeaderFilterRegex: '.*/CodeDupDetector/src/.*'
+HeaderFilterRegex: '.*/dude/src/.*'
 FormatStyle:     none
 CheckOptions:
   - key:             readability-function-cognitive-complexity.Threshold

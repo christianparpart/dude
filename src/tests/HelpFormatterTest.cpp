@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
-#include <codedup/HelpFormatter.hpp>
+#include <dude/HelpFormatter.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <string>
 #include <string_view>
 
-using namespace codedup;
+using namespace dude;
 
 // ---------------------------------------------------------------------------
 // ClassifyLine tests

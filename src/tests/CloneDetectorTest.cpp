@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
-#include <codedup/CloneDetector.hpp>
-#include <codedup/CodeBlock.hpp>
-#include <codedup/Languages/CppLanguage.hpp>
-#include <codedup/TokenNormalizer.hpp>
+#include <dude/CloneDetector.hpp>
+#include <dude/CodeBlock.hpp>
+#include <dude/Languages/CppLanguage.hpp>
+#include <dude/TokenNormalizer.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -10,7 +10,7 @@
 #include <algorithm>
 #include <random>
 
-using namespace codedup;
+using namespace dude;
 
 namespace
 {
@@ -864,7 +864,7 @@ TEST_CASE("CloneDetector.BlendedSimilarityWithThreshold", "[detector][blended][t
         normalizer, "void foo(int x) { int a = x + 1; int b = a * 2; int c = b - 3; return; }", "foo2");
 
     auto const simBlended = CloneDetector::ComputeBlendedSimilarity(a.normalizedIds, b.normalizedIds,
-                                                                     a.textPreservingIds, b.textPreservingIds, 0.3);
+                                                                    a.textPreservingIds, b.textPreservingIds, 0.3);
     auto const simBlendedThreshold = CloneDetector::ComputeBlendedSimilarityWithThreshold(
         a.normalizedIds, b.normalizedIds, a.textPreservingIds, b.textPreservingIds, 0.3, 0.80);
 

@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
-#include <codedup/ConsoleReporter.hpp>
-#include <codedup/JsonReporter.hpp>
-#include <codedup/ReporterFactory.hpp>
+#include <dude/ConsoleReporter.hpp>
+#include <dude/JsonReporter.hpp>
+#include <dude/ReporterFactory.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
-using namespace codedup;
+using namespace dude;
 
 TEST_CASE("ParseReporterSpec.EmptyDefaultsToConsole", "[reporter][factory]")
 {

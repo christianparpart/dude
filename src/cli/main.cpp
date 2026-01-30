@@ -8,24 +8,24 @@
 #include <mcpprotocol/McpServer.hpp>
 #include <stdexec/execution.hpp>
 
-#include <codedup/AnalysisScope.hpp>
-#include <codedup/CloneDetector.hpp>
-#include <codedup/CodeBlock.hpp>
-#include <codedup/DiffFilter.hpp>
-#include <codedup/Encoding.hpp>
-#include <codedup/FileScanner.hpp>
-#include <codedup/GlobMatch.hpp>
-#include <codedup/HelpFormatter.hpp>
-#include <codedup/IntraFunctionDetector.hpp>
-#include <codedup/Language.hpp>
-#include <codedup/LanguageRegistry.hpp>
-#include <codedup/ProgressBar.hpp>
-#include <codedup/Reporter.hpp>
-#include <codedup/ReporterFactory.hpp>
-#include <codedup/ScopeFilter.hpp>
-#include <codedup/SimdCharClassifier.hpp>
-#include <codedup/Token.hpp>
-#include <codedup/TokenNormalizer.hpp>
+#include <dude/AnalysisScope.hpp>
+#include <dude/CloneDetector.hpp>
+#include <dude/CodeBlock.hpp>
+#include <dude/DiffFilter.hpp>
+#include <dude/Encoding.hpp>
+#include <dude/FileScanner.hpp>
+#include <dude/GlobMatch.hpp>
+#include <dude/HelpFormatter.hpp>
+#include <dude/IntraFunctionDetector.hpp>
+#include <dude/Language.hpp>
+#include <dude/LanguageRegistry.hpp>
+#include <dude/ProgressBar.hpp>
+#include <dude/Reporter.hpp>
+#include <dude/ReporterFactory.hpp>
+#include <dude/ScopeFilter.hpp>
+#include <dude/SimdCharClassifier.hpp>
+#include <dude/Token.hpp>
+#include <dude/TokenNormalizer.hpp>
 
 #include <algorithm>
 #include <array>
@@ -48,7 +48,7 @@
 
 // x86 CPUID for runtime SIMD detection
 #if defined(__x86_64__) || defined(__i386__) || defined(_M_X64) || defined(_M_IX86)
-#define CODEDUP_X86 1
+#define DUDE_X86 1
 #if defined(_MSC_VER)
 #include <intrin.h>
 #else
@@ -64,29 +64,29 @@ constexpr auto versionString = DUDE_VERSION;
 /// @brief Parsed command-line arguments.
 struct CliOptions
 {
-    std::filesystem::path directory;                                ///< Directory to scan.
-    double threshold = 0.80;                                        ///< Similarity threshold.
-    size_t minTokens = 30;                                          ///< Minimum block size in tokens.
-    double textSensitivity = 0.3;                                   ///< Text sensitivity blend factor.
-    bool useColor = true;                                           ///< Whether to use ANSI colors.
-    bool showSource = true;                                         ///< Whether to show source snippets.
-    codedup::ColorTheme theme = codedup::ColorTheme::Auto;          ///< Color theme.
-    std::vector<std::string> globPatterns;                          ///< Filename glob patterns to include.
-    codedup::InputEncoding encoding = codedup::InputEncoding::Auto; ///< Input file encoding.
-    bool verbose = false;                                           ///< Show verbose diagnostics.
-    bool showProgress = false;                                      ///< Show progress bars.
-    codedup::AnalysisScope scope = codedup::AnalysisScope::All;     ///< Analysis scope bitmask.
-    bool respectGitignore = true;                                   ///< Respect .gitignore when scanning files.
-    bool showHelp = false;                                          ///< Show help text.
-    bool showVersion = false;                                       ///< Show version.
-    bool showExamples = false;                                      ///< Show usage examples.
-    bool showInfo = false;                                          ///< Show system capabilities info.
-    bool mcpMode = false;                                           ///< Run as MCP server.
-    std::string diffBase;                                           ///< Git ref to diff against (enables diff mode).
+    std::filesystem::path directory;                          ///< Directory to scan.
+    double threshold = 0.80;                                  ///< Similarity threshold.
+    size_t minTokens = 30;                                    ///< Minimum block size in tokens.
+    double textSensitivity = 0.3;                             ///< Text sensitivity blend factor.
+    bool useColor = true;                                     ///< Whether to use ANSI colors.
+    bool showSource = true;                                   ///< Whether to show source snippets.
+    dude::ColorTheme theme = dude::ColorTheme::Auto;          ///< Color theme.
+    std::vector<std::string> globPatterns;                    ///< Filename glob patterns to include.
+    dude::InputEncoding encoding = dude::InputEncoding::Auto; ///< Input file encoding.
+    bool verbose = false;                                     ///< Show verbose diagnostics.
+    bool showProgress = false;                                ///< Show progress bars.
+    dude::AnalysisScope scope = dude::AnalysisScope::All;     ///< Analysis scope bitmask.
+    bool respectGitignore = true;                             ///< Respect .gitignore when scanning files.
+    bool showHelp = false;                                    ///< Show help text.
+    bool showVersion = false;                                 ///< Show version.
+    bool showExamples = false;                                ///< Show usage examples.
+    bool showInfo = false;                                    ///< Show system capabilities info.
+    bool mcpMode = false;                                     ///< Run as MCP server.
+    std::string diffBase;                                     ///< Git ref to diff against (enables diff mode).
     std::string reporterSpec; ///< Reporter spec (e.g. "console", "json", "json:file=out.json").
 };
 
-void PrintUsage(FILE* out, bool useColor, codedup::ColorTheme theme)
+void PrintUsage(FILE* out, bool useColor, dude::ColorTheme theme)
 {
     static constexpr auto helpText =
         "Usage: dude [OPTIONS] <directory>\n"
@@ -114,12 +114,12 @@ void PrintUsage(FILE* out, bool useColor, codedup::ColorTheme theme)
         "  --version                   Show version\n"
         "  --show-examples             Show usage examples\n"
         "  --info                      Show system capabilities (threads, SIMD)";
-    auto const formatted = codedup::HelpFormatter::FormatHelp(helpText, useColor, theme);
+    auto const formatted = dude::HelpFormatter::FormatHelp(helpText, useColor, theme);
     std::print(out, "{}\n", formatted);
 }
 
 /// @brief Prints categorized usage examples to stdout.
-void PrintExamples(bool useColor, codedup::ColorTheme theme)
+void PrintExamples(bool useColor, dude::ColorTheme theme)
 {
     static constexpr auto examplesText = "Usage Examples for dude\n"
                                          "=======================\n"
@@ -231,11 +231,11 @@ void PrintExamples(bool useColor, codedup::ColorTheme theme)
                                          "      }\n"
                                          "    }\n"
                                          "  }";
-    auto const formatted = codedup::HelpFormatter::FormatExamples(examplesText, useColor, theme);
+    auto const formatted = dude::HelpFormatter::FormatExamples(examplesText, useColor, theme);
     std::print("{}\n", formatted);
 }
 
-#if defined(CODEDUP_X86)
+#if defined(DUDE_X86)
 /// @brief Queries x86 CPUID leaf/sub-leaf, returns {eax, ebx, ecx, edx}.
 auto Cpuid(int leaf, int subleaf = 0) -> std::array<unsigned, 4>
 {
@@ -259,7 +259,7 @@ void PrintInfo()
     std::println("===================");
     std::println("  Threads (hardware concurrency): {}", std::thread::hardware_concurrency());
 
-#if defined(CODEDUP_X86)
+#if defined(DUDE_X86)
     auto const [eax1, ebx1, ecx1, edx1] = Cpuid(1);
     auto const [eax7, ebx7, ecx7, edx7] = Cpuid(7, 0);
     std::println("  CPU SIMD support:");
@@ -273,7 +273,7 @@ void PrintInfo()
     std::println("    AVX-512: {}", (ebx7 >> 16) & 1 ? "yes" : "no");
 #endif
 
-#if CODEDUP_HAS_SIMD
+#if DUDE_HAS_SIMD
     namespace stdx = std::experimental;
     using SimdU8 = stdx::native_simd<uint8_t>;
     using SimdU32 = stdx::native_simd<uint32_t>;
@@ -340,17 +340,17 @@ auto ParseStringOption(int argc, char* argv[], int& i, std::string_view name) ->
 /// @param argv Argument vector.
 /// @param i Current argument index (advanced past the value on success).
 /// @return The parsed ColorTheme value, or an error string.
-auto ParseThemeOption(int argc, char* argv[], int& i) -> std::expected<codedup::ColorTheme, std::string>
+auto ParseThemeOption(int argc, char* argv[], int& i) -> std::expected<dude::ColorTheme, std::string>
 {
     if (++i >= argc)
         return std::unexpected(std::string("Missing value for --theme"));
     auto const val = std::string_view(argv[i]);
     if (val == "dark")
-        return codedup::ColorTheme::Dark;
+        return dude::ColorTheme::Dark;
     if (val == "light")
-        return codedup::ColorTheme::Light;
+        return dude::ColorTheme::Light;
     if (val == "auto")
-        return codedup::ColorTheme::Auto;
+        return dude::ColorTheme::Auto;
     return std::unexpected(std::format("Unknown theme: {}", val));
 }
 
@@ -359,11 +359,11 @@ auto ParseThemeOption(int argc, char* argv[], int& i) -> std::expected<codedup::
 /// @param argv Argument vector.
 /// @param i Current argument index (advanced past the value on success).
 /// @return The parsed InputEncoding value, or an error string.
-auto ParseEncodingOption(int argc, char* argv[], int& i) -> std::expected<codedup::InputEncoding, std::string>
+auto ParseEncodingOption(int argc, char* argv[], int& i) -> std::expected<dude::InputEncoding, std::string>
 {
     if (++i >= argc)
         return std::unexpected(std::string("Missing value for --encoding"));
-    auto const encResult = codedup::ParseEncodingName(argv[i]);
+    auto const encResult = dude::ParseEncodingName(argv[i]);
     if (!encResult)
         return std::unexpected(encResult.error().message);
     return *encResult;
@@ -450,7 +450,7 @@ auto ProcessArg(int argc, char* argv[], int& i, CliOptions& opts)
     if (arg == "--theme")
         return ParseThemeOption(argc, argv, i)
             .transform(
-                [&](codedup::ColorTheme v) -> CliOptions
+                [&](dude::ColorTheme v) -> CliOptions
                 {
                     opts.theme = v;
                     return opts;
@@ -466,7 +466,7 @@ auto ProcessArg(int argc, char* argv[], int& i, CliOptions& opts)
     if (arg == "--encoding")
         return ParseEncodingOption(argc, argv, i)
             .transform(
-                [&](codedup::InputEncoding v) -> CliOptions
+                [&](dude::InputEncoding v) -> CliOptions
                 {
                     opts.encoding = v;
                     return opts;
@@ -494,7 +494,7 @@ auto ProcessArg(int argc, char* argv[], int& i, CliOptions& opts)
             .and_then(
                 [&](std::string const& v) -> std::expected<CliOptions, std::string>
                 {
-                    auto const scopeResult = codedup::ParseAnalysisScope(v);
+                    auto const scopeResult = dude::ParseAnalysisScope(v);
                     if (!scopeResult)
                         return std::unexpected(scopeResult.error().message);
                     opts.scope = *scopeResult;
@@ -566,10 +566,10 @@ auto ParseArgs(int argc, char* argv[]) -> std::expected<CliOptions, std::string>
 /// @param opts The parsed CLI options.
 /// @return The parsed diff result on success, or an exit code on failure.
 ///         Returns an empty DiffResult if diff mode is not active.
-auto RunDiffSetup(CliOptions const& opts) -> std::expected<codedup::DiffResult, int>
+auto RunDiffSetup(CliOptions const& opts) -> std::expected<dude::DiffResult, int>
 {
     if (opts.diffBase.empty())
-        return codedup::DiffResult{};
+        return dude::DiffResult{};
 
     if (opts.verbose)
         std::println(stderr, "Running git diff against {}...", opts.diffBase);
@@ -583,7 +583,7 @@ auto RunDiffSetup(CliOptions const& opts) -> std::expected<codedup::DiffResult, 
     }
 
     auto const extensions =
-        opts.globPatterns.empty() ? codedup::FileScanner::DefaultExtensions() : std::vector<std::string>{};
+        opts.globPatterns.empty() ? dude::FileScanner::DefaultExtensions() : std::vector<std::string>{};
     auto diffResult = git::GitDiffParser::ParseDiffOutput(*diffOutput, extensions);
 
     // Post-filter by glob patterns when active
@@ -594,7 +594,7 @@ auto RunDiffSetup(CliOptions const& opts) -> std::expected<codedup::DiffResult, 
                       {
                           auto const filename = fc.filePath.filename().string();
                           return !std::ranges::any_of(opts.globPatterns, [&filename](std::string const& pattern)
-                                                      { return codedup::GlobMatch(pattern, filename); });
+                                                      { return dude::GlobMatch(pattern, filename); });
                       });
     }
 
@@ -623,7 +623,7 @@ auto RunDiffSetup(CliOptions const& opts) -> std::expected<codedup::DiffResult, 
 /// @param opts The parsed CLI options.
 /// @param timing Performance timing struct to record scan duration.
 /// @return A vector of source file paths on success, or an exit code on failure.
-auto ScanFiles(CliOptions const& opts, codedup::PerformanceTiming& timing)
+auto ScanFiles(CliOptions const& opts, dude::PerformanceTiming& timing)
     -> std::expected<std::vector<std::filesystem::path>, int>
 {
     using Clock = std::chrono::steady_clock;
@@ -634,7 +634,7 @@ auto ScanFiles(CliOptions const& opts, codedup::PerformanceTiming& timing)
     auto const scanStart = Clock::now();
     // When glob patterns are active, skip extension filtering (pass empty → accept all)
     auto const extensions =
-        opts.globPatterns.empty() ? codedup::FileScanner::DefaultExtensions() : std::vector<std::string>{};
+        opts.globPatterns.empty() ? dude::FileScanner::DefaultExtensions() : std::vector<std::string>{};
 
     // Build an optional gitignore-aware filter.
     auto const gitFilter =
@@ -642,18 +642,18 @@ auto ScanFiles(CliOptions const& opts, codedup::PerformanceTiming& timing)
 
     // Build an optional glob-based filename filter.
     auto const globFilter = opts.globPatterns.empty()
-                                ? std::optional<codedup::FileFilter>(std::nullopt)
-                                : std::optional<codedup::FileFilter>(
+                                ? std::optional<dude::FileFilter>(std::nullopt)
+                                : std::optional<dude::FileFilter>(
                                       [patterns = opts.globPatterns](std::filesystem::path const& path) -> bool
                                       {
                                           auto const filename = path.filename().string();
                                           return std::ranges::any_of(patterns, [&filename](std::string const& pattern)
-                                                                     { return codedup::GlobMatch(pattern, filename); });
+                                                                     { return dude::GlobMatch(pattern, filename); });
                                       });
 
     // Compose all filters into a single predicate.
     auto const composedFilter = (gitFilter || globFilter)
-                                    ? std::optional<codedup::FileFilter>(
+                                    ? std::optional<dude::FileFilter>(
                                           [gitFilter, globFilter](std::filesystem::path const& path) -> bool
                                           {
                                               if (gitFilter && !(*gitFilter)(path))
@@ -662,9 +662,9 @@ auto ScanFiles(CliOptions const& opts, codedup::PerformanceTiming& timing)
                                                   return false;
                                               return true;
                                           })
-                                    : std::optional<codedup::FileFilter>(std::nullopt);
+                                    : std::optional<dude::FileFilter>(std::nullopt);
 
-    auto const filesResult = codedup::FileScanner::Scan(opts.directory, extensions, composedFilter);
+    auto const filesResult = dude::FileScanner::Scan(opts.directory, extensions, composedFilter);
     timing.scanning = Clock::now() - scanStart;
     if (!filesResult)
     {
@@ -689,18 +689,18 @@ auto ScanFiles(CliOptions const& opts, codedup::PerformanceTiming& timing)
 /// @param timing Performance timing struct to record tokenization duration.
 /// @return A pair of (token vectors, language pointers), one per file (in the same order as files).
 auto TokenizeFiles(std::vector<std::filesystem::path> const& files, CliOptions const& opts,
-                   codedup::PerformanceTiming& timing, codedup::ProgressBar* progressBar)
-    -> std::pair<std::vector<std::vector<codedup::Token>>, std::vector<codedup::Language const*>>
+                   dude::PerformanceTiming& timing, dude::ProgressBar* progressBar)
+    -> std::pair<std::vector<std::vector<dude::Token>>, std::vector<dude::Language const*>>
 {
     using Clock = std::chrono::steady_clock;
 
     auto const tokenizeStart = Clock::now();
     auto const numFiles = files.size();
 
-    std::vector<std::vector<codedup::Token>> allTokens(numFiles);
-    std::vector<codedup::Language const*> fileLanguages(numFiles, nullptr);
+    std::vector<std::vector<dude::Token>> allTokens(numFiles);
+    std::vector<dude::Language const*> fileLanguages(numFiles, nullptr);
 
-    auto const& registry = codedup::LanguageRegistry::Instance();
+    auto const& registry = dude::LanguageRegistry::Instance();
 
     // Pre-resolve languages (lightweight, sequential)
     for (size_t fi = 0; fi < numFiles; ++fi)
@@ -768,19 +768,19 @@ auto TokenizeFiles(std::vector<std::filesystem::path> const& files, CliOptions c
 /// @param opts The parsed CLI options (for minTokens, textSensitivity, verbosity).
 /// @param timing Performance timing struct to record normalization duration.
 /// @return A tuple of (all extracted code blocks, block-to-file-index mapping).
-auto ExtractBlocks(std::vector<std::vector<codedup::Token>> const& allTokens,
-                   std::vector<codedup::Language const*> const& fileLanguages,
+auto ExtractBlocks(std::vector<std::vector<dude::Token>> const& allTokens,
+                   std::vector<dude::Language const*> const& fileLanguages,
                    std::vector<std::filesystem::path> const& files, CliOptions const& opts,
-                   codedup::PerformanceTiming& timing, codedup::ProgressBar* progressBar)
-    -> std::tuple<std::vector<codedup::CodeBlock>, std::vector<size_t>>
+                   dude::PerformanceTiming& timing, dude::ProgressBar* progressBar)
+    -> std::tuple<std::vector<dude::CodeBlock>, std::vector<size_t>>
 {
     using Clock = std::chrono::steady_clock;
 
     auto const normalizeStart = Clock::now();
-    codedup::TokenNormalizer normalizer;
-    codedup::CodeBlockExtractorConfig const config{.minTokens = opts.minTokens};
+    dude::TokenNormalizer normalizer;
+    dude::CodeBlockExtractorConfig const config{.minTokens = opts.minTokens};
 
-    std::vector<codedup::CodeBlock> allBlocks;
+    std::vector<dude::CodeBlock> allBlocks;
     std::vector<size_t> blockToFileIndex;
 
     auto const useTextSensitivity = opts.textSensitivity > 0.0;
@@ -796,7 +796,7 @@ auto ExtractBlocks(std::vector<std::vector<codedup::Token>> const& allTokens,
 
         auto normalized = normalizer.Normalize(allTokens[fi], language);
         auto textPreserving = useTextSensitivity ? normalizer.NormalizeTextPreserving(allTokens[fi], language)
-                                                 : std::vector<codedup::NormalizedToken>{};
+                                                 : std::vector<dude::NormalizedToken>{};
         auto blocks = language->ExtractBlocks(allTokens[fi], normalized, textPreserving, config);
 
         if (opts.verbose && !blocks.empty())
@@ -834,7 +834,7 @@ int main(int argc, char* argv[])
     if (!optsResult)
     {
         std::println(stderr, "Error: {}\n", optsResult.error());
-        PrintUsage(stderr, false, codedup::ColorTheme::Auto);
+        PrintUsage(stderr, false, dude::ColorTheme::Auto);
         return 2;
     }
 
@@ -874,7 +874,7 @@ int main(int argc, char* argv[])
             .description = "Code duplication detection and analysis tool",
             .websiteUrl = {},
         });
-        mcp::RegisterCodeDupTools(server, session);
+        mcp::RegisterDudeTools(server, session);
         return server.Run();
     }
 
@@ -886,7 +886,7 @@ int main(int argc, char* argv[])
         return diffSetupResult.error();
     auto const& diffResult = *diffSetupResult;
 
-    codedup::PerformanceTiming timing;
+    dude::PerformanceTiming timing;
 
     // Step 1: Scan files
     auto const filesResult = ScanFiles(opts, timing);
@@ -896,7 +896,7 @@ int main(int argc, char* argv[])
 
     // Step 2: Tokenize all files (language-aware)
     auto tokenBar =
-        opts.showProgress ? std::make_optional<codedup::ProgressBar>("Tokenizing", files.size()) : std::nullopt;
+        opts.showProgress ? std::make_optional<dude::ProgressBar>("Tokenizing", files.size()) : std::nullopt;
     if (tokenBar)
         tokenBar->Start();
     auto [allTokens, fileLanguages] = TokenizeFiles(files, opts, timing, tokenBar ? &*tokenBar : nullptr);
@@ -905,7 +905,7 @@ int main(int argc, char* argv[])
 
     // Step 3: Normalize and extract blocks (language-aware)
     auto extractBar =
-        opts.showProgress ? std::make_optional<codedup::ProgressBar>("Extracting", files.size()) : std::nullopt;
+        opts.showProgress ? std::make_optional<dude::ProgressBar>("Extracting", files.size()) : std::nullopt;
     if (extractBar)
         extractBar->Start();
     auto [allBlocks, blockToFileIndex] =
@@ -916,33 +916,33 @@ int main(int argc, char* argv[])
     // Step 4: Detect clones
     using Clock = std::chrono::steady_clock;
 
-    std::vector<codedup::CloneGroup> groups;
-    if (codedup::HasInterFunctionScope(opts.scope))
+    std::vector<dude::CloneGroup> groups;
+    if (dude::HasInterFunctionScope(opts.scope))
     {
         auto const detectStart = Clock::now();
-        codedup::CloneDetector detector({
+        dude::CloneDetector detector({
             .similarityThreshold = opts.threshold,
             .minTokens = opts.minTokens,
             .textSensitivity = opts.textSensitivity,
         });
 
         auto fingerprintBar = opts.showProgress
-                                  ? std::make_optional<codedup::ProgressBar>("Fingerprinting", allBlocks.size())
+                                  ? std::make_optional<dude::ProgressBar>("Fingerprinting", allBlocks.size())
                                   : std::nullopt;
         if (fingerprintBar)
             fingerprintBar->Start();
 
         auto candidateBar =
-            opts.showProgress ? std::make_optional<codedup::ProgressBar>("Gather Candidates", size_t{0}) : std::nullopt;
+            opts.showProgress ? std::make_optional<dude::ProgressBar>("Gather Candidates", size_t{0}) : std::nullopt;
 
         auto collectBar =
-            opts.showProgress ? std::make_optional<codedup::ProgressBar>("Collecting", size_t{0}) : std::nullopt;
+            opts.showProgress ? std::make_optional<dude::ProgressBar>("Collecting", size_t{0}) : std::nullopt;
 
         auto detectBar =
-            opts.showProgress ? std::make_optional<codedup::ProgressBar>("Detecting", size_t{0}) : std::nullopt;
+            opts.showProgress ? std::make_optional<dude::ProgressBar>("Detecting", size_t{0}) : std::nullopt;
 
         groups = detector.Detect(
-            allBlocks, detectBar ? detectBar->MakeAbsoluteCallback() : codedup::ProgressCallback{},
+            allBlocks, detectBar ? detectBar->MakeAbsoluteCallback() : dude::ProgressCallback{},
             [&](size_t current, size_t total)
             {
                 if (fingerprintBar)
@@ -1000,7 +1000,7 @@ int main(int argc, char* argv[])
         timing.cloneDetection = Clock::now() - detectStart;
 
         // Apply scope-based filtering (inter-file vs intra-file).
-        groups = codedup::ScopeFilter::FilterCloneGroups(groups, blockToFileIndex, opts.scope);
+        groups = dude::ScopeFilter::FilterCloneGroups(groups, blockToFileIndex, opts.scope);
 
         std::ranges::sort(groups,
                           [&allBlocks](auto const& a, auto const& b)
@@ -1014,25 +1014,25 @@ int main(int argc, char* argv[])
     }
 
     // Step 4b: Detect intra-function clones
-    std::vector<codedup::IntraCloneResult> intraResults;
-    if (codedup::HasScope(opts.scope, codedup::AnalysisScope::IntraFunction))
+    std::vector<dude::IntraCloneResult> intraResults;
+    if (dude::HasScope(opts.scope, dude::AnalysisScope::IntraFunction))
     {
         if (opts.verbose)
             std::println(stderr, "Detecting intra-function clones...");
 
         auto const intraStart = Clock::now();
-        codedup::IntraFunctionDetector intraDetector({
+        dude::IntraFunctionDetector intraDetector({
             .minRegionTokens = opts.minTokens,
             .similarityThreshold = opts.threshold,
             .textSensitivity = opts.textSensitivity,
         });
 
-        auto intraBar = opts.showProgress ? std::make_optional<codedup::ProgressBar>("Intra-detect", allBlocks.size())
-                                          : std::nullopt;
+        auto intraBar =
+            opts.showProgress ? std::make_optional<dude::ProgressBar>("Intra-detect", allBlocks.size()) : std::nullopt;
         if (intraBar)
             intraBar->Start();
         intraResults =
-            intraDetector.Detect(allBlocks, intraBar ? intraBar->MakeAbsoluteCallback() : codedup::ProgressCallback{});
+            intraDetector.Detect(allBlocks, intraBar ? intraBar->MakeAbsoluteCallback() : dude::ProgressCallback{});
         if (intraBar)
             intraBar->Finish();
         timing.intraDetection = Clock::now() - intraStart;
@@ -1062,13 +1062,13 @@ int main(int argc, char* argv[])
     if (diffMode)
     {
         auto const projectRoot = std::filesystem::weakly_canonical(opts.directory);
-        auto const changedBlocks = codedup::DiffFilter::FindChangedBlocks(allBlocks, diffResult, projectRoot, files);
+        auto const changedBlocks = dude::DiffFilter::FindChangedBlocks(allBlocks, diffResult, projectRoot, files);
 
         if (opts.verbose)
             std::println(stderr, "Found {} code blocks overlapping with changed lines", changedBlocks.size());
 
-        groups = codedup::DiffFilter::FilterCloneGroups(groups, changedBlocks);
-        intraResults = codedup::DiffFilter::FilterIntraResults(intraResults, changedBlocks);
+        groups = dude::DiffFilter::FilterCloneGroups(groups, changedBlocks);
+        intraResults = dude::DiffFilter::FilterIntraResults(intraResults, changedBlocks);
     }
 
     // Step 4d: Release token vectors for non-participating files to reduce peak memory.
@@ -1097,13 +1097,13 @@ int main(int argc, char* argv[])
     }
 
     // Step 5: Report results
-    codedup::ReporterConfig const consoleConfig{
+    dude::ReporterConfig const consoleConfig{
         .useColor = opts.useColor,
         .showSourceCode = opts.showSource,
         .theme = opts.theme,
     };
 
-    auto reporterResult = codedup::CreateReporter(opts.reporterSpec, consoleConfig);
+    auto reporterResult = dude::CreateReporter(opts.reporterSpec, consoleConfig);
     if (!reporterResult)
     {
         std::println(stderr, "Error: {}", reporterResult.error().message);
@@ -1111,7 +1111,7 @@ int main(int argc, char* argv[])
     }
     auto const& reporter = *reporterResult;
 
-    auto const specResult = codedup::ParseReporterSpec(opts.reporterSpec);
+    auto const specResult = dude::ParseReporterSpec(opts.reporterSpec);
 
     reporter->Report(groups, allBlocks, allTokens, blockToFileIndex, files);
 

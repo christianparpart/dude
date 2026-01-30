@@ -117,7 +117,7 @@ TEST_CASE("McpTools.ToolsAreRegistered", "[mcp][tools]")
 {
     AnalysisSession session;
     McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
-    RegisterCodeDupTools(server, session);
+    RegisterDudeTools(server, session);
     InitServer(server);
 
     JsonRpcRequest req;
@@ -148,7 +148,7 @@ TEST_CASE("McpTools.PromptsAreRegistered", "[mcp][tools]")
 {
     AnalysisSession session;
     McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
-    RegisterCodeDupTools(server, session);
+    RegisterDudeTools(server, session);
     InitServer(server);
 
     JsonRpcRequest req;
@@ -172,7 +172,7 @@ TEST_CASE("McpTools.AnalyzeDirectory.Success", "[mcp][tools]")
 
     AnalysisSession session;
     McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
-    RegisterCodeDupTools(server, session);
+    RegisterDudeTools(server, session);
     InitServer(server);
 
     auto const resp = CallTool(server, "analyze_directory",
@@ -186,7 +186,7 @@ TEST_CASE("McpTools.AnalyzeDirectory.InvalidDirectory", "[mcp][tools]")
 {
     AnalysisSession session;
     McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
-    RegisterCodeDupTools(server, session);
+    RegisterDudeTools(server, session);
     InitServer(server);
 
     auto const resp = CallTool(server, "analyze_directory", {{"directory", "/nonexistent/xyzzy"}});
@@ -202,7 +202,7 @@ TEST_CASE("McpTools.GetCloneGroups.RequiresAnalysis", "[mcp][tools]")
 {
     AnalysisSession session;
     McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
-    RegisterCodeDupTools(server, session);
+    RegisterDudeTools(server, session);
     InitServer(server);
 
     auto const resp = CallTool(server, "get_clone_groups", nlohmann::json::object());
@@ -217,7 +217,7 @@ TEST_CASE("McpTools.GetCloneGroups.WithResults", "[mcp][tools]")
 
     AnalysisSession session;
     McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
-    RegisterCodeDupTools(server, session);
+    RegisterDudeTools(server, session);
     InitServer(server);
 
     CallTool(server, "analyze_directory", {{"directory", dir.root.string()}, {"min_tokens", 10}, {"threshold", 0.70}});
@@ -237,7 +237,7 @@ TEST_CASE("McpTools.GetCodeBlock.RequiresAnalysis", "[mcp][tools]")
 {
     AnalysisSession session;
     McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
-    RegisterCodeDupTools(server, session);
+    RegisterDudeTools(server, session);
     InitServer(server);
 
     auto const resp = CallTool(server, "get_code_block", {{"block_index", 0}});
@@ -252,7 +252,7 @@ TEST_CASE("McpTools.GetCodeBlock.WithResults", "[mcp][tools]")
 
     AnalysisSession session;
     McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
-    RegisterCodeDupTools(server, session);
+    RegisterDudeTools(server, session);
     InitServer(server);
 
     CallTool(server, "analyze_directory", {{"directory", dir.root.string()}, {"min_tokens", 10}});
@@ -275,7 +275,7 @@ TEST_CASE("McpTools.GetSummary.TextFormat", "[mcp][tools]")
 
     AnalysisSession session;
     McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
-    RegisterCodeDupTools(server, session);
+    RegisterDudeTools(server, session);
     InitServer(server);
 
     CallTool(server, "analyze_directory", {{"directory", dir.root.string()}, {"min_tokens", 10}});
@@ -294,7 +294,7 @@ TEST_CASE("McpTools.GetSummary.JsonFormat", "[mcp][tools]")
 
     AnalysisSession session;
     McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
-    RegisterCodeDupTools(server, session);
+    RegisterDudeTools(server, session);
     InitServer(server);
 
     CallTool(server, "analyze_directory", {{"directory", dir.root.string()}, {"min_tokens", 10}});
@@ -314,7 +314,7 @@ TEST_CASE("McpTools.ConfigureAnalysis.RequiresAnalysis", "[mcp][tools]")
 {
     AnalysisSession session;
     McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
-    RegisterCodeDupTools(server, session);
+    RegisterDudeTools(server, session);
     InitServer(server);
 
     auto const resp = CallTool(server, "configure_analysis", {{"threshold", 0.95}});
@@ -329,7 +329,7 @@ TEST_CASE("McpTools.ConfigureAnalysis.UpdatesParameters", "[mcp][tools]")
 
     AnalysisSession session;
     McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
-    RegisterCodeDupTools(server, session);
+    RegisterDudeTools(server, session);
     InitServer(server);
 
     CallTool(server, "analyze_directory", {{"directory", dir.root.string()}, {"min_tokens", 10}, {"threshold", 0.70}});
@@ -347,7 +347,7 @@ TEST_CASE("McpTools.QueryFileDuplicates.RequiresAnalysis", "[mcp][tools]")
 {
     AnalysisSession session;
     McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
-    RegisterCodeDupTools(server, session);
+    RegisterDudeTools(server, session);
     InitServer(server);
 
     auto const resp = CallTool(server, "query_file_duplicates", {{"file_path", "test.cpp"}});
@@ -362,7 +362,7 @@ TEST_CASE("McpTools.QueryFileDuplicates.WithResults", "[mcp][tools]")
 
     AnalysisSession session;
     McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
-    RegisterCodeDupTools(server, session);
+    RegisterDudeTools(server, session);
     InitServer(server);
 
     CallTool(server, "analyze_directory", {{"directory", dir.root.string()}, {"min_tokens", 10}, {"threshold", 0.70}});
@@ -382,7 +382,7 @@ TEST_CASE("McpTools.AnalyzeAndReportPrompt", "[mcp][tools]")
 {
     AnalysisSession session;
     McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
-    RegisterCodeDupTools(server, session);
+    RegisterDudeTools(server, session);
     InitServer(server);
 
     JsonRpcRequest req;
@@ -399,7 +399,7 @@ TEST_CASE("McpTools.ReviewFilePrompt", "[mcp][tools]")
 {
     AnalysisSession session;
     McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
-    RegisterCodeDupTools(server, session);
+    RegisterDudeTools(server, session);
     InitServer(server);
 
     JsonRpcRequest req;
@@ -416,7 +416,7 @@ TEST_CASE("McpTools.ReviewFilePrompt.MissingArg", "[mcp][tools]")
 {
     AnalysisSession session;
     McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
-    RegisterCodeDupTools(server, session);
+    RegisterDudeTools(server, session);
     InitServer(server);
 
     JsonRpcRequest req;
@@ -439,7 +439,7 @@ TEST_CASE("McpTools.AnalyzeFile.SelfContained", "[mcp][tools]")
 
     AnalysisSession session;
     McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
-    RegisterCodeDupTools(server, session);
+    RegisterDudeTools(server, session);
     InitServer(server);
 
     auto const filePath = std::filesystem::weakly_canonical(dir.root / "dup.cpp").string();
@@ -490,7 +490,7 @@ void functionB(int y) {
 
     AnalysisSession session;
     McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
-    RegisterCodeDupTools(server, session);
+    RegisterDudeTools(server, session);
     InitServer(server);
 
     auto const filePath = std::filesystem::weakly_canonical(dir.root / "a.cpp").string();
@@ -508,7 +508,7 @@ TEST_CASE("McpTools.AnalyzeFile.FileNotFound", "[mcp][tools]")
 
     AnalysisSession session;
     McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
-    RegisterCodeDupTools(server, session);
+    RegisterDudeTools(server, session);
     InitServer(server);
 
     auto const resp =
@@ -524,7 +524,7 @@ TEST_CASE("McpTools.AnalyzeFile.ReusesExistingSession", "[mcp][tools]")
 
     AnalysisSession session;
     McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
-    RegisterCodeDupTools(server, session);
+    RegisterDudeTools(server, session);
     InitServer(server);
 
     // First, run analyze_directory.
@@ -613,7 +613,7 @@ void uniqueFunction(int x) {
 
     AnalysisSession session;
     McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
-    RegisterCodeDupTools(server, session);
+    RegisterDudeTools(server, session);
     InitServer(server);
 
     auto const resp = CallTool(
@@ -665,7 +665,7 @@ void functionB(int y) {
 
     AnalysisSession session;
     McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
-    RegisterCodeDupTools(server, session);
+    RegisterDudeTools(server, session);
     InitServer(server);
 
     auto const resp = CallTool(server, "analyze_branch_duplicates",
@@ -688,7 +688,7 @@ TEST_CASE("McpTools.AnalyzeBranchDuplicates.GitError", "[mcp][tools]")
 
     AnalysisSession session;
     McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
-    RegisterCodeDupTools(server, session);
+    RegisterDudeTools(server, session);
     InitServer(server);
 
     auto const resp =

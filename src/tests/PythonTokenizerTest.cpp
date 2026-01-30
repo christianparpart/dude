@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
-#include <codedup/Languages/PythonLanguage.hpp>
+#include <dude/Languages/PythonLanguage.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
-using namespace codedup;
+using namespace dude;
 
 TEST_CASE("PythonTokenizer.EmptyInput", "[python][tokenizer]")
 {

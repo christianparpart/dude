@@ -98,7 +98,7 @@ auto GitFileFilter::QueryNonIgnoredFiles(std::filesystem::path const& gitRoot, s
 }
 
 auto GitFileFilter::CreateFilter(std::filesystem::path const& directory, bool verbose)
-    -> std::optional<codedup::FileFilter>
+    -> std::optional<dude::FileFilter>
 {
     auto const gitRoot = FindGitRoot(directory);
     if (!gitRoot)
@@ -125,7 +125,7 @@ auto GitFileFilter::CreateFilter(std::filesystem::path const& directory, bool ve
     // Move the set into a shared_ptr so the lambda is copyable.
     auto allowedFiles = std::make_shared<std::unordered_set<std::string>>(std::move(*filesResult));
 
-    return codedup::FileFilter(
+    return dude::FileFilter(
         [allowedFiles](std::filesystem::path const& path) -> bool
         {
             auto const canonical = std::filesystem::weakly_canonical(path).string();
