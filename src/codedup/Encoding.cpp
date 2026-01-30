@@ -221,6 +221,7 @@ auto ConvertToUtf8(std::string_view data, InputEncoding encoding) -> std::expect
             // DetectEncoding() above always resolves Auto to either Utf8 or Windows1252.
             std::unreachable();
     }
+    std::unreachable();
 }
 
 auto ParseEncodingName(std::string_view name) -> std::expected<InputEncoding, EncodingError>
