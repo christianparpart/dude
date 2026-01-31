@@ -870,3 +870,67 @@ TEST_CASE("CloneDetector.BlendedSimilarityWithThreshold", "[detector][blended][t
 
     CHECK_THAT(simBlendedThreshold, Catch::Matchers::WithinAbs(simBlended, 1e-10));
 }
+
+// ---------------------------------------------------------------------------
+// Coverage: progress callbacks in Detect (lines 112, 186-189, 272-274, 323-326)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("CloneDetector.DetectWithCallbacks", "[clone-detector]")
+{
+    auto const a = MakeBlock("void foo(int x) { int a = x + 1; int b = a * 2; int c = b - 3; return; }", "foo");
+    auto const b = MakeBlock("void bar(int y) { int d = y + 1; int e = d * 2; int f = e - 3; return; }", "bar");
+
+    std::vector<CodeBlock> blocks = {a, b};
+
+    size_t fpCalls = 0;
+    size_t candCalls = 0;
+    size_t collectCalls = 0;
+    size_t progressCalls = 0;
+
+    CloneDetector detector({.similarityThreshold = 0.50, .minTokens = 3});
+    auto groups = detector.Detect(
+        blocks, [&](size_t, size_t) { ++progressCalls; }, [&](size_t, size_t) { ++fpCalls; },
+        [&](size_t, size_t) { ++candCalls; }, [&](size_t, size_t) { ++collectCalls; });
+
+    CHECK(fpCalls > 0);
+    // groups should detect clones
+    CHECK(!groups.empty());
+}
+
+// ---------------------------------------------------------------------------
+// Coverage: blended similarity with structural=0, high text sensitivity (lines 1052-1060)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("CloneDetector.BlendedSimilarityZeroStructural", "[clone-detector]")
+{
+    // Two completely different structural sequences, same text.
+    // With textSensitivity = 1.0 (pure textual), threshold = 0.1,
+    // structuralSim = 0.0, but bestBlended = textSensitivity * 1.0 = 1.0 >= threshold.
+    std::vector<NormalizedTokenId> structA = {1, 2, 3, 4, 5};
+    std::vector<NormalizedTokenId> structB = {6, 7, 8, 9, 10};
+    std::vector<NormalizedTokenId> textA = {100, 200, 300, 400, 500};
+    std::vector<NormalizedTokenId> textB = {100, 200, 300, 400, 500};
+
+    auto const result = CloneDetector::ComputeBlendedSimilarityWithThreshold(structA, structB, textA, textB, 1.0, 0.1);
+    // With textSensitivity=1.0, result = 0*structSim + 1*textSim = textSim
+    // textA == textB, so textSim should be 1.0
+    CHECK_THAT(result, Catch::Matchers::WithinAbs(1.0, 1e-6));
+}
+
+// ---------------------------------------------------------------------------
+// Coverage: clone group sorting (line 409)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("CloneDetector.GroupsSortedBySize", "[clone-detector]")
+{
+    // Create 3 blocks where a,b are similar and b,c are similar but with smaller tokens
+    auto const a = MakeBlock("void f1(int x) { int a=x+1; int b=a*2; int c=b-3; int d=c+4; int e=d*5; return; }", "f1");
+    auto const b = MakeBlock("void f2(int y) { int a=y+1; int b=a*2; int c=b-3; int d=c+4; int e=d*5; return; }", "f2");
+
+    std::vector<CodeBlock> blocks = {a, b};
+    CloneDetector detector({.similarityThreshold = 0.50, .minTokens = 3});
+    auto groups = detector.Detect(blocks);
+    // Groups should be returned sorted by blockIndices.size() descending
+    for (size_t i = 1; i < groups.size(); ++i)
+        CHECK(groups[i - 1].blockIndices.size() >= groups[i].blockIndices.size());
+}

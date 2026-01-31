@@ -159,3 +159,15 @@ TEST_CASE("BuildToolResultJson.SerializesJson", "[mcp][protocol]")
     auto const parsed = nlohmann::json::parse(text);
     CHECK(parsed["key"] == "value");
 }
+
+// ---------------------------------------------------------------------------
+// Coverage: websiteUrl field in BuildInitializeResult (line 21)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("BuildInitializeResult.ContainsWebsiteUrl", "[mcp][protocol]")
+{
+    auto const result = BuildInitializeResult(
+        {.name = "s", .version = "1", .title = {}, .description = {}, .websiteUrl = "https://example.com"}, false,
+        false);
+    CHECK(result["serverInfo"]["websiteUrl"] == "https://example.com");
+}

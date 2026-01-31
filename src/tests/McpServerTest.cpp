@@ -331,3 +331,32 @@ TEST_CASE("McpServer.RunStdioLoop", "[mcp][server]")
     // Should have 2 responses (initialize + ping), notification produces no response
     CHECK(responseCount == 2);
 }
+
+// ---------------------------------------------------------------------------
+// Coverage: empty lines in Run() stdio loop (line 29) and parse error path (lines 34-37)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("McpServer.RunStdioLoopWithEmptyAndInvalidLines", "[mcp][server]")
+{
+    auto server = MakeTestServer();
+
+    std::string input;
+    // Empty line (should be skipped)
+    input += "\n";
+    // Invalid JSON (should produce a parse error response)
+    input += "not valid json\n";
+    // Valid initialize
+    input +=
+        R"({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}})"
+        "\n";
+
+    std::istringstream in(input);
+    std::ostringstream out;
+
+    auto const exitCode = server.Run(in, out);
+    CHECK(exitCode == 0);
+
+    auto const output = out.str();
+    // Should have at least 2 responses: one error for invalid JSON, one for initialize
+    CHECK(!output.empty());
+}

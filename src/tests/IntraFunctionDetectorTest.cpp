@@ -534,3 +534,49 @@ void bigFunction(int input) {
     auto const results = detector.Detect({block});
     CHECK(results.empty());
 }
+
+// ---------------------------------------------------------------------------
+// Coverage: progress callback in Detect (line 220)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("IntraFunctionDetector.ProgressCallback", "[intra]")
+{
+    auto const block = MakeBlock(R"cpp(
+void f(int x) {
+    int a1 = x + 1;
+    int b1 = a1 * 2;
+    int c1 = b1 - 3;
+    int d1 = c1 + 4;
+    int e1 = d1 * 5;
+    int f1 = e1 - 6;
+    int a2 = x + 1;
+    int b2 = a2 * 2;
+    int c2 = b2 - 3;
+    int d2 = c2 + 4;
+    int e2 = d2 * 5;
+    int f2 = e2 - 6;
+}
+)cpp",
+                                 "f");
+
+    size_t callCount = 0;
+    IntraFunctionDetector detector({.minRegionTokens = 5, .similarityThreshold = 0.70});
+    auto const results = detector.Detect({block}, [&](size_t, size_t) { ++callCount; });
+    CHECK(callCount > 0);
+}
+
+// ---------------------------------------------------------------------------
+// Coverage: empty block (too small) returns early (line 238)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("IntraFunctionDetector.TooSmallBlock", "[intra]")
+{
+    auto const block = MakeBlock(R"cpp(
+void tiny(int x) { return; }
+)cpp",
+                                 "tiny");
+
+    IntraFunctionDetector detector({.minRegionTokens = 100});
+    auto const results = detector.Detect({block});
+    CHECK(results.empty());
+}

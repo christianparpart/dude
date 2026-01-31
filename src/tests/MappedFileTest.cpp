@@ -3,14 +3,25 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <atomic>
 #include <filesystem>
+#include <format>
 #include <fstream>
+#include <random>
 #include <string>
 
 using namespace dude;
 
 namespace
 {
+
+/// @brief Generates a unique temporary file path (safe for concurrent CI).
+auto UniqueTempPath(std::string_view prefix) -> std::filesystem::path
+{
+    static auto const seed = std::random_device{}();
+    static std::atomic<unsigned> counter{0};
+    return std::filesystem::temp_directory_path() / std::format("{}_{}_{}", prefix, seed, counter.fetch_add(1));
+}
 
 /// @brief RAII helper that creates a temporary file and removes it on destruction.
 struct TempFile
@@ -19,7 +30,7 @@ struct TempFile
 
     explicit TempFile(std::string const& content)
     {
-        path = std::filesystem::temp_directory_path() / "dude_mapped_file_test.tmp";
+        path = UniqueTempPath("dude_mapped_file_test");
         std::ofstream ofs(path, std::ios::binary);
         ofs << content;
     }
@@ -39,7 +50,7 @@ struct EmptyTempFile
 
     EmptyTempFile()
     {
-        path = std::filesystem::temp_directory_path() / "dude_mapped_file_empty_test.tmp";
+        path = UniqueTempPath("dude_mapped_file_empty_test");
         std::ofstream ofs(path, std::ios::binary);
         // write nothing
     }
@@ -155,4 +166,15 @@ TEST_CASE("MappedFile.MoveSelfAssignment", "[MappedFile]")
     CHECK(mapped.IsValid());                // NOLINT(bugprone-use-after-move)
     CHECK(mapped.Size() == content.size()); // NOLINT(bugprone-use-after-move)
     CHECK(mapped.View() == content);        // NOLINT(bugprone-use-after-move)
+}
+
+// ---------------------------------------------------------------------------
+// Coverage: error path when file does not exist (stat failure)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("MappedFile.OpenNonexistent", "[mappedfile]")
+{
+    auto result = MappedFile::Open("/tmp/dude_test_nonexistent_file_12345.txt");
+    CHECK_FALSE(result.has_value());
+    CHECK(result.error().find("Failed") != std::string::npos);
 }

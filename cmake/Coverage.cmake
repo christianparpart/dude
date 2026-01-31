@@ -56,10 +56,14 @@ function(add_coverage_target test_target)
             # Print a human-readable summary to the console.
             COMMAND ${LLVM_COV} report $<TARGET_FILE:${test_target}> -instr-profile=coverage.profdata
                 -ignore-filename-regex=_deps/
+                -ignore-filename-regex=/tests/
+                -ignore-filename-regex=.cpm-cache/
             # Generate HTML report.
             COMMAND ${LLVM_COV} show $<TARGET_FILE:${test_target}> -instr-profile=coverage.profdata
                 -format=html -output-dir=${CMAKE_BINARY_DIR}/coverage
                 -ignore-filename-regex=_deps/
+                -ignore-filename-regex=/tests/
+                -ignore-filename-regex=.cpm-cache/
             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
             DEPENDS ${test_target}
             COMMENT "Generating code coverage report"

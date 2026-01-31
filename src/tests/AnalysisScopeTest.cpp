@@ -160,3 +160,24 @@ TEST_CASE("HasInterFunctionScope.DetectsAnyInterFunction", "[analysisscope]")
     CHECK_FALSE(HasInterFunctionScope(AnalysisScope::IntraFunction));
     CHECK_FALSE(HasInterFunctionScope(AnalysisScope::None));
 }
+
+// ---------------------------------------------------------------------------
+// Coverage: empty token between commas in comma-separated scope (lines 51-54)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("ParseAnalysisScope.EmptyTokenBetweenCommas", "[analysisscope]")
+{
+    // "inter-file,,intra-function" has an empty token between the two commas.
+    // The parser should skip it and parse the remaining tokens.
+    auto const result = ParseAnalysisScope("inter-file,,intra-function");
+    REQUIRE(result.has_value());
+    CHECK(HasScope(*result, AnalysisScope::InterFile));
+    CHECK(HasScope(*result, AnalysisScope::IntraFunction));
+}
+
+TEST_CASE("ParseAnalysisScope.TrailingComma", "[analysisscope]")
+{
+    auto const result = ParseAnalysisScope("inter-file,");
+    REQUIRE(result.has_value());
+    CHECK(*result == AnalysisScope::InterFile);
+}

@@ -621,3 +621,92 @@ TEST_CASE("Reporter.WriteTo", "[reporter]")
     CHECK(streamOut == renderOut);
     CHECK(streamOut.contains("7 files"));
 }
+
+// ---------------------------------------------------------------------------
+// Coverage: summary with color enabled, scope, timing, intra-pairs, duplicated lines
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Reporter.SummaryWithColorAndTiming", "[reporter]")
+{
+    ConsoleReporter reporter({.useColor = true});
+
+    PerformanceTiming timing;
+    timing.scanning = std::chrono::microseconds(500);
+    timing.tokenizing = std::chrono::milliseconds(10);
+    timing.normalizing = std::chrono::milliseconds(5);
+    timing.cloneDetection = std::chrono::milliseconds(100);
+    timing.intraDetection = std::chrono::milliseconds(50);
+
+    reporter.ReportSummary({
+        .totalFiles = 20,
+        .totalBlocks = 100,
+        .totalGroups = 5,
+        .totalIntraPairs = 4,
+        .totalDuplicatedLines = 200,
+        .totalFunctions = 10,
+        .totalIntraFunctions = 3,
+        .timing = timing,
+        .activeScope = AnalysisScope::InterFile,
+    });
+
+    auto const out = reporter.Render();
+    // Should contain bold ANSI sequences
+    CHECK(out.contains("\033[1m"));
+    // Should contain scope info
+    CHECK(out.contains("Scope:"));
+    // Should contain timing info
+    CHECK(out.contains("Timing:"));
+    // Should contain duplication info
+    CHECK(out.contains("Duplications:"));
+    // Should mention intra-function count
+    CHECK(out.contains("internal clones"));
+    // Should mention intra-function detection timing
+    CHECK(out.contains("intra-function detection"));
+}
+
+TEST_CASE("Reporter.SummaryWithIntraPairsNoColor", "[reporter]")
+{
+    ConsoleReporter reporter({.useColor = false});
+    reporter.ReportSummary({
+        .totalFiles = 5,
+        .totalBlocks = 10,
+        .totalGroups = 2,
+        .totalIntraPairs = 3,
+    });
+
+    auto const out = reporter.Render();
+    CHECK(out.contains("3 intra-function"));
+}
+
+// ---------------------------------------------------------------------------
+// Coverage: intra-clone region fallback (token offset only when normToOrig is short)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Reporter.IntraClonesNoTokenInfo", "[reporter]")
+{
+    ConsoleReporter reporter({.useColor = false, .showSourceCode = false});
+
+    // Create a minimal block + intra result with regions exceeding normToOrig
+    CodeBlock block;
+    block.name = "testFunc";
+    block.tokenStart = 0;
+    block.tokenEnd = 10;
+    block.sourceRange = {{0, 1, 1}, {0, 5, 1}};
+    block.normalizedIds = {1, 2, 3, 1, 2, 3};
+
+    std::vector<IntraCloneResult> intraResults;
+    IntraClonePair pair;
+    pair.regionA = {.start = 0, .length = 3};
+    pair.regionB = {.start = 3, .length = 3};
+    pair.similarity = 0.95;
+    intraResults.push_back({.blockIndex = 0, .pairs = {pair}});
+
+    std::vector<CodeBlock> blocks = {block};
+    std::vector<std::vector<Token>> allTokens;
+    std::vector<size_t> blockToFile = {0};
+    std::vector<std::filesystem::path> files = {"test.cpp"};
+
+    reporter.ReportIntraClones(intraResults, blocks, allTokens, blockToFile, files);
+    auto const out = reporter.Render();
+    CHECK(out.contains("token offset"));
+}

@@ -3,6 +3,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <cstdlib>
 #include <format>
 #include <string>
 
@@ -16,6 +17,51 @@ auto ExpectedAnsi(RGB const& c) -> std::string
 {
     return std::format("\033[38;2;{};{};{}m", c.r, c.g, c.b);
 }
+
+/// @brief RAII guard that sets an environment variable and restores the previous value on destruction.
+struct ScopedEnv
+{
+    std::string name;
+    std::string saved;
+    bool hadPrev;
+
+    ScopedEnv(char const* envName, char const* value) : name(envName)
+    {
+        auto const* prev = std::getenv(envName);
+        saved = prev ? prev : "";
+        hadPrev = prev != nullptr;
+#ifdef _WIN32
+        _putenv_s(envName, value);
+#else
+        setenv(envName, value, 1);
+#endif
+    }
+
+    ~ScopedEnv()
+    {
+        if (hadPrev)
+        {
+#ifdef _WIN32
+            _putenv_s(name.c_str(), saved.c_str());
+#else
+            setenv(name.c_str(), saved.c_str(), 1);
+#endif
+        }
+        else
+        {
+#ifdef _WIN32
+            _putenv_s(name.c_str(), "");
+#else
+            unsetenv(name.c_str());
+#endif
+        }
+    }
+
+    ScopedEnv(ScopedEnv const&) = delete;
+    ScopedEnv& operator=(ScopedEnv const&) = delete;
+    ScopedEnv(ScopedEnv&&) = delete;
+    ScopedEnv& operator=(ScopedEnv&&) = delete;
+};
 
 } // namespace
 
@@ -166,4 +212,38 @@ TEST_CASE("DiffHighlightBg.LightTheme", "[SyntaxHighlighter]")
 TEST_CASE("AnsiReset.Value", "[SyntaxHighlighter]")
 {
     CHECK(std::string(ansiReset) == "\033[0m");
+}
+
+// ---------------------------------------------------------------------------
+// Coverage: COLORFGBG environment variable detection
+// ---------------------------------------------------------------------------
+
+TEST_CASE("GetThemeColors.AutoWithDarkCOLORFGBG", "[SyntaxHighlighter]")
+{
+    ScopedEnv env("COLORFGBG", "15;0");
+
+    auto const autoColors = GetThemeColors(ColorTheme::Auto);
+    auto const darkColors = GetThemeColors(ColorTheme::Dark);
+    CHECK(autoColors.keywords.r == darkColors.keywords.r);
+    CHECK(autoColors.keywords.g == darkColors.keywords.g);
+    CHECK(autoColors.keywords.b == darkColors.keywords.b);
+}
+
+TEST_CASE("GetThemeColors.AutoWithLightCOLORFGBG", "[SyntaxHighlighter]")
+{
+    ScopedEnv env("COLORFGBG", "0;15");
+
+    auto const autoColors = GetThemeColors(ColorTheme::Auto);
+    auto const lightColors = GetThemeColors(ColorTheme::Light);
+    CHECK(autoColors.keywords.r == lightColors.keywords.r);
+    CHECK(autoColors.keywords.g == lightColors.keywords.g);
+    CHECK(autoColors.keywords.b == lightColors.keywords.b);
+}
+
+TEST_CASE("DiffHighlightBg.AutoWithCOLORFGBG", "[SyntaxHighlighter]")
+{
+    ScopedEnv env("COLORFGBG", "15;0");
+
+    auto const bg = DiffHighlightBg(ColorTheme::Auto);
+    CHECK(bg == "\033[48;2;90;45;45m"); // Dark theme
 }

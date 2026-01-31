@@ -8,4 +8,5 @@ target_include_directories(git PUBLIC
 target_link_libraries(git PUBLIC dude-lib)
 
 set_pedantic_compiler_warnings(git)
+enable_coverage(git)
 enable_clang_tidy(git)

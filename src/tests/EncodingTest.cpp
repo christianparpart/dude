@@ -232,3 +232,46 @@ TEST_CASE("Encoding.DetectInvalidLeadByte", "[encoding]")
     auto const input = std::string("\xFF");
     CHECK(DetectEncoding(input) == InputEncoding::Windows1252);
 }
+
+// ---------------------------------------------------------------------------
+// Coverage: 4-byte UTF-8 encoding (AppendUtf8 for code points > U+FFFF)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Encoding.FourByteUtf8Roundtrip", "[encoding]")
+{
+    // U+1F600 (😀) is a 4-byte UTF-8 code point: F0 9F 98 80
+    auto const emoji = std::string("\xF0\x9F\x98\x80");
+    auto const detected = DetectEncoding(emoji);
+    CHECK(detected == InputEncoding::Utf8);
+
+    // Converting valid UTF-8 to UTF-8 should produce the same content
+    auto const result = ConvertToUtf8(emoji, InputEncoding::Utf8);
+    REQUIRE(result.has_value());
+    CHECK(*result == emoji);
+}
+
+TEST_CASE("Encoding.Windows1252WithHighBytes", "[encoding]")
+{
+    // Bytes 0x80-0x9F in Windows-1252 map to special Unicode code points.
+    // Some of these produce multi-byte UTF-8 (including potential 3+ byte sequences).
+    // The \x80 byte maps to U+20AC (Euro sign), which is a 3-byte UTF-8 sequence.
+    auto const input = std::string("\x80\x85\x92\x93");
+    auto const result = ConvertToUtf8(input, InputEncoding::Windows1252);
+    REQUIRE(result.has_value());
+    // The result should be valid UTF-8
+    CHECK(DetectEncoding(*result) == InputEncoding::Utf8);
+}
+
+// ---------------------------------------------------------------------------
+// Coverage: AppendUtf8 for ASCII code points (<= 0x7F) through Windows-1252 path (lines 33-34)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Encoding.Windows1252AsciiBytesThroughConversion", "[encoding]")
+{
+    // Bytes 0x00-0x7F in Windows-1252 are identical to ASCII.
+    // Converting pure ASCII through Windows-1252 exercises the cp <= 0x7F branch in AppendUtf8.
+    auto const input = std::string("Hello");
+    auto const result = ConvertToUtf8(input, InputEncoding::Windows1252);
+    REQUIRE(result.has_value());
+    CHECK(*result == "Hello");
+}

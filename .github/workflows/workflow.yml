@@ -136,12 +136,15 @@ jobs:
       - name: Generate coverage report
         run: cmake --build --preset clang-coverage --target coverage
 
-      - name: Enforce minimum coverage (80%)
+      - name: Enforce minimum coverage (95%)
         run: |
           COVERAGE_JSON="build/clang-coverage/coverage-summary.json"
           llvm-cov-21 export build/clang-coverage/src/tests/dude_test \
             -instr-profile=build/clang-coverage/coverage.profdata \
-            -summary-only -ignore-filename-regex=_deps/ \
+            -summary-only \
+            -ignore-filename-regex=_deps/ \
+            -ignore-filename-regex=/tests/ \
+            -ignore-filename-regex=.cpm-cache/ \
             > "$COVERAGE_JSON"
           python3 -c "
           import json, sys
@@ -150,8 +153,8 @@ jobs:
           totals = data['data'][0]['totals']
           lines = totals['lines']
           pct = lines['percent']
-          print(f'Line coverage: {pct:.2f}% ({lines[\"covered\"]}/{lines[\"count\"]} lines)')
-          sys.exit(0 if pct >= 80.0 else 1)
+          print(f'Library line coverage: {pct:.2f}% ({lines[\"covered\"]}/{lines[\"count\"]} lines)')
+          sys.exit(0 if pct >= 95.0 else 1)
           "
 
       - name: Upload coverage report

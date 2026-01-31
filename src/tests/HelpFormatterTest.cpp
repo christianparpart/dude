@@ -426,3 +426,83 @@ TEST_CASE("HelpFormatter.ClassifyLine.PlainTextInExamples", "[help-formatter]")
     CHECK(HelpFormatter::ClassifyLine("    some descriptive text here", jsonDepth, inContinuation, true) ==
           HelpLineType::PlainText);
 }
+
+// ---------------------------------------------------------------------------
+// Coverage: JSON block classification and closing brace depth tracking (lines 549-550)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("HelpFormatter.ClassifyLine.JsonBlockWithBraces", "[help-formatter]")
+{
+    int jsonDepth = 0;
+    bool inContinuation = false;
+
+    // Opening brace starts JSON context
+    auto type = HelpFormatter::ClassifyLine("  {", jsonDepth, inContinuation, true);
+    CHECK(type == HelpLineType::JsonLine);
+    CHECK(jsonDepth == 1);
+
+    // Nested brace
+    type = HelpFormatter::ClassifyLine("    { \"inner\": {} }", jsonDepth, inContinuation, true);
+    CHECK(type == HelpLineType::JsonLine);
+    // Depth stays at 1 (one { opened, one {} pair cancels, one } closes)
+
+    // Closing brace decrements
+    type = HelpFormatter::ClassifyLine("  }", jsonDepth, inContinuation, true);
+    CHECK(type == HelpLineType::JsonLine);
+    CHECK(jsonDepth == 0);
+}
+
+// ---------------------------------------------------------------------------
+// Coverage: PlainText return in help mode (line 572)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("HelpFormatter.ClassifyLine.HelpModePlainText", "[help-formatter]")
+{
+    int jsonDepth = 0;
+    bool inContinuation = false;
+
+    // Deeply indented line in help mode (not examples) → PlainText
+    CHECK(HelpFormatter::ClassifyLine("      continuation of description", jsonDepth, inContinuation, false) ==
+          HelpLineType::PlainText);
+
+    // Non-indented non-special text → PlainText
+    CHECK(HelpFormatter::ClassifyLine("some random text", jsonDepth, inContinuation, false) == HelpLineType::PlainText);
+}
+
+// ---------------------------------------------------------------------------
+// Coverage: FormatHelp exercises HighlightLine for PlainText and OptionsLabel (lines 502-505)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("HelpFormatter.FormatHelp.WithOptionsAndPlainText", "[help-formatter]")
+{
+    auto const text =
+        "Usage: dude [options]\n\nOptions:\n  -t, --threshold <N>  Set threshold\n      Long description\n";
+    auto const result = HelpFormatter::FormatHelp(text, true, ColorTheme::Dark);
+    // Should contain colored output
+    CHECK(result.contains("Usage:"));
+    CHECK(result.contains("Options:"));
+    CHECK(result.contains("threshold"));
+}
+
+// ---------------------------------------------------------------------------
+// Coverage: FormatExamples with JSON block renders through HighlightJsonLine (line 501)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("HelpFormatter.FormatExamples.WithJsonBlock", "[help-formatter]")
+{
+    auto const text = "Example output\n=============\n\n  $ dude .\n  {\n    \"files\": 10\n  }\n";
+    auto const result = HelpFormatter::FormatExamples(text, true, ColorTheme::Dark);
+    CHECK(result.contains("files"));
+}
+
+// ---------------------------------------------------------------------------
+// Coverage: LeadingWhitespace with all-whitespace line (line 59)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("HelpFormatter.ClassifyLine.AllWhitespaceLine", "[help-formatter]")
+{
+    int jsonDepth = 0;
+    bool inContinuation = false;
+    // Line with only spaces → Empty
+    CHECK(HelpFormatter::ClassifyLine("   ", jsonDepth, inContinuation, true) == HelpLineType::Empty);
+}

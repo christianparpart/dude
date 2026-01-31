@@ -423,3 +423,96 @@ TEST_CASE("PythonTokenizer.DotStartedNumeric", "[python][tokenizer]")
     REQUIRE(result.has_value());
     CHECK((*result)[0].type == TokenType::NumericLiteral);
 }
+
+// ---------------------------------------------------------------------------
+// Coverage: escape sequences in strings
+// ---------------------------------------------------------------------------
+
+TEST_CASE("PythonTokenizer.StringEscapeSequences", "[python][tokenizer]")
+{
+    auto result = PythonLanguage{}.Tokenize(R"py("hello\nworld" 'tab\there')py");
+    REQUIRE(result.has_value());
+    CHECK((*result)[0].type == TokenType::StringLiteral);
+    CHECK((*result)[1].type == TokenType::StringLiteral);
+}
+
+TEST_CASE("PythonTokenizer.StringWithBackslashEscape", "[python][tokenizer]")
+{
+    auto result = PythonLanguage{}.Tokenize(R"py("path\\to\\file")py");
+    REQUIRE(result.has_value());
+    CHECK((*result)[0].type == TokenType::StringLiteral);
+}
+
+TEST_CASE("PythonTokenizer.SingleQuotedEscapeSequence", "[python][tokenizer]")
+{
+    auto result = PythonLanguage{}.Tokenize("'escaped\\'quote'");
+    REQUIRE(result.has_value());
+    CHECK((*result)[0].type == TokenType::StringLiteral);
+}
+
+// ---------------------------------------------------------------------------
+// Coverage: unterminated raw string
+// ---------------------------------------------------------------------------
+
+TEST_CASE("PythonTokenizer.UnterminatedRawString", "[python][tokenizer]")
+{
+    auto result = PythonLanguage{}.Tokenize("r\"unterminated\n");
+    // Unterminated raw string at newline returns an error
+    CHECK_FALSE(result.has_value());
+}
+
+// ---------------------------------------------------------------------------
+// Coverage: exclaim and invalid tokens
+// ---------------------------------------------------------------------------
+
+TEST_CASE("PythonTokenizer.ExclaimToken", "[python][tokenizer]")
+{
+    auto result = PythonLanguage{}.Tokenize("x ! y");
+    REQUIRE(result.has_value());
+    bool foundExclaim = false;
+    for (auto const& t : *result)
+        if (t.type == TokenType::Exclaim)
+            foundExclaim = true;
+    CHECK(foundExclaim);
+}
+
+TEST_CASE("PythonTokenizer.InvalidCharacter", "[python][tokenizer]")
+{
+    auto result = PythonLanguage{}.Tokenize("x \x01 y");
+    REQUIRE(result.has_value());
+    bool foundInvalid = false;
+    for (auto const& t : *result)
+        if (t.type == TokenType::Invalid)
+            foundInvalid = true;
+    CHECK(foundInvalid);
+}
+
+// ---------------------------------------------------------------------------
+// Coverage: escape sequences in prefixed triple-quoted strings (lines 383-388)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("PythonTokenizer.PrefixedTripleQuotedEscape", "[python][tokenizer]")
+{
+    // r"""...\n...""" — escape in prefixed triple-quoted string
+    auto result = PythonLanguage{}.Tokenize("b\"\"\"hello\\nworld\"\"\"");
+    REQUIRE(result.has_value());
+    CHECK((*result)[0].type == TokenType::StringLiteral);
+}
+
+// ---------------------------------------------------------------------------
+// Coverage: escape sequences in plain triple-quoted strings (lines 423-428)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("PythonTokenizer.TripleQuotedEscape", "[python][tokenizer]")
+{
+    auto result = PythonLanguage{}.Tokenize("\"\"\"hello\\nworld\"\"\"");
+    REQUIRE(result.has_value());
+    CHECK((*result)[0].type == TokenType::StringLiteral);
+}
+
+TEST_CASE("PythonTokenizer.TripleQuotedSingleEscape", "[python][tokenizer]")
+{
+    auto result = PythonLanguage{}.Tokenize("'''hello\\'world'''");
+    REQUIRE(result.has_value());
+    CHECK((*result)[0].type == TokenType::StringLiteral);
+}
