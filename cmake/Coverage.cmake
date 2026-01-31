@@ -60,10 +60,6 @@ function(add_coverage_target test_target)
             COMMAND ${LLVM_COV} show $<TARGET_FILE:${test_target}> -instr-profile=coverage.profdata
                 -format=html -output-dir=${CMAKE_BINARY_DIR}/coverage
                 -ignore-filename-regex=_deps/
-            # Export JSON summary for CI threshold enforcement.
-            COMMAND ${LLVM_COV} export $<TARGET_FILE:${test_target}> -instr-profile=coverage.profdata
-                -summary-only -ignore-filename-regex=_deps/
-                > ${CMAKE_BINARY_DIR}/coverage-summary.json
             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
             DEPENDS ${test_target}
             COMMENT "Generating code coverage report"
