@@ -55,8 +55,8 @@ jobs:
           sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
           sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
 
-      - name: Install Ninja
-        run: sudo apt-get install -y ninja-build
+      - name: Install dependencies
+        run: sudo apt-get install -y ninja-build catch2
 
       - name: Cache dependencies
         uses: actions/cache@v4
@@ -95,8 +95,8 @@ jobs:
         run: |
           wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- 21
 
-      - name: Install Ninja
-        run: sudo apt-get install -y ninja-build
+      - name: Install dependencies
+        run: sudo apt-get install -y ninja-build catch2
 
       - name: Cache dependencies
         uses: actions/cache@v4
