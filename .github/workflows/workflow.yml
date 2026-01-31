@@ -38,6 +38,9 @@ jobs:
 
     env:
       CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 500M
+      CCACHE_COMPRESS: 'true'
 
     steps:
       - uses: actions/checkout@v4
@@ -56,7 +59,7 @@ jobs:
           sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
 
       - name: Install dependencies
-        run: sudo apt-get install -y ninja-build catch2
+        run: sudo apt-get install -y ninja-build catch2 ccache
 
       - name: Cache dependencies
         uses: actions/cache@v4
@@ -65,8 +68,16 @@ jobs:
           key: cpm-${{ matrix.preset }}-${{ hashFiles('CMakeLists.txt') }}
           restore-keys: cpm-${{ matrix.preset }}-
 
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-${{ matrix.preset }}-${{ github.sha }}
+          restore-keys: ccache-${{ matrix.preset }}-
+
       - name: Configure
         run: cmake --preset ${{ matrix.preset }} ${{ matrix.extra_cmake_args }}
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Build
         run: cmake --build --preset ${{ matrix.preset }}
@@ -87,6 +98,9 @@ jobs:
 
     env:
       CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 500M
+      CCACHE_COMPRESS: 'true'
 
     steps:
       - uses: actions/checkout@v4
@@ -96,7 +110,7 @@ jobs:
           wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- 21
 
       - name: Install dependencies
-        run: sudo apt-get install -y ninja-build catch2
+        run: sudo apt-get install -y ninja-build catch2 ccache
 
       - name: Cache dependencies
         uses: actions/cache@v4
@@ -105,8 +119,16 @@ jobs:
           key: cpm-clang-coverage-${{ hashFiles('CMakeLists.txt') }}
           restore-keys: cpm-clang-coverage-
 
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-clang-coverage-${{ github.sha }}
+          restore-keys: ccache-clang-coverage-
+
       - name: Configure
         run: cmake --preset clang-coverage -DCMAKE_C_COMPILER=clang-21 -DCMAKE_CXX_COMPILER=clang++-21
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Build
         run: cmake --build --preset clang-coverage
