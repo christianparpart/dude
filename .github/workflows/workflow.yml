@@ -194,13 +194,24 @@ jobs:
 
     env:
       CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/vcpkg-binary-cache
 
     steps:
       - uses: actions/checkout@v4
 
       - uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Cache dependencies
+      - name: Create vcpkg binary cache directory
+        run: New-Item -ItemType Directory -Force -Path ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+
+      - name: Cache vcpkg binary packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+          key: vcpkg-${{ matrix.preset }}-${{ hashFiles('vcpkg.json') }}
+          restore-keys: vcpkg-${{ matrix.preset }}-
+
+      - name: Cache CPM downloads
         uses: actions/cache@v4
         with:
           path: ${{ env.CPM_SOURCE_CACHE }}
@@ -209,6 +220,7 @@ jobs:
 
       - name: Configure
         run: cmake --preset ${{ matrix.preset }}
+          "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
 
       - name: Build
         run: cmake --build --preset ${{ matrix.preset }}
