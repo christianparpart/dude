@@ -73,28 +73,40 @@ if(NOT EXISTS ${CPM_DOWNLOAD_LOCATION})
 endif()
 include(${CPM_DOWNLOAD_LOCATION})
 
-CPMAddPackage(
-    NAME nlohmann_json
-    GITHUB_REPOSITORY nlohmann/json
-    VERSION 3.11.3
-    EXCLUDE_FROM_ALL YES
-    OPTIONS "JSON_BuildTests OFF" "JSON_Install OFF"
-)
+# nlohmann_json: prefer system/vcpkg, fall back to CPM
+find_package(nlohmann_json 3 QUIET)
+if(NOT nlohmann_json_FOUND)
+    CPMAddPackage(
+        NAME nlohmann_json
+        GITHUB_REPOSITORY nlohmann/json
+        VERSION 3.11.3
+        EXCLUDE_FROM_ALL YES
+        OPTIONS "JSON_BuildTests OFF" "JSON_Install OFF"
+    )
+endif()
 
-CPMAddPackage(
-    NAME unordered_dense
-    GITHUB_REPOSITORY martinus/unordered_dense
-    VERSION 4.4.0
-    EXCLUDE_FROM_ALL YES
-)
+# unordered_dense: prefer system/vcpkg, fall back to CPM
+find_package(unordered_dense 4 QUIET)
+if(NOT unordered_dense_FOUND)
+    CPMAddPackage(
+        NAME unordered_dense
+        GITHUB_REPOSITORY martinus/unordered_dense
+        VERSION 4.4.0
+        EXCLUDE_FROM_ALL YES
+    )
+endif()
 
-CPMAddPackage(
-    NAME stdexec
-    GITHUB_REPOSITORY NVIDIA/stdexec
-    GIT_TAG main
-    EXCLUDE_FROM_ALL YES
-    OPTIONS "STDEXEC_BUILD_TESTS OFF" "STDEXEC_BUILD_EXAMPLES OFF"
-)
+# stdexec: prefer system/vcpkg, fall back to CPM
+find_package(stdexec QUIET)
+if(NOT stdexec_FOUND)
+    CPMAddPackage(
+        NAME stdexec
+        GITHUB_REPOSITORY NVIDIA/stdexec
+        GIT_TAG main
+        EXCLUDE_FROM_ALL YES
+        OPTIONS "STDEXEC_BUILD_TESTS OFF" "STDEXEC_BUILD_EXAMPLES OFF"
+    )
+endif()
 
 add_subdirectory(src/dude)
 add_subdirectory(src/mcpprotocol)

@@ -8,4 +8,5 @@ target_include_directories(mcp PUBLIC
 target_link_libraries(mcp PUBLIC mcpprotocol dude-lib git)
 
 set_pedantic_compiler_warnings(mcp)
+enable_coverage(mcp)
 enable_clang_tidy(mcp)

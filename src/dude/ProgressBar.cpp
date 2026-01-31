@@ -42,8 +42,11 @@ void EnableVTProcessing(FILE* output)
 
 } // namespace
 
-ProgressBar::ProgressBar(std::string_view stageName, size_t totalItems, FILE* output)
-    : _stageName(stageName), _totalItems(totalItems), _output(output), _isTTY(DUDE_ISATTY(DUDE_FILENO(output)))
+ProgressBar::ProgressBar(std::string_view stageName, size_t totalItems, FILE* output, bool forceTTY)
+    : _stageName(stageName)
+    , _totalItems(totalItems)
+    , _output(output)
+    , _isTTY(forceTTY || DUDE_ISATTY(DUDE_FILENO(output)))
 {
 #ifdef _WIN32
     if (_isTTY)

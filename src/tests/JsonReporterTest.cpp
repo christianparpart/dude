@@ -225,3 +225,30 @@ TEST_CASE("JsonReporter.WriteTo", "[reporter][json]")
     auto const json = nlohmann::json::parse(oss.str());
     CHECK(json["summary"]["totalFiles"] == 5);
 }
+
+// ---------------------------------------------------------------------------
+// Coverage: FormatDuration microseconds path (line 42) and intraDetection timing (line 167)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("JsonReporter.SummaryWithIntraDetectionTiming", "[reporter][json]")
+{
+    JsonReporter reporter;
+
+    PerformanceTiming timing;
+    timing.scanning = std::chrono::microseconds(500); // < 1ms, exercises µs path
+    timing.tokenizing = std::chrono::milliseconds(1);
+    timing.normalizing = std::chrono::milliseconds(1);
+    timing.cloneDetection = std::chrono::milliseconds(1);
+    timing.intraDetection = std::chrono::milliseconds(50); // > 0, exercises intraDetection output
+
+    reporter.ReportSummary({.totalFiles = 10, .totalBlocks = 20, .totalGroups = 1, .timing = timing});
+
+    auto const output = reporter.Render();
+    auto const json = nlohmann::json::parse(output);
+    auto const& summary = json["summary"];
+
+    CHECK(summary.contains("timing"));
+    CHECK(summary["timing"].contains("intraDetection"));
+    // scanning was 500µs → should format as "500 us"
+    CHECK(summary["timing"]["scanning"].get<std::string>().find("us") != std::string::npos);
+}

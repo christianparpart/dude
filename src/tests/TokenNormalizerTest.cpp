@@ -266,3 +266,45 @@ TEST_CASE("TokenNormalizer.TextPreserving.RenamedFunctionsDiffer", "[normalizer]
     }
     CHECK(anyDifferent);
 }
+
+// ---------------------------------------------------------------------------
+// Coverage: CharLiteral normalization (TokenNormalizer.cpp L86-87)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("TokenNormalizer.CharLiteralNormalization", "[normalizer]")
+{
+    CppLanguage const cpp;
+    auto tokens1 = cpp.Tokenize("'a'");
+    auto tokens2 = cpp.Tokenize("'z'");
+    REQUIRE(tokens1.has_value());
+    REQUIRE(tokens2.has_value());
+
+    TokenNormalizer n1;
+    TokenNormalizer n2;
+    auto const norm1 = n1.Normalize(*tokens1);
+    auto const norm2 = n2.Normalize(*tokens2);
+
+    REQUIRE(norm1.size() == 1);
+    REQUIRE(norm2.size() == 1);
+    CHECK(norm1[0].id == norm2[0].id);
+    CHECK(norm1[0].id == static_cast<NormalizedTokenId>(GenericId::CharLiteral));
+}
+
+// ---------------------------------------------------------------------------
+// Coverage: Dictionary() accessor (TokenNormalizer.hpp L78)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("TokenNormalizer.DictionaryAccessor", "[normalizer]")
+{
+    auto tokens = CppLanguage{}.Tokenize("int x = 5;");
+    REQUIRE(tokens.has_value());
+
+    TokenNormalizer normalizer;
+    auto const normalized = normalizer.Normalize(*tokens);
+    CHECK(!normalized.empty());
+
+    auto const& dict = normalizer.Dictionary();
+    // The structural dictionary does not populate idToName (deterministic IDs from enum),
+    // but the accessor should be callable and return a valid reference.
+    CHECK(dict.nextId == 2000);
+}

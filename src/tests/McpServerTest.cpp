@@ -331,3 +331,56 @@ TEST_CASE("McpServer.RunStdioLoop", "[mcp][server]")
     // Should have 2 responses (initialize + ping), notification produces no response
     CHECK(responseCount == 2);
 }
+
+// ---------------------------------------------------------------------------
+// Coverage: empty lines in Run() stdio loop (line 29) and parse error path (lines 34-37)
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Coverage: prompts/get with missing name parameter (McpServer.cpp L156)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("McpServer.PromptsGet.MissingName", "[mcp][server]")
+{
+    auto server = MakeTestServer();
+    server.RegisterPrompt({.name = "greet", .title = {}, .description = "Greet", .arguments = nlohmann::json::array()},
+                          [](nlohmann::json const&) -> std::expected<nlohmann::json, std::string>
+                          { return nlohmann::json{{"messages", nlohmann::json::array()}}; });
+
+    InitializeServer(server);
+    // Send prompts/get without a "name" field
+    auto resp = SendRequest(server, 7, "prompts/get", {{"arguments", nlohmann::json::object()}});
+    REQUIRE(resp.has_value());
+    REQUIRE(resp->error.has_value()); // NOLINT(bugprone-unchecked-optional-access)
+    // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+    CHECK(resp->error.value().code == static_cast<int32_t>(JsonRpcErrorCode::InvalidParams));
+}
+
+// ---------------------------------------------------------------------------
+// Stdio loop tests
+// ---------------------------------------------------------------------------
+
+TEST_CASE("McpServer.RunStdioLoopWithEmptyAndInvalidLines", "[mcp][server]")
+{
+    auto server = MakeTestServer();
+
+    std::string input;
+    // Empty line (should be skipped)
+    input += "\n";
+    // Invalid JSON (should produce a parse error response)
+    input += "not valid json\n";
+    // Valid initialize
+    input +=
+        R"({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}})"
+        "\n";
+
+    std::istringstream in(input);
+    std::ostringstream out;
+
+    auto const exitCode = server.Run(in, out);
+    CHECK(exitCode == 0);
+
+    auto const output = out.str();
+    // Should have at least 2 responses: one error for invalid JSON, one for initialize
+    CHECK(!output.empty());
+}

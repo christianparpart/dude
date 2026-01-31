@@ -411,3 +411,229 @@ TEST_CASE("CSharpTokenizer.UnterminatedCharLiteral", "[csharp][tokenizer]")
     auto result = CSharpLanguage{}.Tokenize("'unterminated");
     CHECK(!result.has_value());
 }
+
+// ---------------------------------------------------------------------------
+// Coverage: floating-point with decimal suffix (1.5f, 1.5d, 1.5m)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("CSharpTokenizer.FloatWithDecimalSuffix", "[csharp][tokenizer]")
+{
+    auto result = CSharpLanguage{}.Tokenize("1.5f 2.0d 3.0m 4.5M");
+    REQUIRE(result.has_value());
+    CHECK((*result)[0].type == TokenType::NumericLiteral);
+    CHECK((*result)[1].type == TokenType::NumericLiteral);
+    CHECK((*result)[2].type == TokenType::NumericLiteral);
+    CHECK((*result)[3].type == TokenType::NumericLiteral);
+}
+
+// ---------------------------------------------------------------------------
+// Coverage: hash token, brackets, invalid character
+// ---------------------------------------------------------------------------
+
+TEST_CASE("CSharpTokenizer.HashToken", "[csharp][tokenizer]")
+{
+    auto result = CSharpLanguage{}.Tokenize("x #");
+    REQUIRE(result.has_value());
+    bool foundHash = false;
+    for (auto const& t : *result)
+        if (t.type == TokenType::Hash)
+            foundHash = true;
+    CHECK(foundHash);
+}
+
+TEST_CASE("CSharpTokenizer.BracketTokens", "[csharp][tokenizer]")
+{
+    auto result = CSharpLanguage{}.Tokenize("[Attribute] x");
+    REQUIRE(result.has_value());
+    CHECK((*result)[0].type == TokenType::LeftBracket);
+    CHECK((*result)[1].type == TokenType::Identifier);
+    CHECK((*result)[2].type == TokenType::RightBracket);
+}
+
+TEST_CASE("CSharpTokenizer.InvalidCharacter", "[csharp][tokenizer]")
+{
+    auto result = CSharpLanguage{}.Tokenize("x \x01 y");
+    REQUIRE(result.has_value());
+    bool foundInvalid = false;
+    for (auto const& t : *result)
+        if (t.type == TokenType::Invalid)
+            foundInvalid = true;
+    CHECK(foundInvalid);
+}
+
+// ---------------------------------------------------------------------------
+// Coverage: preprocessor at start of line (IsStartOfLine path)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("CSharpTokenizer.PreprocessorAtStartOfLine", "[csharp][tokenizer]")
+{
+    auto result = CSharpLanguage{}.Tokenize("#region Foo\n  #endregion");
+    REQUIRE(result.has_value());
+    int ppCount = 0;
+    for (auto const& t : *result)
+        if (t.type == TokenType::PreprocessorDirective)
+            ++ppCount;
+    CHECK(ppCount == 2);
+}
+
+TEST_CASE("CSharpTokenizer.HashNotAtStartOfLine", "[csharp][tokenizer]")
+{
+    auto result = CSharpLanguage{}.Tokenize("x #region Foo");
+    REQUIRE(result.has_value());
+    bool foundPP = false;
+    for (auto const& t : *result)
+        if (t.type == TokenType::PreprocessorDirective)
+            foundPP = true;
+    CHECK_FALSE(foundPP);
+}
+
+// ---------------------------------------------------------------------------
+// Coverage: verbatim string with escaped double-quotes
+// ---------------------------------------------------------------------------
+
+TEST_CASE("CSharpTokenizer.VerbatimStringEscapedQuotes", "[csharp][tokenizer]")
+{
+    auto result = CSharpLanguage{}.Tokenize(R"cs(@"He said ""hello""")cs");
+    REQUIRE(result.has_value());
+    CHECK((*result)[0].type == TokenType::StringLiteral);
+}
+
+// ---------------------------------------------------------------------------
+// Coverage: unterminated string at newline
+// ---------------------------------------------------------------------------
+
+TEST_CASE("CSharpTokenizer.UnterminatedStringAtNewline", "[csharp][tokenizer]")
+{
+    auto result = CSharpLanguage{}.Tokenize("\"unterminated\n");
+    // Unterminated string at newline returns an error
+    CHECK_FALSE(result.has_value());
+}
+
+// ---------------------------------------------------------------------------
+// Coverage: unterminated interpolated string
+// ---------------------------------------------------------------------------
+
+TEST_CASE("CSharpTokenizer.UnterminatedInterpolatedStringNewline", "[csharp][tokenizer]")
+{
+    auto result = CSharpLanguage{}.Tokenize("$\"hello {world\n");
+    // Unterminated interpolated string at newline returns an error
+    CHECK_FALSE(result.has_value());
+}
+
+// ---------------------------------------------------------------------------
+// Coverage: interpolated string with escape sequence (lines 570-576)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("CSharpTokenizer.InterpolatedStringWithEscape", "[csharp][tokenizer]")
+{
+    auto result = CSharpLanguage{}.Tokenize(R"cs($"hello\nworld")cs");
+    REQUIRE(result.has_value());
+    CHECK((*result)[0].type == TokenType::StringLiteral);
+}
+
+// ---------------------------------------------------------------------------
+// Coverage: float with decimal suffix (lines 764-775)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("CSharpTokenizer.FloatWithDecimalPointAndSuffix", "[csharp][tokenizer]")
+{
+    // Exercises the else-if branch for number.suffix (e.g., 1.5m for decimal)
+    auto result = CSharpLanguage{}.Tokenize("var x = 1.5m;");
+    REQUIRE(result.has_value());
+    auto it = std::ranges::find_if(*result, [](auto const& t) { return t.type == TokenType::NumericLiteral; });
+    REQUIRE(it != result->end());
+    CHECK(it->text == "1.5m");
+}
+
+TEST_CASE("CSharpTokenizer.FloatWithDoubleSuffix", "[csharp][tokenizer]")
+{
+    auto result = CSharpLanguage{}.Tokenize("var x = 3.14d;");
+    REQUIRE(result.has_value());
+    auto it = std::ranges::find_if(*result, [](auto const& t) { return t.type == TokenType::NumericLiteral; });
+    REQUIRE(it != result->end());
+    CHECK(it->text == "3.14d");
+}
+
+// ---------------------------------------------------------------------------
+// Coverage: preprocessor at start of file (line 417)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("CSharpTokenizer.PreprocessorAtFileStart", "[csharp][tokenizer]")
+{
+    auto result = CSharpLanguage{}.Tokenize("#region Utilities\n");
+    REQUIRE(result.has_value());
+    CHECK((*result)[0].type == TokenType::PreprocessorDirective);
+}
+
+// ---------------------------------------------------------------------------
+// Coverage: PeekAt out of bounds (line 294)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("CSharpTokenizer.NumberAtEndOfInput", "[csharp][tokenizer]")
+{
+    auto result = CSharpLanguage{}.Tokenize("1.");
+    REQUIRE(result.has_value());
+    auto it = std::ranges::find_if(*result, [](auto const& t) { return t.type == TokenType::NumericLiteral; });
+    REQUIRE(it != result->end());
+}
+
+// ---------------------------------------------------------------------------
+// Coverage: dot-suffix floats (else-if branch)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("CSharpTokenizer.FloatDotSuffix", "[csharp][tokenizer]")
+{
+    auto result = CSharpLanguage{}.Tokenize("var x = 1.f;");
+    REQUIRE(result.has_value());
+    auto it = std::ranges::find_if(*result, [](auto const& t) { return t.type == TokenType::NumericLiteral; });
+    REQUIRE(it != result->end());
+}
+
+TEST_CASE("CSharpTokenizer.FloatDotDecimalSuffixM", "[csharp][tokenizer]")
+{
+    // Triggers the else-if for .M suffix (decimal type)
+    auto result = CSharpLanguage{}.Tokenize("var x = 1.M;");
+    REQUIRE(result.has_value());
+    auto it = std::ranges::find_if(*result, [](auto const& t) { return t.type == TokenType::NumericLiteral; });
+    REQUIRE(it != result->end());
+}
+
+// ---------------------------------------------------------------------------
+// Coverage: const method, namespace/struct blocks (backward scanning paths)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("CSharpTokenizer.NamespaceBlockNotExtracted", "[csharp][codeblock]")
+{
+    CSharpLanguage const cs;
+    auto tokens = cs.Tokenize(R"cs(
+namespace Detail {
+    int a = 1;
+    int b = 2;
+    int c = 3;
+    int d = 4;
+}
+)cs");
+    REQUIRE(tokens.has_value());
+    TokenNormalizer normalizer;
+    auto normalized = normalizer.Normalize(*tokens);
+    auto blocks = cs.ExtractBlocks(*tokens, normalized, {}, {.minTokens = 3});
+    CHECK(blocks.empty());
+}
+
+TEST_CASE("CSharpTokenizer.StructBlockNotExtracted", "[csharp][codeblock]")
+{
+    CSharpLanguage const cs;
+    auto tokens = cs.Tokenize(R"cs(
+struct MyStruct {
+    int a;
+    int b;
+    int c;
+    int d;
+}
+)cs");
+    REQUIRE(tokens.has_value());
+    TokenNormalizer normalizer;
+    auto normalized = normalizer.Normalize(*tokens);
+    auto blocks = cs.ExtractBlocks(*tokens, normalized, {}, {.minTokens = 3});
+    CHECK(blocks.empty());
+}

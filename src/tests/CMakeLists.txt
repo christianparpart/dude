@@ -64,7 +64,10 @@ enable_coverage(dude_test)
 enable_clang_tidy(dude_test)
 
 include(CTest)
-list(APPEND CMAKE_MODULE_PATH ${Catch2_SOURCE_DIR}/extras)
+if(Catch2_SOURCE_DIR)
+    # When fetched via CPM, the Catch module is in the source tree's extras/ directory.
+    list(APPEND CMAKE_MODULE_PATH ${Catch2_SOURCE_DIR}/extras)
+endif()
 include(Catch)
 catch_discover_tests(dude_test)
 

@@ -5,8 +5,11 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <atomic>
 #include <filesystem>
+#include <format>
 #include <fstream>
+#include <random>
 #include <ranges>
 #include <string>
 #include <vector>
@@ -20,8 +23,11 @@ namespace
 class TempDir
 {
 public:
-    TempDir() : _path(std::filesystem::temp_directory_path() / "dude_test")
+    TempDir()
     {
+        static auto const seed = std::random_device{}();
+        static std::atomic<unsigned> counter{0};
+        _path = std::filesystem::temp_directory_path() / std::format("dude_test_{}_{}", seed, counter.fetch_add(1));
         std::filesystem::create_directories(_path);
     }
 
@@ -209,4 +215,18 @@ TEST_CASE("FileScanner.WithMultipleGlobPatterns", "[scanner]")
     auto result = FileScanner::Scan(dir.Path(), FileScanner::DefaultExtensions(), filter);
     REQUIRE(result.has_value());
     CHECK(result->size() == 2);
+}
+
+// ---------------------------------------------------------------------------
+// Coverage: error path when path is a regular file (not a directory)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("FileScanner.ScanRegularFile", "[scanner]")
+{
+    TempDir dir;
+    dir.CreateFile("foo.cpp");
+    auto const filePath = dir.Path() / "foo.cpp";
+
+    auto result = FileScanner::Scan(filePath, {});
+    CHECK_FALSE(result.has_value());
 }

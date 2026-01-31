@@ -173,3 +173,63 @@ class MyClass:
 
     CHECK(blocks.empty());
 }
+
+// ---------------------------------------------------------------------------
+// Coverage: decorated function (exercises decorator-skipping logic)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("PythonCodeBlock.DecoratedFunctionAlt", "[python][codeblock]")
+{
+    auto blocks = ExtractBlocks(R"py(
+@some_decorator
+def decorated_func(x):
+    a = x + 1
+    b = a * 2
+    c = b - 3
+    return c
+)py");
+
+    REQUIRE(blocks.size() == 1);
+    CHECK(blocks[0].name == "decorated_func");
+}
+
+// ---------------------------------------------------------------------------
+// Coverage: text-preserving normalization path (PythonLanguage.cpp lines 797-801)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("PythonCodeBlock.TextPreservingExtract", "[python][codeblock]")
+{
+    PythonLanguage const python;
+    auto tokens = python.Tokenize(R"py(
+def process(x):
+    a = x + 1
+    b = a * 2
+    c = b - 3
+    return c
+)py");
+    REQUIRE(tokens.has_value());
+    TokenNormalizer normalizer;
+    auto normalized = normalizer.Normalize(*tokens, &python);
+    auto textPreserving = normalizer.NormalizeTextPreserving(*tokens, &python);
+    auto blocks = python.ExtractBlocks(*tokens, normalized, textPreserving, {.minTokens = 3});
+    REQUIRE(blocks.size() == 1);
+    CHECK(blocks[0].name == "process");
+    // Text-preserving IDs should be populated
+    CHECK_FALSE(blocks[0].textPreservingIds.empty());
+}
+
+TEST_CASE("PythonCodeBlock.MultipleDecorators", "[python][codeblock]")
+{
+    auto blocks = ExtractBlocks(R"py(
+@decorator_one
+@decorator_two
+def multi_decorated(y):
+    a = y + 10
+    b = a * 20
+    c = b - 30
+    return c
+)py");
+
+    REQUIRE(blocks.size() == 1);
+    CHECK(blocks[0].name == "multi_decorated");
+}

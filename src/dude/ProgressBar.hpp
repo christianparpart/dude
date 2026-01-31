@@ -25,7 +25,8 @@ public:
     /// @param stageName Display name for the stage (e.g. "Tokenizing").
     /// @param totalItems Total number of items to process (0 if unknown).
     /// @param output File stream to write progress to (default: stderr).
-    ProgressBar(std::string_view stageName, size_t totalItems, FILE* output = stderr);
+    /// @param forceTTY If true, forces TTY mode regardless of actual terminal detection (for testing).
+    ProgressBar(std::string_view stageName, size_t totalItems, FILE* output = stderr, bool forceTTY = false);
 
     ProgressBar(ProgressBar const&) = delete;
     ProgressBar& operator=(ProgressBar const&) = delete;

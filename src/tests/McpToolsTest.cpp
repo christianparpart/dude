@@ -7,10 +7,12 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <atomic>
 #include <cstdlib>
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <random>
 #include <sstream>
 
 using namespace mcp;
@@ -25,8 +27,9 @@ struct TempTestDir
 
     TempTestDir()
     {
-        root = std::filesystem::temp_directory_path() / "mcp_tools_test";
-        std::filesystem::remove_all(root);
+        static auto const seed = std::random_device{}();
+        static std::atomic<unsigned> counter{0};
+        root = std::filesystem::temp_directory_path() / std::format("mcp_tools_test_{}_{}", seed, counter.fetch_add(1));
         std::filesystem::create_directories(root);
     }
 
@@ -552,8 +555,9 @@ struct TempGitRepo
 
     TempGitRepo()
     {
-        root = std::filesystem::temp_directory_path() / "mcp_git_test";
-        std::filesystem::remove_all(root);
+        static auto const seed = std::random_device{}();
+        static std::atomic<unsigned> counter{0};
+        root = std::filesystem::temp_directory_path() / std::format("mcp_git_test_{}_{}", seed, counter.fetch_add(1));
         std::filesystem::create_directories(root);
 
         // Initialize git repo with an initial commit.
@@ -695,4 +699,221 @@ TEST_CASE("McpTools.AnalyzeBranchDuplicates.GitError", "[mcp][tools]")
         CallTool(server, "analyze_branch_duplicates", {{"directory", dir.root.string()}, {"base_ref", "main"}});
     REQUIRE(resp.result.has_value());
     CHECK(resp.result.value()["isError"] == true); // NOLINT(bugprone-unchecked-optional-access)
+}
+
+// ---------------------------------------------------------------------------
+// Coverage: analyze_directory with scope/extensions/glob_patterns (lines 110-132)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("McpTools.AnalyzeDirectory.WithScope", "[mcp][tools]")
+{
+    TempTestDir dir;
+    dir.WriteFile("test.cpp", kDuplicateSource);
+
+    AnalysisSession session;
+    McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
+    RegisterDudeTools(server, session);
+    InitServer(server);
+
+    auto const resp = CallTool(server, "analyze_directory",
+                               {{"directory", dir.root.string()}, {"scope", "inter-file"}, {"min_tokens", 10}});
+    auto const data = ParseToolResultText(resp);
+    CHECK(data.contains("total_files"));
+}
+
+TEST_CASE("McpTools.AnalyzeDirectory.InvalidScope", "[mcp][tools]")
+{
+    TempTestDir dir;
+    dir.WriteFile("test.cpp", kDuplicateSource);
+
+    AnalysisSession session;
+    McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
+    RegisterDudeTools(server, session);
+    InitServer(server);
+
+    auto const resp =
+        CallTool(server, "analyze_directory", {{"directory", dir.root.string()}, {"scope", "invalid-scope"}});
+    REQUIRE(resp.result.has_value());
+    CHECK(resp.result.value()["isError"] == true); // NOLINT(bugprone-unchecked-optional-access)
+}
+
+TEST_CASE("McpTools.AnalyzeDirectory.WithExtensions", "[mcp][tools]")
+{
+    TempTestDir dir;
+    dir.WriteFile("test.cpp", kDuplicateSource);
+
+    AnalysisSession session;
+    McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
+    RegisterDudeTools(server, session);
+    InitServer(server);
+
+    // Use extension without leading dot to exercise the s.insert(0, ".") path
+    auto const resp = CallTool(
+        server, "analyze_directory",
+        {{"directory", dir.root.string()}, {"extensions", nlohmann::json::array({"cpp"})}, {"min_tokens", 10}});
+    auto const data = ParseToolResultText(resp);
+    CHECK(data.contains("total_files"));
+}
+
+TEST_CASE("McpTools.AnalyzeDirectory.WithGlobPatterns", "[mcp][tools]")
+{
+    TempTestDir dir;
+    dir.WriteFile("test.cpp", kDuplicateSource);
+
+    AnalysisSession session;
+    McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
+    RegisterDudeTools(server, session);
+    InitServer(server);
+
+    auto const resp = CallTool(
+        server, "analyze_directory",
+        {{"directory", dir.root.string()}, {"glob_patterns", nlohmann::json::array({"*.cpp"})}, {"min_tokens", 10}});
+    auto const data = ParseToolResultText(resp);
+    CHECK(data.contains("total_files"));
+}
+
+// ---------------------------------------------------------------------------
+// Coverage: get_clone_groups with min_similarity/file_filter/offset (lines 191-223)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("McpTools.GetCloneGroups.WithFiltering", "[mcp][tools]")
+{
+    TempTestDir dir;
+    dir.WriteFile("test.cpp", kDuplicateSource);
+
+    AnalysisSession session;
+    McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
+    RegisterDudeTools(server, session);
+    InitServer(server);
+
+    // First analyze
+    CallTool(server, "analyze_directory", {{"directory", dir.root.string()}, {"min_tokens", 10}, {"threshold", 0.70}});
+
+    // Get with min_similarity filter (should filter out groups below threshold)
+    auto resp = CallTool(server, "get_clone_groups", {{"min_similarity", 0.99}});
+    auto data = ParseToolResultText(resp);
+    CHECK(data.contains("total_groups"));
+
+    // Get with file_filter
+    resp = CallTool(server, "get_clone_groups", {{"file_filter", "test.cpp"}});
+    data = ParseToolResultText(resp);
+    CHECK(data["returned"].get<size_t>() > 0);
+
+    // Get with file_filter that matches nothing
+    resp = CallTool(server, "get_clone_groups", {{"file_filter", "nonexistent.cpp"}});
+    data = ParseToolResultText(resp);
+    CHECK(data["returned"].get<size_t>() == 0);
+
+    // Get with offset (skip results)
+    resp = CallTool(server, "get_clone_groups", {{"offset", 100}});
+    data = ParseToolResultText(resp);
+    CHECK(data["returned"].get<size_t>() == 0);
+
+    // Get with limit=0 (should still work, returning all)
+    resp = CallTool(server, "get_clone_groups", {{"limit", 1}});
+    data = ParseToolResultText(resp);
+    CHECK(data["returned"].get<size_t>() <= 1);
+}
+
+// ---------------------------------------------------------------------------
+// Coverage: get_code_block out of range (line 291)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("McpTools.GetCodeBlock.OutOfRange", "[mcp][tools]")
+{
+    TempTestDir dir;
+    dir.WriteFile("test.cpp", kDuplicateSource);
+
+    AnalysisSession session;
+    McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
+    RegisterDudeTools(server, session);
+    InitServer(server);
+
+    CallTool(server, "analyze_directory", {{"directory", dir.root.string()}, {"min_tokens", 10}});
+
+    auto const resp = CallTool(server, "get_code_block", {{"block_index", 99999}});
+    REQUIRE(resp.result.has_value());
+    CHECK(resp.result.value()["isError"] == true); // NOLINT(bugprone-unchecked-optional-access)
+}
+
+// ---------------------------------------------------------------------------
+// Coverage: query_file_duplicates with intra-function results (lines 394-417)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("McpTools.QueryFileDuplicates.WithIntraResults", "[mcp][tools]")
+{
+    TempTestDir dir;
+    // Write a function with internal duplication to trigger intra-function detection
+    dir.WriteFile("intra.cpp", R"(
+void bigFunction(int x) {
+    int a1 = x + 1;
+    int b1 = a1 * 2;
+    int c1 = b1 - 3;
+    int d1 = c1 + 4;
+    int e1 = d1 * 5;
+    int f1 = e1 - 6;
+    // duplicate block
+    int a2 = x + 1;
+    int b2 = a2 * 2;
+    int c2 = b2 - 3;
+    int d2 = c2 + 4;
+    int e2 = d2 * 5;
+    int f2 = e2 - 6;
+}
+)");
+
+    AnalysisSession session;
+    McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
+    RegisterDudeTools(server, session);
+    InitServer(server);
+
+    CallTool(server, "analyze_directory",
+             {{"directory", dir.root.string()}, {"min_tokens", 5}, {"threshold", 0.70}, {"scope", "all"}});
+
+    auto const resp = CallTool(server, "query_file_duplicates", {{"file_path", "intra.cpp"}});
+    auto const data = ParseToolResultText(resp);
+    CHECK(data.contains("intra_function_clones"));
+    CHECK(data.contains("inter_function_clones"));
+}
+
+// ---------------------------------------------------------------------------
+// Coverage: query_file_duplicates with limit (line 358)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("McpTools.QueryFileDuplicates.WithLimit", "[mcp][tools]")
+{
+    TempTestDir dir;
+    dir.WriteFile("test.cpp", kDuplicateSource);
+
+    AnalysisSession session;
+    McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
+    RegisterDudeTools(server, session);
+    InitServer(server);
+
+    CallTool(server, "analyze_directory", {{"directory", dir.root.string()}, {"min_tokens", 10}, {"threshold", 0.70}});
+
+    auto const resp = CallTool(server, "query_file_duplicates", {{"file_path", "test.cpp"}, {"limit", 1}});
+    auto const data = ParseToolResultText(resp);
+    CHECK(data["inter_function_clones"].size() <= 1);
+}
+
+// ---------------------------------------------------------------------------
+// Coverage: configure_analysis with scope (line 554-559)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("McpTools.ConfigureAnalysis.WithScope", "[mcp][tools]")
+{
+    TempTestDir dir;
+    dir.WriteFile("test.cpp", kDuplicateSource);
+
+    AnalysisSession session;
+    McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
+    RegisterDudeTools(server, session);
+    InitServer(server);
+
+    CallTool(server, "analyze_directory", {{"directory", dir.root.string()}, {"min_tokens", 10}, {"threshold", 0.70}});
+
+    auto const resp = CallTool(server, "configure_analysis", {{"scope", "intra-file"}});
+    auto const data = ParseToolResultText(resp);
+    CHECK(data.contains("total_files"));
 }
