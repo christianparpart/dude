@@ -14,8 +14,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Clang 21
-        run: wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- 21
+      - name: Install clang-format-21
+        run: |
+          wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- 21
+          sudo apt-get install -y clang-format-21
 
       - name: Check clang-format
         run: find src -name '*.cpp' -o -name '*.hpp' -o -name '*.h' | xargs clang-format-21 --dry-run --Werror
