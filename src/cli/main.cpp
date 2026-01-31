@@ -29,7 +29,9 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
+#include <csignal>
 #include <cstdlib>
 #include <expected>
 #include <filesystem>
@@ -58,6 +60,41 @@
 
 namespace
 {
+
+// NOLINTBEGIN(cppcoreguidelines-avoid-non-const-global-variables)
+
+/// @brief Global flag set by the signal handler to request graceful shutdown.
+std::atomic<bool> gInterrupted{false};
+
+// NOLINTEND(cppcoreguidelines-avoid-non-const-global-variables)
+
+/// @brief Signal handler for SIGINT and SIGTERM.
+///
+/// Sets the global interrupted flag so pipeline phases can check for cancellation
+/// between stages. Only performs an atomic store, which is safe in signal context.
+void SignalHandler(int /*signum*/)
+{
+    gInterrupted.store(true, std::memory_order_relaxed);
+}
+
+/// @brief Installs signal handlers for graceful shutdown on SIGINT and SIGTERM.
+void InstallSignalHandlers()
+{
+    std::signal(SIGINT, SignalHandler);
+    std::signal(SIGTERM, SignalHandler);
+}
+
+/// @brief Checks if the process has been interrupted and exits cleanly if so.
+/// @return Exit code 2 if interrupted, or std::nullopt to continue.
+auto CheckInterrupted() -> std::optional<int>
+{
+    if (gInterrupted.load(std::memory_order_relaxed))
+    {
+        std::println(stderr, "\nInterrupted.");
+        return 2;
+    }
+    return std::nullopt;
+}
 
 constexpr auto versionString = DUDE_VERSION;
 
@@ -878,6 +915,8 @@ int main(int argc, char* argv[])
         return server.Run();
     }
 
+    InstallSignalHandlers();
+
     auto const diffMode = !opts.diffBase.empty();
 
     // Step 0: Parse git diff if in diff mode.
@@ -886,6 +925,9 @@ int main(int argc, char* argv[])
         return diffSetupResult.error();
     auto const& diffResult = *diffSetupResult;
 
+    if (auto const interrupted = CheckInterrupted())
+        return *interrupted;
+
     dude::PerformanceTiming timing;
 
     // Step 1: Scan files
@@ -893,6 +935,9 @@ int main(int argc, char* argv[])
     if (!filesResult)
         return filesResult.error();
     auto const& files = *filesResult;
+
+    if (auto const interrupted = CheckInterrupted())
+        return *interrupted;
 
     // Step 2: Tokenize all files (language-aware)
     auto tokenBar =
@@ -903,6 +948,9 @@ int main(int argc, char* argv[])
     if (tokenBar)
         tokenBar->Finish();
 
+    if (auto const interrupted = CheckInterrupted())
+        return *interrupted;
+
     // Step 3: Normalize and extract blocks (language-aware)
     auto extractBar =
         opts.showProgress ? std::make_optional<dude::ProgressBar>("Extracting", files.size()) : std::nullopt;
@@ -912,6 +960,9 @@ int main(int argc, char* argv[])
         ExtractBlocks(allTokens, fileLanguages, files, opts, timing, extractBar ? &*extractBar : nullptr);
     if (extractBar)
         extractBar->Finish();
+
+    if (auto const interrupted = CheckInterrupted())
+        return *interrupted;
 
     // Step 4: Detect clones
     using Clock = std::chrono::steady_clock;
@@ -1013,6 +1064,9 @@ int main(int argc, char* argv[])
                           });
     }
 
+    if (auto const interrupted = CheckInterrupted())
+        return *interrupted;
+
     // Step 4b: Detect intra-function clones
     std::vector<dude::IntraCloneResult> intraResults;
     if (dude::HasScope(opts.scope, dude::AnalysisScope::IntraFunction))
@@ -1057,6 +1111,9 @@ int main(int argc, char* argv[])
             std::println(stderr, "Found {} intra-function clone pairs in {} blocks", totalPairs, intraResults.size());
         }
     }
+
+    if (auto const interrupted = CheckInterrupted())
+        return *interrupted;
 
     // Step 4c: Filter results if in diff mode.
     if (diffMode)

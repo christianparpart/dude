@@ -113,7 +113,7 @@ Optional filters are composed together:
 - **Glob filter** -- The `-g` / `--glob` option restricts scanning to files matching
   one or more glob patterns (e.g., `-g '*.cpp' -g '*Controller*'`).
 
-The scanner is implemented in `src/codedup/FileScanner.hpp`.
+The scanner is implemented in `src/dude/FileScanner.hpp`.
 
 ---
 
@@ -126,7 +126,7 @@ tokenizer.
 
 ### Language Selection
 
-The `LanguageRegistry` singleton (`src/codedup/LanguageRegistry.hpp`) maps file
+The `LanguageRegistry` singleton (`src/dude/LanguageRegistry.hpp`) maps file
 extensions to `Language` implementations. Each language provides:
 
 | Method | Purpose |
@@ -138,7 +138,7 @@ extensions to `Language` implementations. Each language provides:
 
 ### Token Structure
 
-Defined as `struct Token` in `src/codedup/Token.hpp`:
+Defined as `struct Token` in `src/dude/Token.hpp`:
 
 ```cpp
 struct Token {
@@ -154,7 +154,7 @@ and preprocessor directives.
 
 ### Source Locations
 
-`SourceLocation` (`src/codedup/SourceLocation.hpp`) uses a compact `uint32_t`
+`SourceLocation` (`src/dude/SourceLocation.hpp`) uses a compact `uint32_t`
 file index rather than storing a full path per token. This index references into the
 global file path vector maintained by the pipeline, significantly reducing per-token
 memory overhead.
@@ -174,12 +174,12 @@ lightweight), then all files are tokenized in parallel.
 
 ### Normalization Modes
 
-The `TokenNormalizer` class (`src/codedup/TokenNormalizer.hpp`) converts raw tokens
+The `TokenNormalizer` class (`src/dude/TokenNormalizer.hpp`) converts raw tokens
 into integer ID sequences suitable for algorithmic comparison. It offers two modes:
 
 #### Structural Normalization
 
-`TokenNormalizer::Normalize()` in `src/codedup/TokenNormalizer.cpp`
+`TokenNormalizer::Normalize()` in `src/dude/TokenNormalizer.cpp`
 
 This mode produces identical sequences for **Type-2 (renamed) clones** -- functions
 whose structure is identical but whose variable names or literal values differ:
@@ -193,7 +193,7 @@ whose structure is identical but whose variable names or literal values differ:
 | All char literals | Generic ID `1003` |
 | Comments, preprocessor, EOF | **Stripped** (excluded from output) |
 
-The generic IDs are defined in the `GenericId` enum (`src/codedup/TokenNormalizer.hpp`).
+The generic IDs are defined in the `GenericId` enum (`src/dude/TokenNormalizer.hpp`).
 
 By collapsing all identifiers to a single ID and all literals of each kind to a single
 ID, two code fragments that differ only in variable names and literal values produce
@@ -201,21 +201,21 @@ identical normalized sequences, enabling Type-2 clone detection.
 
 #### Text-Preserving Normalization
 
-`TokenNormalizer::NormalizeTextPreserving()` in `src/codedup/TokenNormalizer.cpp`
+`TokenNormalizer::NormalizeTextPreserving()` in `src/dude/TokenNormalizer.cpp`
 
 This mode gives each unique identifier and literal text its own distinct ID (starting
 at 2000), while keywords and operators keep the same IDs as structural mode. This
 enables a textual similarity score that distinguishes renamed identifiers from truly
 identical ones.
 
-A `TokenDictionary` (`src/codedup/TokenNormalizer.hpp`) maintains the bijective
+A `TokenDictionary` (`src/dude/TokenNormalizer.hpp`) maintains the bijective
 mapping between IDs and text strings. IDs below 2000 are reserved; dynamic IDs start
 at 2000 and are allocated incrementally.
 
 ### Block Extraction
 
 Each language implements `Language::ExtractBlocks()` to identify function-level code
-units from the token stream. A `CodeBlock` (`src/codedup/CodeBlock.hpp`) captures:
+units from the token stream. A `CodeBlock` (`src/dude/CodeBlock.hpp`) captures:
 
 ```cpp
 struct CodeBlock {
@@ -236,8 +236,8 @@ is configurable via `CodeBlockExtractorConfig` (same file).
 
 ### Inter-Function Clone Detection
 
-**Core class:** `CloneDetector` in `src/codedup/CloneDetector.hpp`\
-**Implementation:** `CloneDetector::Detect()` in `src/codedup/CloneDetector.cpp`
+**Core class:** `CloneDetector` in `src/dude/CloneDetector.hpp`\
+**Implementation:** `CloneDetector::Detect()` in `src/dude/CloneDetector.cpp`
 
 The algorithm operates in four steps:
 
@@ -371,7 +371,7 @@ For each candidate pair surviving Stages 1-4, the exact similarity is computed:
 Implemented in the final section of `CloneDetector::Detect()`.
 
 Clone pairs are grouped into connected components using a `UnionFind` (disjoint set)
-data structure (defined in `src/codedup/CloneDetector.cpp`) with union-by-rank and path
+data structure (defined in `src/dude/CloneDetector.cpp`) with union-by-rank and path
 compression:
 
 1. Initialize one element per block.
@@ -394,8 +394,8 @@ two standard optimizations:
 
 ### Intra-Function Clone Detection
 
-**Core class:** `IntraFunctionDetector` in `src/codedup/IntraFunctionDetector.hpp`\
-**Implementation:** `IntraFunctionDetector::Detect()` in `src/codedup/IntraFunctionDetector.cpp`
+**Core class:** `IntraFunctionDetector` in `src/dude/IntraFunctionDetector.hpp`\
+**Implementation:** `IntraFunctionDetector::Detect()` in `src/dude/IntraFunctionDetector.cpp`
 
 This detector finds duplicated regions **within** a single function body. The algorithm
 is conceptually similar to the seed-and-extend paradigm used in bioinformatics sequence
@@ -464,10 +464,10 @@ For each code block (via `IntraFunctionDetector::DetectInBlock()`):
 
 After detection, results are filtered according to the user's requested scope:
 
-- **`ScopeFilter`** (`src/codedup/ScopeFilter.hpp`) restricts inter-function results
+- **`ScopeFilter`** (`src/dude/ScopeFilter.hpp`) restricts inter-function results
   to cross-file clones, within-file clones, or both. For `IntraFile` mode, it splits
   multi-file groups into per-file sub-groups containing 2+ blocks each.
-- **`DiffFilter`** (`src/codedup/DiffFilter.hpp`) restricts results to clones
+- **`DiffFilter`** (`src/dude/DiffFilter.hpp`) restricts results to clones
   involving blocks that overlap with lines changed in a git diff. This enables
   CI pipelines to check only newly introduced duplication.
 
@@ -475,18 +475,18 @@ After detection, results are filtered according to the user's requested scope:
 
 ## Phase 5: Reporting
 
-**Interface:** `Reporter` in `src/codedup/Reporter.hpp`
+**Interface:** `Reporter` in `src/dude/Reporter.hpp`
 
 The reporter receives the detected groups and intra-function results and formats them
 for output. Two concrete implementations exist:
 
-- **`ConsoleReporter`** (`src/codedup/ConsoleReporter.hpp`) -- Human-readable text with
+- **`ConsoleReporter`** (`src/dude/ConsoleReporter.hpp`) -- Human-readable text with
   optional ANSI color codes, syntax highlighting, source code snippets, and
   diff highlighting of mismatched tokens between clones.
-- **`JsonReporter`** (`src/codedup/JsonReporter.hpp`) -- Structured JSON for CI tooling
+- **`JsonReporter`** (`src/dude/JsonReporter.hpp`) -- Structured JSON for CI tooling
   and machine consumption.
 
-A `SummaryData` struct (`src/codedup/Reporter.hpp`) aggregates statistics
+A `SummaryData` struct (`src/dude/Reporter.hpp`) aggregates statistics
 (total files, blocks, groups, duplicated lines) and optional `PerformanceTiming`
 data (same file) that records wall-clock duration for each pipeline phase.
 
@@ -678,7 +678,7 @@ This section describes the specific techniques used to achieve maximum throughpu
 
 ### Rabin-Karp Rolling Hash with Mersenne Prime Arithmetic
 
-**File:** `src/codedup/RollingHash.hpp`
+**File:** `src/dude/RollingHash.hpp`
 
 Fingerprints are computed using a polynomial rolling hash:
 
@@ -687,7 +687,7 @@ H(t_0, ..., t_{W-1}) = (t_0 * B^{W-1} + t_1 * B^{W-2} + ... + t_{W-1}) mod P
 ```
 
 where `B = 257` is the hash base (`hashBase`) and `P = 2^61 - 1` is a Mersenne prime
-(`hashPrime`), both defined in `src/codedup/RollingHash.hpp`.
+(`hashPrime`), both defined in `src/dude/RollingHash.hpp`.
 
 The rolling update slides the window by one position in O(1):
 
@@ -719,7 +719,7 @@ Platform-specific 128-bit multiplication is used: `_umul128` intrinsic on MSVC,
 
 ### Bit-Parallel LCS Algorithm
 
-**File:** `src/codedup/CloneDetector.cpp`\
+**File:** `src/dude/CloneDetector.cpp`\
 **Functions:** `LcsLengthBitParallel64()`, `LcsLengthBitParallel256()`, `LcsLengthBitParallelDynamic()`
 
 The Longest Common Subsequence is the most computationally expensive operation in the
@@ -760,7 +760,7 @@ O(ceil(n/64)) work per row and O(m * ceil(n/64)) total.
 
 ### Three-Tier Bitvector Dispatch
 
-**Function:** `CloneDetector::ComputeSimilarity()` in `src/codedup/CloneDetector.cpp`
+**Function:** `CloneDetector::ComputeSimilarity()` in `src/dude/CloneDetector.cpp`
 
 The bit-parallel LCS is implemented at three width tiers, selected based on the
 shorter sequence's length:
@@ -799,7 +799,7 @@ operations = 800 word ops, each processing 64 columns simultaneously -- a theore
 
 ### Threshold-Aware LCS with Early Termination
 
-**File:** `src/codedup/CloneDetector.cpp`\
+**File:** `src/dude/CloneDetector.cpp`\
 **Functions:** `LcsLengthBitParallel64WithThreshold()`, `LcsLengthBitParallel256WithThreshold()`, `LcsLengthBitParallelDynamicWithThreshold()`\
 **Public API:** `CloneDetector::ComputeSimilarityWithThreshold()`, `CloneDetector::ComputeBlendedSimilarityWithThreshold()`
 
@@ -915,8 +915,8 @@ a large fraction of noise candidates.
 
 ### Bag-of-Tokens Dice Pre-Filter
 
-**Function:** `CloneDetector::BagDiceCompatible()` in `src/codedup/CloneDetector.cpp`\
-**Data structure:** `BlockHistogram` in `src/codedup/CloneDetector.hpp`
+**Function:** `CloneDetector::BagDiceCompatible()` in `src/dude/CloneDetector.cpp`\
+**Data structure:** `BlockHistogram` in `src/dude/CloneDetector.hpp`
 
 This filter computes an upper bound on the Dice coefficient using token frequency
 histograms, without considering token order.
@@ -948,7 +948,7 @@ control-flow-heavy) will have a low bag Dice despite passing the length-ratio fi
 
 ### Length-Ratio Pre-Filter
 
-**Function:** `CloneDetector::LengthsCompatible()` in `src/codedup/CloneDetector.hpp`
+**Function:** `CloneDetector::LengthsCompatible()` in `src/dude/CloneDetector.hpp`
 
 Before computing the expensive LCS, an O(1) check determines whether the pair's
 sequence lengths are compatible with the similarity threshold:
@@ -1041,7 +1041,7 @@ slot in the output vectors, so no synchronization is needed.
 
 ### SIMD-Accelerated Match Extension
 
-**File:** `src/codedup/IntraFunctionDetector.cpp`\
+**File:** `src/dude/IntraFunctionDetector.cpp`\
 **Functions:** `ForwardMatch()`, `BackwardMatch()`, `PositionalTextSimilarity()`
 
 Intra-function clone detection extends candidate matches to their maximal length by
@@ -1109,39 +1109,39 @@ which needs to read source tokens only for participating files.
 
 | Struct / Class | File | Description |
 |---|---|---|
-| `Token` | `src/codedup/Token.hpp` | A single lexical token (type + text + location) |
-| `TokenType` | `src/codedup/Token.hpp` | Enum of ~280 token types across all languages |
-| `SourceLocation` | `src/codedup/SourceLocation.hpp` | Compact file:line:column using uint32 file index |
-| `SourceRange` | `src/codedup/SourceLocation.hpp` | Start-end pair of `SourceLocation` |
-| `NormalizedTokenId` | `src/codedup/TokenNormalizer.hpp` | `uint32_t` alias for normalized IDs |
-| `NormalizedToken` | `src/codedup/TokenNormalizer.hpp` | Normalized ID + index into original token vector |
-| `TokenDictionary` | `src/codedup/TokenNormalizer.hpp` | Bijective ID-to-name mapping |
-| `TokenNormalizer` | `src/codedup/TokenNormalizer.hpp` | Structural and text-preserving normalization |
-| `CodeBlock` | `src/codedup/CodeBlock.hpp` | Extracted function body with normalized ID sequences |
-| `CodeBlockExtractorConfig` | `src/codedup/CodeBlock.hpp` | Minimum token threshold for blocks |
-| `Language` | `src/codedup/Language.hpp` | Abstract base for language tokenizer + extractor |
-| `LanguageRegistry` | `src/codedup/LanguageRegistry.hpp` | Singleton mapping extensions to languages |
-| `CloneDetectorConfig` | `src/codedup/CloneDetector.hpp` | Detection parameters (threshold, window, etc.) |
-| `ClonePair` | `src/codedup/CloneDetector.hpp` | A pair of blocks with similarity score |
-| `CloneGroup` | `src/codedup/CloneDetector.hpp` | Connected component of clone blocks |
-| `CloneDetector` | `src/codedup/CloneDetector.hpp` | Inter-function detection engine |
-| `LcsAlignment` | `src/codedup/CloneDetector.hpp` | Per-position LCS match flags (for reporting) |
-| `BlockHistogram` | `src/codedup/CloneDetector.hpp` | Token frequency histogram for bag-of-tokens pre-filter |
-| `BitVector256` | `src/codedup/CloneDetector.cpp` | Fixed 256-bit bitvector for Tier 2 LCS |
-| `DynamicBitVector` | `src/codedup/CloneDetector.cpp` | Variable-width bitvector for Tier 3 LCS |
-| `UnionFind` | `src/codedup/CloneDetector.cpp` | Disjoint-set for grouping clone pairs |
-| `PairHash` | `src/codedup/CloneDetector.cpp` | Golden-ratio hash functor for block pair keys |
-| `CandidatePair` | `src/codedup/CloneDetector.cpp` | Lightweight block pair pending similarity check |
-| `IntraCloneRegion` | `src/codedup/IntraFunctionDetector.hpp` | Start + length within a block |
-| `IntraClonePair` | `src/codedup/IntraFunctionDetector.hpp` | Two duplicated regions within one block |
-| `IntraCloneResult` | `src/codedup/IntraFunctionDetector.hpp` | All intra-function pairs for one block |
-| `IntraFunctionDetector` | `src/codedup/IntraFunctionDetector.hpp` | Intra-function detection engine |
-| `ScopeFilter` | `src/codedup/ScopeFilter.hpp` | Post-detection inter/intra-file filtering |
-| `DiffFilter` | `src/codedup/DiffFilter.hpp` | Post-detection git-diff-based filtering |
-| `AnalysisScope` | `src/codedup/AnalysisScope.hpp` | Bitmask enum for scope selection |
-| `Reporter` | `src/codedup/Reporter.hpp` | Abstract output formatting interface |
-| `PerformanceTiming` | `src/codedup/Reporter.hpp` | Wall-clock timing per pipeline phase |
-| `SummaryData` | `src/codedup/Reporter.hpp` | Aggregate statistics for the summary |
+| `Token` | `src/dude/Token.hpp` | A single lexical token (type + text + location) |
+| `TokenType` | `src/dude/Token.hpp` | Enum of ~280 token types across all languages |
+| `SourceLocation` | `src/dude/SourceLocation.hpp` | Compact file:line:column using uint32 file index |
+| `SourceRange` | `src/dude/SourceLocation.hpp` | Start-end pair of `SourceLocation` |
+| `NormalizedTokenId` | `src/dude/TokenNormalizer.hpp` | `uint32_t` alias for normalized IDs |
+| `NormalizedToken` | `src/dude/TokenNormalizer.hpp` | Normalized ID + index into original token vector |
+| `TokenDictionary` | `src/dude/TokenNormalizer.hpp` | Bijective ID-to-name mapping |
+| `TokenNormalizer` | `src/dude/TokenNormalizer.hpp` | Structural and text-preserving normalization |
+| `CodeBlock` | `src/dude/CodeBlock.hpp` | Extracted function body with normalized ID sequences |
+| `CodeBlockExtractorConfig` | `src/dude/CodeBlock.hpp` | Minimum token threshold for blocks |
+| `Language` | `src/dude/Language.hpp` | Abstract base for language tokenizer + extractor |
+| `LanguageRegistry` | `src/dude/LanguageRegistry.hpp` | Singleton mapping extensions to languages |
+| `CloneDetectorConfig` | `src/dude/CloneDetector.hpp` | Detection parameters (threshold, window, etc.) |
+| `ClonePair` | `src/dude/CloneDetector.hpp` | A pair of blocks with similarity score |
+| `CloneGroup` | `src/dude/CloneDetector.hpp` | Connected component of clone blocks |
+| `CloneDetector` | `src/dude/CloneDetector.hpp` | Inter-function detection engine |
+| `LcsAlignment` | `src/dude/CloneDetector.hpp` | Per-position LCS match flags (for reporting) |
+| `BlockHistogram` | `src/dude/CloneDetector.hpp` | Token frequency histogram for bag-of-tokens pre-filter |
+| `BitVector256` | `src/dude/CloneDetector.cpp` | Fixed 256-bit bitvector for Tier 2 LCS |
+| `DynamicBitVector` | `src/dude/CloneDetector.cpp` | Variable-width bitvector for Tier 3 LCS |
+| `UnionFind` | `src/dude/CloneDetector.cpp` | Disjoint-set for grouping clone pairs |
+| `PairHash` | `src/dude/CloneDetector.cpp` | Golden-ratio hash functor for block pair keys |
+| `CandidatePair` | `src/dude/CloneDetector.cpp` | Lightweight block pair pending similarity check |
+| `IntraCloneRegion` | `src/dude/IntraFunctionDetector.hpp` | Start + length within a block |
+| `IntraClonePair` | `src/dude/IntraFunctionDetector.hpp` | Two duplicated regions within one block |
+| `IntraCloneResult` | `src/dude/IntraFunctionDetector.hpp` | All intra-function pairs for one block |
+| `IntraFunctionDetector` | `src/dude/IntraFunctionDetector.hpp` | Intra-function detection engine |
+| `ScopeFilter` | `src/dude/ScopeFilter.hpp` | Post-detection inter/intra-file filtering |
+| `DiffFilter` | `src/dude/DiffFilter.hpp` | Post-detection git-diff-based filtering |
+| `AnalysisScope` | `src/dude/AnalysisScope.hpp` | Bitmask enum for scope selection |
+| `Reporter` | `src/dude/Reporter.hpp` | Abstract output formatting interface |
+| `PerformanceTiming` | `src/dude/Reporter.hpp` | Wall-clock timing per pipeline phase |
+| `SummaryData` | `src/dude/Reporter.hpp` | Aggregate statistics for the summary |
 
 ---
 
@@ -1150,22 +1150,22 @@ which needs to read source tokens only for participating files.
 | File | Purpose |
 |---|---|
 | `src/cli/main.cpp` | CLI entry point and pipeline orchestration |
-| `src/codedup/CloneDetector.hpp` | Inter-function detection API and data types |
-| `src/codedup/CloneDetector.cpp` | Fingerprinting, bit-parallel LCS, threshold-aware LCS, bag-of-tokens filter, Union-Find grouping |
-| `src/codedup/IntraFunctionDetector.hpp` | Intra-function detection API |
-| `src/codedup/IntraFunctionDetector.cpp` | Self-join, SIMD extension, deduplication |
-| `src/codedup/RollingHash.hpp` | Rabin-Karp rolling hash with Mersenne prime |
-| `src/codedup/Token.hpp` | Token type enum and Token struct |
-| `src/codedup/TokenNormalizer.hpp` | Normalizer API and dictionary types |
-| `src/codedup/TokenNormalizer.cpp` | Structural and text-preserving normalization logic |
-| `src/codedup/CodeBlock.hpp` | CodeBlock struct and extractor config |
-| `src/codedup/Language.hpp` | Abstract language interface |
-| `src/codedup/LanguageRegistry.hpp` | Extension-to-language registry |
-| `src/codedup/SourceLocation.hpp` | Compact source location types |
-| `src/codedup/AnalysisScope.hpp` | Scope bitmask enum and parsing |
-| `src/codedup/ScopeFilter.hpp` | Scope-based group filtering |
-| `src/codedup/DiffFilter.hpp` | Git-diff-based result filtering |
-| `src/codedup/Reporter.hpp` | Reporter interface and summary types |
-| `src/codedup/ConsoleReporter.hpp` | Console output with syntax highlighting |
-| `src/codedup/JsonReporter.hpp` | JSON structured output |
-| `src/codedup/FileScanner.hpp` | Directory scanning for source files |
+| `src/dude/CloneDetector.hpp` | Inter-function detection API and data types |
+| `src/dude/CloneDetector.cpp` | Fingerprinting, bit-parallel LCS, threshold-aware LCS, bag-of-tokens filter, Union-Find grouping |
+| `src/dude/IntraFunctionDetector.hpp` | Intra-function detection API |
+| `src/dude/IntraFunctionDetector.cpp` | Self-join, SIMD extension, deduplication |
+| `src/dude/RollingHash.hpp` | Rabin-Karp rolling hash with Mersenne prime |
+| `src/dude/Token.hpp` | Token type enum and Token struct |
+| `src/dude/TokenNormalizer.hpp` | Normalizer API and dictionary types |
+| `src/dude/TokenNormalizer.cpp` | Structural and text-preserving normalization logic |
+| `src/dude/CodeBlock.hpp` | CodeBlock struct and extractor config |
+| `src/dude/Language.hpp` | Abstract language interface |
+| `src/dude/LanguageRegistry.hpp` | Extension-to-language registry |
+| `src/dude/SourceLocation.hpp` | Compact source location types |
+| `src/dude/AnalysisScope.hpp` | Scope bitmask enum and parsing |
+| `src/dude/ScopeFilter.hpp` | Scope-based group filtering |
+| `src/dude/DiffFilter.hpp` | Git-diff-based result filtering |
+| `src/dude/Reporter.hpp` | Reporter interface and summary types |
+| `src/dude/ConsoleReporter.hpp` | Console output with syntax highlighting |
+| `src/dude/JsonReporter.hpp` | JSON structured output |
+| `src/dude/FileScanner.hpp` | Directory scanning for source files |
