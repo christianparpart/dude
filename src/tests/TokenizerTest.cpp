@@ -295,6 +295,13 @@ TEST_CASE("Tokenizer.RawStringDelimiterTooLong", "[tokenizer]")
     CHECK(!result.has_value());
 }
 
+TEST_CASE("Tokenizer.RawStringEndsDuringDelimiter", "[tokenizer]")
+{
+    // Raw string literal where input ends before the opening paren is found (L483)
+    auto result = CppLanguage{}.Tokenize("R\"abc");
+    CHECK(!result.has_value());
+}
+
 TEST_CASE("Tokenizer.PrefixedStrings", "[tokenizer]")
 {
     auto result = CppLanguage{}.Tokenize(R"cpp(u"str" U"str" L"str" u8"str")cpp");

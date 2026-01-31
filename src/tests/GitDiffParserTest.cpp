@@ -207,3 +207,76 @@ index 1234567..abcdefg 100644
     CHECK(result[0].changedRanges[0].startLine == 5);
     CHECK(result[0].changedRanges[0].endLine == 8);
 }
+
+// ---------------------------------------------------------------------------
+// Coverage: malformed hunk headers (ParseHunkHeader edge cases)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("GitDiffParser.HunkHeaderMissingPlus", "[gitdiff]")
+{
+    // Hunk header without '+' sign should be skipped (L90)
+    auto const* const diff = R"(diff --git a/src/foo.cpp b/src/foo.cpp
+index 1234567..abcdefg 100644
+--- a/src/foo.cpp
++++ b/src/foo.cpp
+@@ -10,3 @@
+)";
+    auto const result = GitDiffParser::ParseDiffOutput(diff);
+    // File appears but hunk is invalid, so no changed ranges
+    CHECK(result.empty());
+}
+
+TEST_CASE("GitDiffParser.HunkHeaderInvalidStartNumber", "[gitdiff]")
+{
+    // Invalid start number in hunk header (L107)
+    auto const* const diff = R"(diff --git a/src/foo.cpp b/src/foo.cpp
+index 1234567..abcdefg 100644
+--- a/src/foo.cpp
++++ b/src/foo.cpp
+@@ -5,3 +abc,5 @@
+)";
+    auto const result = GitDiffParser::ParseDiffOutput(diff);
+    CHECK(result.empty());
+}
+
+TEST_CASE("GitDiffParser.HunkHeaderInvalidCount", "[gitdiff]")
+{
+    // Invalid count number in hunk header (L111)
+    auto const* const diff = R"(diff --git a/src/foo.cpp b/src/foo.cpp
+index 1234567..abcdefg 100644
+--- a/src/foo.cpp
++++ b/src/foo.cpp
+@@ -5,3 +10,abc @@
+)";
+    auto const result = GitDiffParser::ParseDiffOutput(diff);
+    CHECK(result.empty());
+}
+
+TEST_CASE("GitDiffParser.HunkHeaderInvalidStartNoComma", "[gitdiff]")
+{
+    // Invalid start number without comma (L117)
+    auto const* const diff = R"(diff --git a/src/foo.cpp b/src/foo.cpp
+index 1234567..abcdefg 100644
+--- a/src/foo.cpp
++++ b/src/foo.cpp
+@@ -5 +xyz @@
+)";
+    auto const result = GitDiffParser::ParseDiffOutput(diff);
+    CHECK(result.empty());
+}
+
+TEST_CASE("GitDiffParser.DiffHeaderMissingBPath", "[gitdiff]")
+{
+    // diff --git header without " b/" should skip the file (L149-151)
+    auto const* const diff = R"(diff --git a/src/foo.cpp
+index 1234567..abcdefg 100644
+--- a/src/foo.cpp
++++ b/src/foo.cpp
+@@ -10,3 +10,5 @@ void foo()
++    int a = 1;
++    int b = 2;
+)";
+    auto const result = GitDiffParser::ParseDiffOutput(diff);
+    // The file should be skipped because we couldn't extract the b/ path
+    CHECK(result.empty());
+}

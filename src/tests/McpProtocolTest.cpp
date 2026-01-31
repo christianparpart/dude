@@ -171,3 +171,24 @@ TEST_CASE("BuildInitializeResult.ContainsWebsiteUrl", "[mcp][protocol]")
         false);
     CHECK(result["serverInfo"]["websiteUrl"] == "https://example.com");
 }
+
+// ---------------------------------------------------------------------------
+// Coverage: outputSchema field in BuildToolsListResult (McpProtocol.cpp L43)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("BuildToolsListResult.ToolWithOutputSchema", "[mcp][protocol]")
+{
+    auto const schema = nlohmann::json{{"type", "object"}, {"properties", {{"result", {{"type", "string"}}}}}};
+    std::vector<ToolDescriptor> tools{
+        {.name = "typed_tool",
+         .title = "Typed Tool",
+         .description = "Has output schema",
+         .inputSchema = {{"type", "object"}},
+         .outputSchema = schema,
+         .annotations = {}},
+    };
+    auto const result = BuildToolsListResult(tools);
+    REQUIRE(result["tools"].size() == 1);
+    CHECK(result["tools"][0].contains("outputSchema"));
+    CHECK(result["tools"][0]["outputSchema"]["type"] == "object");
+}

@@ -336,6 +336,30 @@ TEST_CASE("McpServer.RunStdioLoop", "[mcp][server]")
 // Coverage: empty lines in Run() stdio loop (line 29) and parse error path (lines 34-37)
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Coverage: prompts/get with missing name parameter (McpServer.cpp L156)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("McpServer.PromptsGet.MissingName", "[mcp][server]")
+{
+    auto server = MakeTestServer();
+    server.RegisterPrompt({.name = "greet", .title = {}, .description = "Greet", .arguments = nlohmann::json::array()},
+                          [](nlohmann::json const&) -> std::expected<nlohmann::json, std::string>
+                          { return nlohmann::json{{"messages", nlohmann::json::array()}}; });
+
+    InitializeServer(server);
+    // Send prompts/get without a "name" field
+    auto resp = SendRequest(server, 7, "prompts/get", {{"arguments", nlohmann::json::object()}});
+    REQUIRE(resp.has_value());
+    REQUIRE(resp->error.has_value()); // NOLINT(bugprone-unchecked-optional-access)
+    // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+    CHECK(resp->error.value().code == static_cast<int32_t>(JsonRpcErrorCode::InvalidParams));
+}
+
+// ---------------------------------------------------------------------------
+// Stdio loop tests
+// ---------------------------------------------------------------------------
+
 TEST_CASE("McpServer.RunStdioLoopWithEmptyAndInvalidLines", "[mcp][server]")
 {
     auto server = MakeTestServer();

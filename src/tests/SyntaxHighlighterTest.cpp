@@ -247,3 +247,12 @@ TEST_CASE("DiffHighlightBg.AutoWithCOLORFGBG", "[SyntaxHighlighter]")
     auto const bg = DiffHighlightBg(ColorTheme::Auto);
     CHECK(bg == "\033[48;2;90;45;45m"); // Dark theme
 }
+
+TEST_CASE("DiffHighlightBg.AutoWithoutSemicolonInCOLORFGBG", "[SyntaxHighlighter]")
+{
+    // COLORFGBG is set but has no semicolon, so theme resolution falls through to Dark
+    ScopedEnv env("COLORFGBG", "nodelimiter");
+
+    auto const bg = DiffHighlightBg(ColorTheme::Auto);
+    CHECK(bg == "\033[48;2;90;45;45m"); // Dark theme fallback
+}
