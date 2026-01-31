@@ -8,6 +8,7 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <algorithm>
+#include <atomic>
 #include <random>
 
 using namespace dude;
@@ -882,17 +883,19 @@ TEST_CASE("CloneDetector.DetectWithCallbacks", "[clone-detector]")
 
     std::vector<CodeBlock> blocks = {a, b};
 
-    size_t fpCalls = 0;
-    size_t candCalls = 0;
-    size_t collectCalls = 0;
-    size_t progressCalls = 0;
+    std::atomic<size_t> fpCalls = 0;
+    std::atomic<size_t> candCalls = 0;
+    std::atomic<size_t> collectCalls = 0;
+    std::atomic<size_t> progressCalls = 0;
 
     CloneDetector detector({.similarityThreshold = 0.50, .minTokens = 3});
     auto groups = detector.Detect(
-        blocks, [&](size_t, size_t) { ++progressCalls; }, [&](size_t, size_t) { ++fpCalls; },
-        [&](size_t, size_t) { ++candCalls; }, [&](size_t, size_t) { ++collectCalls; });
+        blocks, [&](size_t, size_t) { progressCalls.fetch_add(1, std::memory_order_relaxed); },
+        [&](size_t, size_t) { fpCalls.fetch_add(1, std::memory_order_relaxed); },
+        [&](size_t, size_t) { candCalls.fetch_add(1, std::memory_order_relaxed); },
+        [&](size_t, size_t) { collectCalls.fetch_add(1, std::memory_order_relaxed); });
 
-    CHECK(fpCalls > 0);
+    CHECK(fpCalls.load() > 0);
     // groups should detect clones
     CHECK(!groups.empty());
 }
