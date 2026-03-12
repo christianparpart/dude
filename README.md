@@ -1,7 +1,7 @@
 # dude — Code Duplication Detector
 
 ![C++23](https://img.shields.io/badge/standard-C%2B%2B23-blue.svg)
-![Build](https://github.com/LASTRADA-Software/dude/actions/workflows/workflow.yml/badge.svg?branch=master)
+![Build](https://github.com/christianparpartr/dude/actions/workflows/workflow.yml/badge.svg?branch=master)
 ![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)
 
 A platform-independent C++23 CLI tool for **Type-2 clone detection** across multiple programming languages.
@@ -110,7 +110,7 @@ cp build/clang-release-static/src/cli/dude /usr/local/bin/
 ```
 
 Pre-built static binaries for Linux and Windows are available as
-[CI build artifacts](https://github.com/LASTRADA-Software/dude/actions).
+[CI build artifacts](https://github.com/christianparpartr/dude/actions).
 
 ## Usage
 
