@@ -309,7 +309,7 @@ void bigFunc(int n) {
     REQUIRE(session.Analyze(config).has_value());
 
     // Should have multiple clone groups (triggers sorting lambda)
-    CHECK(session.CloneGroups().size() >= 1);
+    CHECK(!session.CloneGroups().empty());
     // The groups should be sorted by token count descending
     auto const& groups = session.CloneGroups();
     for (size_t i = 1; i < groups.size(); ++i)

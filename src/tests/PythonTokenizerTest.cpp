@@ -494,7 +494,7 @@ TEST_CASE("PythonTokenizer.InvalidCharacter", "[python][tokenizer]")
 TEST_CASE("PythonTokenizer.PrefixedTripleQuotedEscape", "[python][tokenizer]")
 {
     // r"""...\n...""" — escape in prefixed triple-quoted string
-    auto result = PythonLanguage{}.Tokenize("b\"\"\"hello\\nworld\"\"\"");
+    auto result = PythonLanguage{}.Tokenize(R"(b"""hello\nworld""")");
     REQUIRE(result.has_value());
     CHECK((*result)[0].type == TokenType::StringLiteral);
 }
@@ -505,7 +505,7 @@ TEST_CASE("PythonTokenizer.PrefixedTripleQuotedEscape", "[python][tokenizer]")
 
 TEST_CASE("PythonTokenizer.TripleQuotedEscape", "[python][tokenizer]")
 {
-    auto result = PythonLanguage{}.Tokenize("\"\"\"hello\\nworld\"\"\"");
+    auto result = PythonLanguage{}.Tokenize(R"("""hello\nworld""")");
     REQUIRE(result.has_value());
     CHECK((*result)[0].type == TokenType::StringLiteral);
 }

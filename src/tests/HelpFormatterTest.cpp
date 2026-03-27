@@ -475,7 +475,7 @@ TEST_CASE("HelpFormatter.ClassifyLine.HelpModePlainText", "[help-formatter]")
 
 TEST_CASE("HelpFormatter.FormatHelp.WithOptionsAndPlainText", "[help-formatter]")
 {
-    auto const text =
+    auto const* const text =
         "Usage: dude [options]\n\nOptions:\n  -t, --threshold <N>  Set threshold\n      Long description\n";
     auto const result = HelpFormatter::FormatHelp(text, true, ColorTheme::Dark);
     // Should contain colored output
@@ -490,7 +490,7 @@ TEST_CASE("HelpFormatter.FormatHelp.WithOptionsAndPlainText", "[help-formatter]"
 
 TEST_CASE("HelpFormatter.FormatExamples.WithJsonBlock", "[help-formatter]")
 {
-    auto const text = "Example output\n=============\n\n  $ dude .\n  {\n    \"files\": 10\n  }\n";
+    auto const* const text = "Example output\n=============\n\n  $ dude .\n  {\n    \"files\": 10\n  }\n";
     auto const result = HelpFormatter::FormatExamples(text, true, ColorTheme::Dark);
     CHECK(result.contains("files"));
 }

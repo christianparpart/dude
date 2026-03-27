@@ -32,7 +32,7 @@ struct NonTtyFile
     [[nodiscard]] auto ReadContent() const -> std::string
     {
         std::fflush(file);
-        std::rewind(file);
+        std::fseek(file, 0, SEEK_SET);
         std::string content;
         char buf[1024];
         while (auto const n = std::fread(buf, 1, sizeof(buf), file))

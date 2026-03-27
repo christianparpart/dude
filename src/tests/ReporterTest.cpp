@@ -691,7 +691,8 @@ TEST_CASE("Reporter.IntraClonesNoTokenInfo", "[reporter]")
     block.name = "testFunc";
     block.tokenStart = 0;
     block.tokenEnd = 10;
-    block.sourceRange = {{0, 1, 1}, {0, 5, 1}};
+    block.sourceRange = {.start = {.fileIndex = 0, .line = 1, .column = 1},
+                         .end = {.fileIndex = 0, .line = 5, .column = 1}};
     block.normalizedIds = {1, 2, 3, 1, 2, 3};
 
     std::vector<IntraCloneResult> intraResults;
