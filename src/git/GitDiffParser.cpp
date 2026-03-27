@@ -53,6 +53,49 @@ auto GitDiffParser::RunGitDiff(std::filesystem::path const& projectRoot, std::st
     return output;
 }
 
+auto GitDiffParser::RunGitShow(std::filesystem::path const& projectRoot, std::vector<std::string> const& commits)
+    -> std::expected<std::string, GitDiffError>
+{
+    if (commits.empty())
+        return std::unexpected(GitDiffError{.message = "No commits specified (empty list)"});
+
+    std::string combined;
+
+    for (auto const& sha : commits)
+    {
+        auto const command = std::format("git -C {} show --no-color -U0 --format= {} 2>&1", projectRoot.string(), sha);
+
+        // NOLINTNEXTLINE(cert-env33-c) -- popen is intentional for git subprocess communication
+        auto* pipe = popen(command.c_str(), "r");
+        if (!pipe)
+            return std::unexpected(GitDiffError{
+                .message = std::format("Failed to execute git show for commit {} (is git on PATH?)", sha)});
+
+        std::string output;
+        std::array<char, 4096> buffer{};
+        while (auto* result = fgets(buffer.data(), static_cast<int>(buffer.size()), pipe))
+            output += result;
+
+        auto const status = pclose(pipe);
+        if (status != 0)
+        {
+            if (!output.empty())
+            {
+                while (!output.empty() && (output.back() == '\n' || output.back() == '\r'))
+                    output.pop_back();
+                return std::unexpected(
+                    GitDiffError{.message = std::format("git show failed for commit {}: {}", sha, output)});
+            }
+            return std::unexpected(
+                GitDiffError{.message = std::format("git show for commit {} exited with status {}", sha, status)});
+        }
+
+        combined += output;
+    }
+
+    return combined;
+}
+
 namespace
 {
 

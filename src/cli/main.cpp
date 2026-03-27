@@ -41,6 +41,7 @@
 #include <optional>
 #include <print>
 #include <ranges>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -120,6 +121,7 @@ struct CliOptions
     bool showInfo = false;                                    ///< Show system capabilities info.
     bool mcpMode = false;                                     ///< Run as MCP server.
     std::string diffBase;                                     ///< Git ref to diff against (enables diff mode).
+    std::vector<std::string> diffCommits;                     ///< Commit SHAs to diff (enables commit-diff mode).
     std::string reporterSpec; ///< Reporter spec (e.g. "console", "json", "json:file=out.json").
 };
 
@@ -133,6 +135,7 @@ void PrintUsage(FILE* out, bool useColor, dude::ColorTheme theme)
         "  -m, --min-tokens <N>        Minimum block size in tokens (default: 30)\n"
         "  --text-sensitivity <N>      Text sensitivity blend factor 0.0-1.0 (default: 0.3)\n"
         "  --diff-base <ref>           Git ref to diff against (enables diff mode for CI)\n"
+        "  --diff-commits <sha,...>    Comma-separated commit SHAs (enables commit-diff mode)\n"
         "  --no-color                  Disable ANSI color output\n"
         "  --no-source                 Don't print source code snippets\n"
         "  --theme <dark|light|auto>   Color theme (default: auto)\n"
@@ -235,6 +238,9 @@ void PrintExamples(bool useColor, dude::ColorTheme theme)
                                          "\n"
                                          "  # Diff mode with strict threshold for CI gates\n"
                                          "  dude --diff-base origin/master -t 0.90 /path/to/project\n"
+                                         "\n"
+                                         "  # Check duplicates introduced by specific commits\n"
+                                         "  dude --diff-commits abc123,def456 /path/to/project\n"
                                          "\n"
                                          "Combining Options\n"
                                          "-----------------\n"
@@ -474,6 +480,20 @@ auto ProcessArg(int argc, char* argv[], int& i, CliOptions& opts)
                     opts.diffBase = std::move(v);
                     return opts;
                 });
+    if (arg == "--diff-commits")
+        return ParseStringOption(argc, argv, i, "--diff-commits")
+            .transform(
+                [&](std::string const& v) -> CliOptions
+                {
+                    std::istringstream stream(v);
+                    std::string sha;
+                    while (std::getline(stream, sha, ','))
+                    {
+                        if (!sha.empty())
+                            opts.diffCommits.push_back(sha);
+                    }
+                    return opts;
+                });
     if (arg == "--no-color")
     {
         opts.useColor = false;
@@ -588,6 +608,9 @@ auto ParseArgs(int argc, char* argv[]) -> std::expected<CliOptions, std::string>
         opts.directory.empty())
         return std::unexpected("No directory specified");
 
+    if (!opts.diffBase.empty() && !opts.diffCommits.empty())
+        return std::unexpected("--diff-base and --diff-commits are mutually exclusive");
+
     return opts;
 }
 
@@ -597,22 +620,34 @@ auto ParseArgs(int argc, char* argv[]) -> std::expected<CliOptions, std::string>
 
 /// @brief Runs git diff setup when diff mode is active (step 0).
 ///
-/// Executes git diff against the specified base ref and parses the output
-/// into structured diff data. Prints progress and results to stderr.
+/// Executes git diff against the specified base ref (or commit SHAs) and parses
+/// the output into structured diff data. Prints progress and results to stderr.
 ///
 /// @param opts The parsed CLI options.
 /// @return The parsed diff result on success, or an exit code on failure.
 ///         Returns an empty DiffResult if diff mode is not active.
 auto RunDiffSetup(CliOptions const& opts) -> std::expected<dude::DiffResult, int>
 {
-    if (opts.diffBase.empty())
+    if (opts.diffBase.empty() && opts.diffCommits.empty())
         return dude::DiffResult{};
 
-    if (opts.verbose)
-        std::println(stderr, "Running git diff against {}...", opts.diffBase);
-
     auto const projectRoot = std::filesystem::weakly_canonical(opts.directory);
-    auto const diffOutput = git::GitDiffParser::RunGitDiff(projectRoot, opts.diffBase);
+
+    // Obtain raw diff output from either --diff-base or --diff-commits.
+    std::expected<std::string, git::GitDiffError> diffOutput;
+    if (!opts.diffCommits.empty())
+    {
+        if (opts.verbose)
+            std::println(stderr, "Running git show for {} commits...", opts.diffCommits.size());
+        diffOutput = git::GitDiffParser::RunGitShow(projectRoot, opts.diffCommits);
+    }
+    else
+    {
+        if (opts.verbose)
+            std::println(stderr, "Running git diff against {}...", opts.diffBase);
+        diffOutput = git::GitDiffParser::RunGitDiff(projectRoot, opts.diffBase);
+    }
+
     if (!diffOutput)
     {
         std::println(stderr, "Error: {}", diffOutput.error().message);
@@ -637,11 +672,17 @@ auto RunDiffSetup(CliOptions const& opts) -> std::expected<dude::DiffResult, int
 
     if (diffResult.empty())
     {
-        std::println("No C++ files changed relative to {}.", opts.diffBase);
+        if (!opts.diffCommits.empty())
+            std::println("No matching files changed in the specified commits.");
+        else
+            std::println("No C++ files changed relative to {}.", opts.diffBase);
         return std::unexpected(0);
     }
 
-    std::println(stderr, "Checking for duplication in changes relative to `{}`...", opts.diffBase);
+    if (!opts.diffCommits.empty())
+        std::println(stderr, "Checking for duplication in changes from {} commits...", opts.diffCommits.size());
+    else
+        std::println(stderr, "Checking for duplication in changes relative to `{}`...", opts.diffBase);
 
     if (opts.verbose)
     {
@@ -917,7 +958,7 @@ int main(int argc, char* argv[])
 
     InstallSignalHandlers();
 
-    auto const diffMode = !opts.diffBase.empty();
+    auto const diffMode = !opts.diffBase.empty() || !opts.diffCommits.empty();
 
     // Step 0: Parse git diff if in diff mode.
     auto const diffSetupResult = RunDiffSetup(opts);

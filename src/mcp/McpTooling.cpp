@@ -792,29 +792,22 @@ auto MakeAnalyzeBranchDuplicatesDescriptor() -> mcpprotocol::ToolDescriptor
     };
 }
 
-auto HandleAnalyzeBranchDuplicates(AnalysisSession& session, nlohmann::json const& args)
+/// @brief Shared logic: run/reuse analysis, find changed blocks, filter and categorize duplicates.
+///
+/// Returns a JSON object with keys: changed_blocks_count, duplicates_existing, duplicates_new,
+/// intra_function_clones, summary. Callers add their own context keys (e.g. base_ref or commits).
+///
+/// @param session The analysis session to use (runs analysis if needed).
+/// @param args Tool arguments containing directory and optional analysis parameters.
+/// @param diffResult The parsed diff result identifying changed lines.
+/// @return The categorized duplicates JSON, or an error string.
+auto BuildDuplicatesResult(AnalysisSession& session, nlohmann::json const& args, dude::DiffResult const& diffResult)
     -> std::expected<nlohmann::json, std::string>
 {
     auto const directory = std::filesystem::path(args.at("directory").get<std::string>());
-    auto const baseRef = args.at("base_ref").get<std::string>();
-    auto const sourceRef = args.value("source_ref", std::string("HEAD"));
-
-    std::vector<std::string> extensions;
-    if (args.contains("extensions"))
-    {
-        for (auto const& ext : args["extensions"])
-            extensions.push_back(ext.get<std::string>());
-    }
-
-    // Step 1: Run git diff.
     auto const projectRoot = std::filesystem::weakly_canonical(directory);
-    auto const diffOutput = git::GitDiffParser::RunGitDiff(projectRoot, baseRef, sourceRef);
-    if (!diffOutput)
-        return std::unexpected(diffOutput.error().message);
 
-    auto const diffResult = git::GitDiffParser::ParseDiffOutput(*diffOutput, extensions);
-
-    // Step 2: Run or reuse project analysis.
+    // Run or reuse project analysis.
     if (!session.HasResults() || std::filesystem::weakly_canonical(session.Config().directory) != projectRoot)
     {
         AnalysisConfig config;
@@ -831,13 +824,13 @@ auto HandleAnalyzeBranchDuplicates(AnalysisSession& session, nlohmann::json cons
     auto const& files = session.Files();
     auto const& blockToFileIndex = session.BlockToFileIndex();
 
-    // Step 3: Find changed blocks.
+    // Find changed blocks.
     auto const changedBlocks = dude::DiffFilter::FindChangedBlocks(blocks, diffResult, projectRoot, files);
 
-    // Step 4: Filter clone groups.
+    // Filter clone groups.
     auto const filteredGroups = dude::DiffFilter::FilterCloneGroups(session.CloneGroups(), changedBlocks);
 
-    // Step 5: Categorize.
+    // Categorize.
     auto const limit = args.value("limit", size_t{0});
     auto duplicatesExisting = nlohmann::json::array();
     auto duplicatesNew = nlohmann::json::array();
@@ -893,7 +886,7 @@ auto HandleAnalyzeBranchDuplicates(AnalysisSession& session, nlohmann::json cons
         }
     }
 
-    // Step 6: Filter intra-function clones for changed blocks.
+    // Filter intra-function clones for changed blocks.
     auto const filteredIntra = dude::DiffFilter::FilterIntraResults(session.IntraResults(), changedBlocks);
     auto intraArray = nlohmann::json::array();
     for (auto const& result : filteredIntra)
@@ -918,9 +911,7 @@ auto HandleAnalyzeBranchDuplicates(AnalysisSession& session, nlohmann::json cons
         });
     }
 
-    return mcpprotocol::BuildToolResultJson(nlohmann::json{
-        {"base_ref", baseRef},
-        {"source_ref", sourceRef},
+    return nlohmann::json{
         {"directory", directory.string()},
         {"changed_blocks_count", changedBlocks.size()},
         {"duplicates_existing", duplicatesExisting},
@@ -933,7 +924,124 @@ auto HandleAnalyzeBranchDuplicates(AnalysisSession& session, nlohmann::json cons
              {"groups_duplicating_new", duplicatesNew.size()},
              {"intra_function_clones_in_changed", intraArray.size()},
          }},
-    });
+    };
+}
+
+auto HandleAnalyzeBranchDuplicates(AnalysisSession& session, nlohmann::json const& args)
+    -> std::expected<nlohmann::json, std::string>
+{
+    auto const directory = std::filesystem::path(args.at("directory").get<std::string>());
+    auto const baseRef = args.at("base_ref").get<std::string>();
+    auto const sourceRef = args.value("source_ref", std::string("HEAD"));
+
+    std::vector<std::string> extensions;
+    if (args.contains("extensions"))
+    {
+        for (auto const& ext : args["extensions"])
+            extensions.push_back(ext.get<std::string>());
+    }
+
+    // Run git diff.
+    auto const projectRoot = std::filesystem::weakly_canonical(directory);
+    auto const diffOutput = git::GitDiffParser::RunGitDiff(projectRoot, baseRef, sourceRef);
+    if (!diffOutput)
+        return std::unexpected(diffOutput.error().message);
+
+    auto const diffResult = git::GitDiffParser::ParseDiffOutput(*diffOutput, extensions);
+
+    // Build categorized duplicates.
+    auto result = BuildDuplicatesResult(session, args, diffResult);
+    if (!result)
+        return std::unexpected(std::move(result).error());
+
+    // Add branch-specific context.
+    auto& json = *result;
+    json["base_ref"] = baseRef;
+    json["source_ref"] = sourceRef;
+
+    return mcpprotocol::BuildToolResultJson(json);
+}
+
+// ---------------------------------------------------------------------------
+// Tool: find_introduced_duplicates
+// ---------------------------------------------------------------------------
+
+auto MakeFindIntroducedDuplicatesDescriptor() -> mcpprotocol::ToolDescriptor
+{
+    return {
+        .name = "find_introduced_duplicates",
+        .title = "Find Introduced Duplicates",
+        .description = "Find code duplicates introduced by specific commits. Analyzes the combined changes "
+                       "from one or more commit SHAs and reports any duplicated code they introduce.",
+        .inputSchema =
+            nlohmann::json{
+                {"type", "object"},
+                {"required", nlohmann::json::array({"directory", "commits"})},
+                {"properties",
+                 {
+                     {"directory", {{"type", "string"}, {"description", "Path to the git project root directory"}}},
+                     {"commits",
+                      {{"type", "array"},
+                       {"items", {{"type", "string"}}},
+                       {"description", "List of commit SHAs to analyze for introduced duplicates"}}},
+                     {"threshold",
+                      {{"type", "number"}, {"description", "Similarity threshold 0.0-1.0 (default: 0.80)"}}},
+                     {"min_tokens",
+                      {{"type", "integer"}, {"description", "Minimum block size in tokens (default: 30)"}}},
+                     {"text_sensitivity",
+                      {{"type", "number"}, {"description", "Text sensitivity 0.0-1.0 (default: 0.3)"}}},
+                     {"extensions",
+                      {{"type", "array"},
+                       {"items", {{"type", "string"}}},
+                       {"description", R"(File extensions to filter diff (e.g. [".cpp", ".hpp"]))"}}},
+                     {"limit",
+                      {{"type", "integer"},
+                       {"description",
+                        "Maximum number of clone groups to return, largest first (default: unlimited)"}}},
+                 }},
+            },
+        .outputSchema = nullptr,
+        .annotations = {.readOnlyHint = true, .destructiveHint = false, .idempotentHint = false, .openWorldHint = true},
+    };
+}
+
+auto HandleFindIntroducedDuplicates(AnalysisSession& session, nlohmann::json const& args)
+    -> std::expected<nlohmann::json, std::string>
+{
+    auto const directory = std::filesystem::path(args.at("directory").get<std::string>());
+
+    if (!args.contains("commits") || !args["commits"].is_array() || args["commits"].empty())
+        return std::unexpected(std::string("Parameter 'commits' must be a non-empty array of commit SHAs"));
+
+    std::vector<std::string> commits;
+    for (auto const& c : args["commits"])
+        commits.push_back(c.get<std::string>());
+
+    std::vector<std::string> extensions;
+    if (args.contains("extensions"))
+    {
+        for (auto const& ext : args["extensions"])
+            extensions.push_back(ext.get<std::string>());
+    }
+
+    // Run git show for each commit.
+    auto const projectRoot = std::filesystem::weakly_canonical(directory);
+    auto const diffOutput = git::GitDiffParser::RunGitShow(projectRoot, commits);
+    if (!diffOutput)
+        return std::unexpected(diffOutput.error().message);
+
+    auto const diffResult = git::GitDiffParser::ParseDiffOutput(*diffOutput, extensions);
+
+    // Build categorized duplicates.
+    auto result = BuildDuplicatesResult(session, args, diffResult);
+    if (!result)
+        return std::unexpected(std::move(result).error());
+
+    // Add commit-specific context.
+    auto& json = *result;
+    json["commits"] = commits;
+
+    return mcpprotocol::BuildToolResultJson(json);
 }
 
 // ---------------------------------------------------------------------------
@@ -1051,6 +1159,9 @@ void RegisterDudeTools(mcpprotocol::McpServer& server, AnalysisSession& session)
 
     server.RegisterTool(MakeAnalyzeBranchDuplicatesDescriptor(),
                         [&session](auto const& args) { return HandleAnalyzeBranchDuplicates(session, args); });
+
+    server.RegisterTool(MakeFindIntroducedDuplicatesDescriptor(),
+                        [&session](auto const& args) { return HandleFindIntroducedDuplicates(session, args); });
 
     // Prompts
     server.RegisterPrompt(MakeAnalyzeAndReportDescriptor(),

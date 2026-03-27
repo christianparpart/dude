@@ -7,7 +7,9 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <format>
@@ -130,7 +132,7 @@ TEST_CASE("McpTools.ToolsAreRegistered", "[mcp][tools]")
     REQUIRE(resp.has_value());
     REQUIRE(resp->result.has_value());                 // NOLINT(bugprone-unchecked-optional-access)
     auto const& tools = resp->result.value()["tools"]; // NOLINT(bugprone-unchecked-optional-access)
-    CHECK(tools.size() == 8);
+    CHECK(tools.size() == 9);
 
     // Verify all expected tool names
     std::vector<std::string> names;
@@ -145,6 +147,7 @@ TEST_CASE("McpTools.ToolsAreRegistered", "[mcp][tools]")
     CHECK(std::ranges::contains(names, "configure_analysis"));
     CHECK(std::ranges::contains(names, "analyze_file"));
     CHECK(std::ranges::contains(names, "analyze_branch_duplicates"));
+    CHECK(std::ranges::contains(names, "find_introduced_duplicates"));
 }
 
 TEST_CASE("McpTools.PromptsAreRegistered", "[mcp][tools]")
@@ -593,6 +596,23 @@ struct TempGitRepo
         RunGit(std::format("commit -m \"{}\"", message));
     }
 
+    /// @brief Returns the current HEAD commit SHA.
+    [[nodiscard]] auto GetHeadSha() const -> std::string
+    {
+        auto const cmd = std::format("git -C {} rev-parse HEAD", root.string());
+        // NOLINTNEXTLINE(cert-env33-c) -- popen is intentional for test setup
+        auto* pipe = popen(cmd.c_str(), "r");
+        REQUIRE(pipe != nullptr);
+        std::array<char, 128> buffer{};
+        std::string sha;
+        while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) != nullptr)
+            sha += buffer.data();
+        pclose(pipe);
+        while (!sha.empty() && (sha.back() == '\n' || sha.back() == '\r'))
+            sha.pop_back();
+        return sha;
+    }
+
     ~TempGitRepo() { std::filesystem::remove_all(root); }
 };
 
@@ -697,6 +717,126 @@ TEST_CASE("McpTools.AnalyzeBranchDuplicates.GitError", "[mcp][tools]")
 
     auto const resp =
         CallTool(server, "analyze_branch_duplicates", {{"directory", dir.root.string()}, {"base_ref", "main"}});
+    REQUIRE(resp.result.has_value());
+    CHECK(resp.result.value()["isError"] == true); // NOLINT(bugprone-unchecked-optional-access)
+}
+
+// ---------------------------------------------------------------------------
+// find_introduced_duplicates tool tests
+// ---------------------------------------------------------------------------
+
+TEST_CASE("McpTools.FindIntroducedDuplicates.NoDuplicates", "[mcp][tools]")
+{
+    TempGitRepo repo;
+
+    auto constexpr kBaseSource = R"(
+void uniqueFunction(int x) {
+    int result = x * 2 + 1;
+    return;
+}
+)";
+
+    repo.WriteFile("base.cpp", kBaseSource);
+    repo.Commit("initial");
+    auto const sha = repo.GetHeadSha();
+
+    AnalysisSession session;
+    McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
+    RegisterDudeTools(server, session);
+    InitServer(server);
+
+    auto const resp =
+        CallTool(server, "find_introduced_duplicates",
+                 {{"directory", repo.root.string()}, {"commits", nlohmann::json::array({sha})}, {"min_tokens", 10}});
+    auto const data = ParseToolResultText(resp);
+    CHECK(data.contains("summary"));
+    CHECK(data.contains("commits"));
+    CHECK(data["duplicates_existing"].empty());
+    CHECK(data["duplicates_new"].empty());
+}
+
+TEST_CASE("McpTools.FindIntroducedDuplicates.DuplicatesExisting", "[mcp][tools]")
+{
+    TempGitRepo repo;
+
+    auto constexpr kBaseSource = R"(
+void functionA(int x) {
+    int result = 0;
+    for (int i = 0; i < x; ++i) {
+        result += i * 2;
+        if (result > 100) {
+            result = 100;
+        }
+    }
+    return;
+}
+)";
+    auto constexpr kNewSource = R"(
+void functionB(int y) {
+    int result = 0;
+    for (int i = 0; i < y; ++i) {
+        result += i * 2;
+        if (result > 100) {
+            result = 100;
+        }
+    }
+    return;
+}
+)";
+
+    repo.WriteFile("base.cpp", kBaseSource);
+    repo.Commit("initial");
+
+    repo.WriteFile("new.cpp", kNewSource);
+    repo.Commit("add duplicate");
+    auto const dupSha = repo.GetHeadSha();
+
+    AnalysisSession session;
+    McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
+    RegisterDudeTools(server, session);
+    InitServer(server);
+
+    auto const resp = CallTool(server, "find_introduced_duplicates",
+                               {{"directory", repo.root.string()},
+                                {"commits", nlohmann::json::array({dupSha})},
+                                {"min_tokens", 10},
+                                {"threshold", 0.70}});
+    auto const data = ParseToolResultText(resp);
+    CHECK(data.contains("summary"));
+    CHECK(data["changed_blocks_count"].get<int>() > 0);
+    // The new code should duplicate existing base code.
+    CHECK(!data["duplicates_existing"].empty());
+}
+
+TEST_CASE("McpTools.FindIntroducedDuplicates.GitError", "[mcp][tools]")
+{
+    TempTestDir dir; // Not a git repo.
+    dir.WriteFile("test.cpp", kDuplicateSource);
+
+    AnalysisSession session;
+    McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
+    RegisterDudeTools(server, session);
+    InitServer(server);
+
+    auto const resp = CallTool(server, "find_introduced_duplicates",
+                               {{"directory", dir.root.string()}, {"commits", nlohmann::json::array({"abc123"})}});
+    REQUIRE(resp.result.has_value());
+    CHECK(resp.result.value()["isError"] == true); // NOLINT(bugprone-unchecked-optional-access)
+}
+
+TEST_CASE("McpTools.FindIntroducedDuplicates.EmptyCommits", "[mcp][tools]")
+{
+    TempGitRepo repo;
+    repo.WriteFile("base.cpp", "void f() { return; }\n");
+    repo.Commit("initial");
+
+    AnalysisSession session;
+    McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
+    RegisterDudeTools(server, session);
+    InitServer(server);
+
+    auto const resp = CallTool(server, "find_introduced_duplicates",
+                               {{"directory", repo.root.string()}, {"commits", nlohmann::json::array()}});
     REQUIRE(resp.result.has_value());
     CHECK(resp.result.value()["isError"] == true); // NOLINT(bugprone-unchecked-optional-access)
 }
