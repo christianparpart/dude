@@ -96,6 +96,11 @@ auto MakeAnalyzeDirectoryDescriptor() -> mcpprotocol::ToolDescriptor
                       {{"type", "array"},
                        {"items", {{"type", "string"}}},
                        {"description", R"(Filename glob patterns (e.g. "*.cpp", "*Controller*"))"}}},
+                     {"exclude_patterns",
+                      {{"type", "array"},
+                       {"items", {{"type", "string"}}},
+                       {"description",
+                        R"(Glob patterns to exclude, matched against relative path (e.g. "*_test*", "test/*"))"}}},
                      {"limit",
                       {{"type", "integer"},
                        {"description",
@@ -141,6 +146,11 @@ auto HandleAnalyzeDirectory(AnalysisSession& session, nlohmann::json const& args
     {
         for (auto const& pat : args["glob_patterns"])
             config.globPatterns.push_back(pat.get<std::string>());
+    }
+    if (args.contains("exclude_patterns"))
+    {
+        for (auto const& pat : args["exclude_patterns"])
+            config.excludePatterns.push_back(pat.get<std::string>());
     }
 
     auto result = session.Analyze(config);

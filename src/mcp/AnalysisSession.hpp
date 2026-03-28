@@ -25,12 +25,13 @@ namespace mcp
 /// @brief Configuration for a code duplication analysis run.
 struct AnalysisConfig
 {
-    std::filesystem::path directory;                          ///< Directory to scan.
-    double threshold = 0.90;                                  ///< Similarity threshold.
-    size_t minTokens = 300;                                   ///< Minimum block size in tokens.
-    double textSensitivity = 0.3;                             ///< Text sensitivity blend factor.
-    dude::AnalysisScope scope = dude::AnalysisScope::All;     ///< Analysis scope bitmask.
-    std::vector<std::string> globPatterns;                    ///< Filename glob patterns (empty = defaults).
+    std::filesystem::path directory;                      ///< Directory to scan.
+    double threshold = 0.90;                              ///< Similarity threshold.
+    size_t minTokens = 300;                               ///< Minimum block size in tokens.
+    double textSensitivity = 0.3;                         ///< Text sensitivity blend factor.
+    dude::AnalysisScope scope = dude::AnalysisScope::All; ///< Analysis scope bitmask.
+    std::vector<std::string> globPatterns;                ///< Filename glob patterns (empty = defaults).
+    std::vector<std::string> excludePatterns;             ///< Glob patterns to exclude (matched against relative path).
     dude::InputEncoding encoding = dude::InputEncoding::Auto; ///< Input encoding.
 };
 

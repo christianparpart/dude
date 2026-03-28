@@ -100,15 +100,16 @@ constexpr auto versionString = DUDE_VERSION;
 /// @brief Parsed command-line arguments.
 struct CliOptions
 {
-    std::filesystem::path directory;                          ///< Directory to scan.
-    double threshold = 0.90;                                  ///< Similarity threshold.
-    size_t minTokens = 300;                                   ///< Minimum block size in tokens.
-    size_t limit = 0;                                         ///< Limit output to top N findings (0 = unlimited).
-    double textSensitivity = 0.3;                             ///< Text sensitivity blend factor.
-    bool useColor = true;                                     ///< Whether to use ANSI colors.
-    bool showSource = true;                                   ///< Whether to show source snippets.
-    dude::ColorTheme theme = dude::ColorTheme::Auto;          ///< Color theme.
-    std::vector<std::string> globPatterns;                    ///< Filename glob patterns to include.
+    std::filesystem::path directory;                 ///< Directory to scan.
+    double threshold = 0.90;                         ///< Similarity threshold.
+    size_t minTokens = 300;                          ///< Minimum block size in tokens.
+    size_t limit = 0;                                ///< Limit output to top N findings (0 = unlimited).
+    double textSensitivity = 0.3;                    ///< Text sensitivity blend factor.
+    bool useColor = true;                            ///< Whether to use ANSI colors.
+    bool showSource = true;                          ///< Whether to show source snippets.
+    dude::ColorTheme theme = dude::ColorTheme::Auto; ///< Color theme.
+    std::vector<std::string> globPatterns;           ///< Filename glob patterns to include.
+    std::vector<std::string> excludePatterns;        ///< Glob patterns to exclude (matched against relative path).
     dude::InputEncoding encoding = dude::InputEncoding::Auto; ///< Input file encoding.
     bool verbose = false;                                     ///< Show verbose diagnostics.
     bool showProgress = false;                                ///< Show progress bars.
@@ -140,6 +141,8 @@ void PrintUsage(FILE* out, bool useColor, dude::ColorTheme theme)
         "  --no-source                 Don't print source code snippets\n"
         "  --theme <dark|light|auto>   Color theme (default: auto)\n"
         "  -g, --glob <pattern>        Filename glob filter (may be repeated, e.g., -g '*.cpp' -g '*Ctrl*')\n"
+        "  -x, --exclude <pattern>     Exclude files matching glob pattern against relative path\n"
+        "                              (may be repeated, e.g., -x '*_test*' -x 'test/*')\n"
         "  --encoding <enc>            Input encoding: auto, utf8, windows-1252 (default: auto)\n"
         "  -s, --scope <scopes>        Comma-separated analysis scopes (default: all)\n"
         "                              Valid: inter-file, intra-file, inter-function,\n"
@@ -528,6 +531,14 @@ auto ProcessArg(int argc, char* argv[], int& i, CliOptions& opts)
                     opts.globPatterns.push_back(std::move(v));
                     return opts;
                 });
+    if (arg == "-x" || arg == "--exclude")
+        return ParseStringOption(argc, argv, i, "--exclude")
+            .transform(
+                [&](std::string v) -> CliOptions
+                {
+                    opts.excludePatterns.push_back(std::move(v));
+                    return opts;
+                });
     if (arg == "--encoding")
         return ParseEncodingOption(argc, argv, i)
             .transform(
@@ -678,6 +689,18 @@ auto RunDiffSetup(CliOptions const& opts) -> std::expected<dude::DiffResult, int
                       });
     }
 
+    // Post-filter by exclude patterns (matched against relative path)
+    if (!opts.excludePatterns.empty())
+    {
+        std::erase_if(diffResult,
+                      [&](auto const& fc)
+                      {
+                          auto const relative = fc.filePath.string();
+                          return std::ranges::any_of(opts.excludePatterns, [&relative](std::string const& pattern)
+                                                     { return dude::GlobMatch(pattern, relative); });
+                      });
+    }
+
     if (diffResult.empty())
     {
         if (!opts.diffCommits.empty())
@@ -737,18 +760,34 @@ auto ScanFiles(CliOptions const& opts, dude::PerformanceTiming& timing)
                                                                      { return dude::GlobMatch(pattern, filename); });
                                       });
 
+    // Build an optional exclude filter (matches against relative path from scan directory).
+    auto const canonicalDir = std::filesystem::weakly_canonical(opts.directory);
+    auto const excludeFilter =
+        opts.excludePatterns.empty()
+            ? std::optional<dude::FileFilter>(std::nullopt)
+            : std::optional<dude::FileFilter>(
+                  [patterns = opts.excludePatterns, canonicalDir](std::filesystem::path const& path) -> bool
+                  {
+                      auto const relative = std::filesystem::relative(path, canonicalDir).string();
+                      return !std::ranges::any_of(patterns, [&relative](std::string const& pattern)
+                                                  { return dude::GlobMatch(pattern, relative); });
+                  });
+
     // Compose all filters into a single predicate.
-    auto const composedFilter = (gitFilter || globFilter)
-                                    ? std::optional<dude::FileFilter>(
-                                          [gitFilter, globFilter](std::filesystem::path const& path) -> bool
-                                          {
-                                              if (gitFilter && !(*gitFilter)(path))
-                                                  return false;
-                                              if (globFilter && !(*globFilter)(path))
-                                                  return false;
-                                              return true;
-                                          })
-                                    : std::optional<dude::FileFilter>(std::nullopt);
+    auto const composedFilter =
+        (gitFilter || globFilter || excludeFilter)
+            ? std::optional<dude::FileFilter>(
+                  [gitFilter, globFilter, excludeFilter](std::filesystem::path const& path) -> bool
+                  {
+                      if (gitFilter && !(*gitFilter)(path))
+                          return false;
+                      if (globFilter && !(*globFilter)(path))
+                          return false;
+                      if (excludeFilter && !(*excludeFilter)(path))
+                          return false;
+                      return true;
+                  })
+            : std::optional<dude::FileFilter>(std::nullopt);
 
     auto const filesResult = dude::FileScanner::Scan(opts.directory, extensions, composedFilter);
     timing.scanning = Clock::now() - scanStart;

@@ -239,6 +239,56 @@ TEST_CASE("AnalysisSession.AnalyzeWithGlobPatterns", "[mcp][session]")
 }
 
 // ---------------------------------------------------------------------------
+// Coverage: exclude patterns in Analyze config
+// ---------------------------------------------------------------------------
+
+TEST_CASE("AnalysisSession.AnalyzeWithExcludePatterns", "[mcp][session]")
+{
+    TempTestDir dir;
+    dir.WriteFile("main.cpp", kDuplicateSource);
+    dir.WriteFile("main_test.cpp", kDuplicateSource);
+
+    // Without exclude: both files are found
+    {
+        AnalysisSession session;
+        AnalysisConfig config;
+        config.directory = dir.root;
+        config.minTokens = 10;
+        REQUIRE(session.Analyze(config).has_value());
+        CHECK(session.Files().size() == 2);
+    }
+
+    // With exclude: test file is excluded
+    {
+        AnalysisSession session;
+        AnalysisConfig config;
+        config.directory = dir.root;
+        config.minTokens = 10;
+        config.excludePatterns = {"*_test*"};
+        REQUIRE(session.Analyze(config).has_value());
+        CHECK(session.Files().size() == 1);
+    }
+}
+
+TEST_CASE("AnalysisSession.AnalyzeWithGlobAndExclude", "[mcp][session]")
+{
+    TempTestDir dir;
+    dir.WriteFile("main.cpp", kDuplicateSource);
+    dir.WriteFile("helper.hpp", "class Helper {};");
+    dir.WriteFile("main_test.cpp", kDuplicateSource);
+
+    // Glob selects *.cpp, exclude removes *_test*
+    AnalysisSession session;
+    AnalysisConfig config;
+    config.directory = dir.root;
+    config.minTokens = 10;
+    config.globPatterns = {"*.cpp"};
+    config.excludePatterns = {"*_test*"};
+    REQUIRE(session.Analyze(config).has_value());
+    CHECK(session.Files().size() == 1);
+}
+
+// ---------------------------------------------------------------------------
 // Coverage: Reconfigure without prior analysis should fail
 // ---------------------------------------------------------------------------
 

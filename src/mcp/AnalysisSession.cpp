@@ -41,7 +41,31 @@ auto AnalysisSession::Analyze(AnalysisConfig const& config) -> std::expected<voi
                                                                      { return dude::GlobMatch(pattern, filename); });
                                       });
 
-    auto const filesResult = dude::FileScanner::Scan(config.directory, extensions, globFilter);
+    auto const canonicalDir = std::filesystem::weakly_canonical(config.directory);
+    auto const excludeFilter =
+        config.excludePatterns.empty()
+            ? std::optional<dude::FileFilter>(std::nullopt)
+            : std::optional<dude::FileFilter>(
+                  [&patterns = config.excludePatterns, canonicalDir](std::filesystem::path const& path) -> bool
+                  {
+                      auto const relative = std::filesystem::relative(path, canonicalDir).string();
+                      return !std::ranges::any_of(patterns, [&relative](std::string const& pattern)
+                                                  { return dude::GlobMatch(pattern, relative); });
+                  });
+
+    auto const composedFilter = (globFilter || excludeFilter)
+                                    ? std::optional<dude::FileFilter>(
+                                          [globFilter, excludeFilter](std::filesystem::path const& path) -> bool
+                                          {
+                                              if (globFilter && !(*globFilter)(path))
+                                                  return false;
+                                              if (excludeFilter && !(*excludeFilter)(path))
+                                                  return false;
+                                              return true;
+                                          })
+                                    : std::optional<dude::FileFilter>(std::nullopt);
+
+    auto const filesResult = dude::FileScanner::Scan(config.directory, extensions, composedFilter);
     _timing.scanning = Clock::now() - scanStart;
 
     if (!filesResult)
