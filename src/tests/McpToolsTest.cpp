@@ -602,9 +602,11 @@ struct TempGitRepo
         // NOLINTNEXTLINE(cert-env33-c) -- std::system is intentional for test setup
         auto const status = std::system(cmd.c_str());
         REQUIRE(status == 0);
-        std::ifstream in(shaFile);
         std::string sha;
-        std::getline(in, sha);
+        {
+            std::ifstream in(shaFile);
+            std::getline(in, sha);
+        } // Close file handle before removing (required on Windows)
         std::filesystem::remove(shaFile);
         while (!sha.empty() && (sha.back() == '\n' || sha.back() == '\r'))
             sha.pop_back();
