@@ -130,9 +130,11 @@ auto CloneDetector::Detect(std::vector<CodeBlock> const& blocks, ProgressCallbac
             ++histograms[bi].counts[id];
     }
 
-    // Find candidate pairs: blocks sharing >= minHashMatches fingerprints
-    // Skip over-common fingerprints (appearing in > 50 blocks)
-    auto const maxBlocksPerFingerprint = std::max(size_t{50}, blocks.size() / 2);
+    // Find candidate pairs: blocks sharing >= minHashMatches fingerprints.
+    // Skip over-common fingerprints (appearing in > 50 blocks) — these are
+    // language constructs like braces and return statements with no discriminative
+    // power, and their O(n²) pair generation dominates memory for large codebases.
+    auto constexpr maxBlocksPerFingerprint = size_t{50};
 
     // Convert fingerprint index to a vector of block-lists for indexed parallel access.
     // We only need the block lists; the fingerprint hash keys are not used during counting.
@@ -194,6 +196,9 @@ auto CloneDetector::Detect(std::vector<CodeBlock> const& blocks, ProgressCallbac
         auto work = stdexec::starts_on(sched, stdexec::just() | stdexec::bulk(stdexec::par, numWorkers, gatherRange));
         stdexec::sync_wait(work);
     }
+
+    // Free fingerprint block lists — no longer needed after candidate gathering.
+    decltype(fingerprintBlocks){}.swap(fingerprintBlocks);
 
     // Parallel merge + collect: each partition is independently merged and filtered.
     // perPartitionCandidates[partIdx] holds the candidates found in that partition.
@@ -279,6 +284,9 @@ auto CloneDetector::Detect(std::vector<CodeBlock> const& blocks, ProgressCallbac
             stdexec::starts_on(sched, stdexec::just() | stdexec::bulk(stdexec::par, numWorkers, collectPartition));
         stdexec::sync_wait(work);
     }
+
+    // Free histograms — no longer needed after candidate filtering.
+    decltype(histograms){}.swap(histograms);
 
     // Lightweight sequential merge of per-partition candidate vectors.
     std::vector<CandidatePair> candidates;

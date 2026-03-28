@@ -33,6 +33,8 @@ struct AnalysisConfig
     std::vector<std::string> globPatterns;                ///< Filename glob patterns (empty = defaults).
     std::vector<std::string> excludePatterns;             ///< Glob patterns to exclude (matched against relative path).
     dude::InputEncoding encoding = dude::InputEncoding::Auto; ///< Input encoding.
+
+    auto operator==(AnalysisConfig const&) const -> bool = default;
 };
 
 /// @brief Error from an analysis operation.
