@@ -247,4 +247,37 @@ auto GitDiffParser::ParseDiffOutput(std::string const& diffOutput, std::vector<s
     return result;
 }
 
+auto GitDiffParser::GetHeadSha(std::filesystem::path const& projectRoot) -> std::expected<std::string, GitDiffError>
+{
+    auto const command = std::format("git -C {} rev-parse HEAD 2>&1", projectRoot.string());
+
+    // NOLINTNEXTLINE(cert-env33-c) -- popen is intentional for git subprocess communication
+    auto* pipe = popen(command.c_str(), "r");
+    if (!pipe)
+        return std::unexpected(GitDiffError{.message = "Failed to execute git rev-parse (is git on PATH?)"});
+
+    std::string output;
+    std::array<char, 256> buffer{};
+    while (auto* result = fgets(buffer.data(), static_cast<int>(buffer.size()), pipe))
+        output += result;
+
+    auto const status = pclose(pipe);
+    if (status != 0)
+    {
+        if (!output.empty())
+        {
+            while (!output.empty() && (output.back() == '\n' || output.back() == '\r'))
+                output.pop_back();
+            return std::unexpected(GitDiffError{.message = std::format("git rev-parse failed: {}", output)});
+        }
+        return std::unexpected(GitDiffError{.message = std::format("git rev-parse exited with status {}", status)});
+    }
+
+    // Trim trailing whitespace.
+    while (!output.empty() && (output.back() == '\n' || output.back() == '\r' || output.back() == ' '))
+        output.pop_back();
+
+    return output;
+}
+
 } // namespace git

@@ -130,7 +130,7 @@ TEST_CASE("McpTools.ToolsAreRegistered", "[mcp][tools]")
     REQUIRE(resp.has_value());
     REQUIRE(resp->result.has_value());                 // NOLINT(bugprone-unchecked-optional-access)
     auto const& tools = resp->result.value()["tools"]; // NOLINT(bugprone-unchecked-optional-access)
-    CHECK(tools.size() == 9);
+    CHECK(tools.size() == 11);
 
     // Verify all expected tool names
     std::vector<std::string> names;
@@ -146,6 +146,8 @@ TEST_CASE("McpTools.ToolsAreRegistered", "[mcp][tools]")
     CHECK(std::ranges::contains(names, "analyze_file"));
     CHECK(std::ranges::contains(names, "analyze_branch_duplicates"));
     CHECK(std::ranges::contains(names, "find_introduced_duplicates"));
+    CHECK(std::ranges::contains(names, "save_baseline"));
+    CHECK(std::ranges::contains(names, "compare_baseline"));
 }
 
 TEST_CASE("McpTools.PromptsAreRegistered", "[mcp][tools]")

@@ -13,6 +13,9 @@ endif()
 
 add_executable(dude_test
     AnalysisScopeTest.cpp
+    BaselineStoreTest.cpp
+    BlockCacheTest.cpp
+    ContentHashTest.cpp
     DiffRangeTest.cpp
     DiffFilterTest.cpp
     GitDiffParserTest.cpp

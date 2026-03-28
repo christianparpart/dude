@@ -57,6 +57,12 @@ public:
     /// @return Parsed diff result with per-file changed line ranges.
     [[nodiscard]] static auto ParseDiffOutput(std::string const& diffOutput,
                                               std::vector<std::string> const& extensions = {}) -> dude::DiffResult;
+
+    /// @brief Returns the current HEAD commit SHA.
+    /// @param projectRoot The directory in which to run git rev-parse.
+    /// @return The trimmed HEAD commit SHA, or an error if git fails.
+    [[nodiscard]] static auto GetHeadSha(std::filesystem::path const& projectRoot)
+        -> std::expected<std::string, GitDiffError>;
 };
 
 } // namespace git

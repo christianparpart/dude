@@ -3,6 +3,7 @@
 #include <mcp/McpTooling.hpp>
 
 #include <dude/AnalysisScope.hpp>
+#include <dude/BaselineStore.hpp>
 #include <dude/DiffFilter.hpp>
 
 #include <algorithm>
@@ -1178,6 +1179,148 @@ auto HandleReviewFile(nlohmann::json const& args) -> std::expected<nlohmann::jso
     };
 }
 
+// ---------------------------------------------------------------------------
+// Tool: save_baseline
+// ---------------------------------------------------------------------------
+
+auto MakeSaveBaselineDescriptor() -> mcpprotocol::ToolDescriptor
+{
+    return {
+        .name = "save_baseline",
+        .title = "Save Baseline",
+        .description = "Save the current analysis results as a named baseline for future comparison. "
+                       "This allows detecting only newly introduced clones on subsequent runs.",
+        .inputSchema =
+            nlohmann::json{
+                {"type", "object"},
+                {"required", nlohmann::json::array({"name"})},
+                {"properties",
+                 {
+                     {"name",
+                      {{"type", "string"},
+                       {"description", "Baseline name (e.g. version tag, commit SHA, or descriptive name)"}}},
+                 }},
+            },
+        .outputSchema = nullptr,
+        .annotations = {.readOnlyHint = false,
+                        .destructiveHint = false,
+                        .idempotentHint = true,
+                        .openWorldHint = false},
+    };
+}
+
+auto HandleSaveBaseline(AnalysisSession const& session, nlohmann::json const& args)
+    -> std::expected<nlohmann::json, std::string>
+{
+    auto const check = RequireAnalysis(session);
+    if (!check)
+        return std::unexpected(check.error());
+
+    auto const name = args.at("name").get<std::string>();
+    auto const projectRoot = std::filesystem::weakly_canonical(session.Config().directory);
+    auto const baselineDir = projectRoot / ".dude-cache" / "baselines";
+
+    dude::BaselineStore store(baselineDir);
+    auto const result = store.Save(name, session.CloneGroups(), session.IntraResults(), session.AllBlocks(),
+                                   session.Files(), projectRoot);
+    if (!result)
+        return std::unexpected(std::format("Failed to save baseline: {}", result.error().message));
+
+    return mcpprotocol::BuildToolResultJson(nlohmann::json{
+        {"status", "saved"},
+        {"baseline_name", name},
+        {"clone_groups", session.CloneGroups().size()},
+        {"intra_clone_results", session.IntraResults().size()},
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Tool: compare_baseline
+// ---------------------------------------------------------------------------
+
+auto MakeCompareBaselineDescriptor() -> mcpprotocol::ToolDescriptor
+{
+    return {
+        .name = "compare_baseline",
+        .title = "Compare Baseline",
+        .description = "Compare current analysis results against a saved baseline. "
+                       "Returns only newly introduced clones not present in the baseline.",
+        .inputSchema =
+            nlohmann::json{
+                {"type", "object"},
+                {"required", nlohmann::json::array({"name"})},
+                {"properties",
+                 {
+                     {"name", {{"type", "string"}, {"description", "Name of the baseline to compare against"}}},
+                     {"limit",
+                      {{"type", "integer"},
+                       {"description", "Maximum number of new clone groups to return (default: unlimited)"}}},
+                 }},
+            },
+        .outputSchema = nullptr,
+        .annotations = {.readOnlyHint = true, .destructiveHint = false, .idempotentHint = true, .openWorldHint = false},
+    };
+}
+
+auto HandleCompareBaseline(AnalysisSession const& session, nlohmann::json const& args)
+    -> std::expected<nlohmann::json, std::string>
+{
+    auto const check = RequireAnalysis(session);
+    if (!check)
+        return std::unexpected(check.error());
+
+    auto const name = args.at("name").get<std::string>();
+    auto const limit = args.value("limit", size_t{0});
+    auto const projectRoot = std::filesystem::weakly_canonical(session.Config().directory);
+    auto const baselineDir = projectRoot / ".dude-cache" / "baselines";
+
+    dude::BaselineStore store(baselineDir);
+    auto const baseline = store.Load(name);
+    if (!baseline)
+        return std::unexpected(std::format("Failed to load baseline: {}", baseline.error().message));
+
+    auto newGroups = dude::BaselineStore::FindNewCloneGroups(session.CloneGroups(), *baseline, session.AllBlocks(),
+                                                             session.Files(), projectRoot);
+    auto newIntra = dude::BaselineStore::FindNewIntraClones(session.IntraResults(), *baseline, session.AllBlocks(),
+                                                            session.Files(), projectRoot);
+
+    if (limit > 0 && newGroups.size() > limit)
+        newGroups.resize(limit);
+
+    auto const& blocks = session.AllBlocks();
+    auto const& files = session.Files();
+    auto const& blockToFileIndex = session.BlockToFileIndex();
+
+    auto groupsJson = nlohmann::json::array();
+    for (auto const& group : newGroups)
+    {
+        auto blocksArray = nlohmann::json::array();
+        for (auto const bi : group.blockIndices)
+        {
+            auto const fi = blockToFileIndex[bi];
+            blocksArray.push_back({
+                {"block_index", bi},
+                {"name", blocks[bi].name},
+                {"file", files[fi].string()},
+                {"start_line", blocks[bi].sourceRange.start.line},
+                {"end_line", blocks[bi].sourceRange.end.line},
+            });
+        }
+        groupsJson.push_back({
+            {"avg_similarity", group.avgSimilarity},
+            {"blocks", blocksArray},
+        });
+    }
+
+    return mcpprotocol::BuildToolResultJson(nlohmann::json{
+        {"baseline_name", name},
+        {"new_clone_groups", groupsJson.size()},
+        {"new_intra_clone_results", newIntra.size()},
+        {"total_clone_groups", session.CloneGroups().size()},
+        {"groups", groupsJson},
+    });
+}
+
 } // anonymous namespace
 
 void RegisterDudeTools(mcpprotocol::McpServer& server, AnalysisSession& session)
@@ -1209,6 +1352,12 @@ void RegisterDudeTools(mcpprotocol::McpServer& server, AnalysisSession& session)
 
     server.RegisterTool(MakeFindIntroducedDuplicatesDescriptor(),
                         [&session](auto const& args) { return HandleFindIntroducedDuplicates(session, args); });
+
+    server.RegisterTool(MakeSaveBaselineDescriptor(),
+                        [&session](auto const& args) { return HandleSaveBaseline(session, args); });
+
+    server.RegisterTool(MakeCompareBaselineDescriptor(),
+                        [&session](auto const& args) { return HandleCompareBaseline(session, args); });
 
     // Prompts
     server.RegisterPrompt(MakeAnalyzeAndReportDescriptor(),
