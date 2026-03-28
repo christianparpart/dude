@@ -855,39 +855,26 @@ auto ScanFiles(CliOptions const& opts, dude::PerformanceTiming& timing)
 }
 
 /// @brief Tries to load cached blocks for a file, patching fileIndex values.
+/// @param contentHash Pre-computed SHA-256 hex digest of the file content.
 /// @return true if blocks were loaded from cache, false otherwise.
-auto TryLoadCachedBlocks(dude::BlockCache& cache, std::filesystem::path const& filePath, dude::Language const& language,
+auto TryLoadCachedBlocks(dude::BlockCache& cache, std::string const& contentHash, dude::Language const& language,
                          CliOptions const& opts, uint32_t fileIndex, std::vector<dude::CodeBlock>& allBlocks,
                          std::vector<size_t>& blockToFileIndex) -> bool
 {
-    auto const mappedFile = dude::MappedFile::Open(filePath);
-    if (!mappedFile)
-        return false;
-
-    auto const contentHash = dude::ComputeContentHash(mappedFile->View());
     auto const cached = cache.Lookup(contentHash, language.Name(), opts.minTokens, opts.textSensitivity);
     if (!cached)
         return false;
 
     auto const fi = static_cast<size_t>(fileIndex);
-    for (auto block : *cached)
+    for (auto const& src : *cached)
     {
+        auto block = src;
         block.sourceRange.start.fileIndex = fileIndex;
         block.sourceRange.end.fileIndex = fileIndex;
         blockToFileIndex.push_back(fi);
         allBlocks.push_back(std::move(block));
     }
     return true;
-}
-
-/// @brief Stores extracted blocks in the cache.
-void StoreBlocksInCache(dude::BlockCache& cache, std::filesystem::path const& filePath, dude::Language const& language,
-                        CliOptions const& opts, std::vector<dude::CodeBlock> const& blocks)
-{
-    auto const mappedFile = dude::MappedFile::Open(filePath);
-    if (mappedFile)
-        cache.Store(dude::ComputeContentHash(mappedFile->View()), language.Name(), opts.minTokens, opts.textSensitivity,
-                    blocks);
 }
 
 /// @brief Tokenizes all source files and extracts code blocks in a streaming per-file pipeline (steps 2+3).
@@ -950,8 +937,18 @@ auto TokenizeAndExtractBlocks(std::vector<std::filesystem::path> const& files, C
 
         auto const fileIndex = static_cast<uint32_t>(fi);
 
+        // Compute content hash once for cache lookup and store.
+        std::string contentHash;
+        if (cache)
+        {
+            auto const mappedFile = dude::MappedFile::Open(files[fi]);
+            if (mappedFile)
+                contentHash = dude::ComputeContentHash(mappedFile->View());
+        }
+
         // Try loading from cache first.
-        if (cache && TryLoadCachedBlocks(*cache, files[fi], *language, opts, fileIndex, allBlocks, blockToFileIndex))
+        if (cache && !contentHash.empty() &&
+            TryLoadCachedBlocks(*cache, contentHash, *language, opts, fileIndex, allBlocks, blockToFileIndex))
         {
             ++cacheHits;
             logVerbose(std::format("Cache hit ({}): {}", language->Name(), files[fi].string()));
@@ -960,7 +957,6 @@ auto TokenizeAndExtractBlocks(std::vector<std::filesystem::path> const& files, C
             continue;
         }
 
-        // Tokenize this single file
         auto tokensResult = language->TokenizeFile(files[fi], fileIndex, opts.encoding);
         if (!tokensResult || tokensResult->empty())
         {
@@ -982,9 +978,9 @@ auto TokenizeAndExtractBlocks(std::vector<std::filesystem::path> const& files, C
         if (!blocks.empty())
             logVerbose(std::format("  {} blocks from {}", blocks.size(), files[fi].string()));
 
-        // Store in cache before moving blocks.
-        if (cache)
-            StoreBlocksInCache(*cache, files[fi], *language, opts, blocks);
+        // Store in cache using pre-computed hash.
+        if (cache && !contentHash.empty())
+            cache->Store(contentHash, language->Name(), opts.minTokens, opts.textSensitivity, blocks);
 
         for (auto& block : blocks)
         {

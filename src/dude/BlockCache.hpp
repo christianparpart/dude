@@ -7,7 +7,7 @@
 #include <cstddef>
 #include <expected>
 #include <filesystem>
-#include <optional>
+#include <span>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -41,9 +41,9 @@ public:
     /// @param languageName Language name used for tokenization.
     /// @param minTokens Minimum token count used during extraction.
     /// @param textSensitivity Text sensitivity used during extraction.
-    /// @return The cached blocks if found and valid, or std::nullopt.
+    /// @return A span over the cached blocks if found, or std::nullopt.
     [[nodiscard]] auto Lookup(std::string const& contentHash, std::string_view languageName, size_t minTokens,
-                              double textSensitivity) const -> std::optional<std::vector<CodeBlock>>;
+                              double textSensitivity) const -> std::optional<std::span<CodeBlock const>>;
 
     /// @brief Stores extracted blocks for a file in the cache.
     /// @param contentHash SHA-256 hex digest of the file content.
@@ -58,9 +58,9 @@ public:
     /// @return void on success, or an error.
     auto Load() -> std::expected<void, BlockCacheError>;
 
-    /// @brief Persists the cache to disk.
-    /// @return void on success, or an error.
-    auto Save() const -> std::expected<void, BlockCacheError>;
+    /// @brief Persists the cache to disk if modified since last load/save.
+    /// @return void on success, or an error. Returns success immediately if not dirty.
+    auto Save() -> std::expected<void, BlockCacheError>;
 
     /// @brief Returns the number of cache entries.
     [[nodiscard]] auto Size() const -> size_t;
@@ -75,6 +75,7 @@ private:
 
     std::filesystem::path _cachePath;
     std::unordered_map<std::string, std::vector<CodeBlock>> _entries;
+    bool _dirty = false; ///< True when entries have been modified since last load/save.
 };
 
 } // namespace dude

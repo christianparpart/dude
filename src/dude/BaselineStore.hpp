@@ -41,9 +41,10 @@ struct CloneGroupMember
 struct CloneIdentity
 {
     std::vector<CloneGroupMember> members; ///< Sorted member list.
-    double avgSimilarity = 0.0;            ///< Average similarity.
+    double avgSimilarity = 0.0;            ///< Average similarity (not part of identity comparison).
 
-    auto operator==(CloneIdentity const&) const -> bool = default;
+    /// @brief Two identities are equal if their member lists match (similarity excluded).
+    auto operator==(CloneIdentity const& other) const -> bool { return members == other.members; }
 };
 
 /// @brief Canonical identity of an intra-function clone pair.
@@ -57,9 +58,15 @@ struct IntraCloneIdentity
     size_t regionALength = 0; ///< Region A length.
     size_t regionBStart = 0;  ///< Region B start offset.
     size_t regionBLength = 0; ///< Region B length.
-    double similarity = 0.0;  ///< Pair similarity.
+    double similarity = 0.0;  ///< Pair similarity (not part of identity comparison).
 
-    auto operator==(IntraCloneIdentity const&) const -> bool = default;
+    /// @brief Two identities are equal if their location and region fields match (similarity excluded).
+    auto operator==(IntraCloneIdentity const& other) const -> bool
+    {
+        return filePath == other.filePath && functionName == other.functionName && startLine == other.startLine &&
+               endLine == other.endLine && regionAStart == other.regionAStart && regionALength == other.regionALength &&
+               regionBStart == other.regionBStart && regionBLength == other.regionBLength;
+    }
 };
 
 /// @brief A saved baseline snapshot of analysis results.

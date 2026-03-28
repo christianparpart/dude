@@ -8,6 +8,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <span>
 
 namespace
 {
@@ -69,7 +70,7 @@ TEST_CASE("BlockCache.RoundTrip", "[BlockCache]")
 
         auto result = cache.Lookup(hash, "C++", 300, 0.3);
         REQUIRE(result.has_value());
-        auto const cachedBlocks = result.value_or(std::vector<dude::CodeBlock>{});
+        auto const cachedBlocks = result.value_or(std::span<dude::CodeBlock const>{});
         REQUIRE(cachedBlocks.size() == 1);
         CHECK(cachedBlocks[0].name == "foo");
         CHECK(cachedBlocks[0].sourceRange.start.line == 10);
@@ -171,7 +172,7 @@ TEST_CASE("BlockCache.FileIndexIsSentinel", "[BlockCache]")
     REQUIRE(cache2.Load().has_value());
     auto result = cache2.Lookup("hash", "C++", 300, 0.3);
     REQUIRE(result.has_value());
-    auto const loadedBlocks = result.value_or(std::vector<dude::CodeBlock>{});
+    auto const loadedBlocks = result.value_or(std::span<dude::CodeBlock const>{});
     REQUIRE(loadedBlocks.size() == 1);
     // After load, fileIndex should always be NoFileIndex
     CHECK(loadedBlocks[0].sourceRange.start.fileIndex == dude::NoFileIndex);

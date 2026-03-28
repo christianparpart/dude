@@ -22,13 +22,13 @@ auto BlockCache::MakeKey(std::string const& contentHash, std::string_view langua
 }
 
 auto BlockCache::Lookup(std::string const& contentHash, std::string_view languageName, size_t minTokens,
-                        double textSensitivity) const -> std::optional<std::vector<CodeBlock>>
+                        double textSensitivity) const -> std::optional<std::span<CodeBlock const>>
 {
     auto const key = MakeKey(contentHash, languageName, minTokens, textSensitivity);
     auto const it = _entries.find(key);
     if (it == _entries.end())
         return std::nullopt;
-    return it->second;
+    return std::span<CodeBlock const>{it->second};
 }
 
 void BlockCache::Store(std::string const& contentHash, std::string_view languageName, size_t minTokens,
@@ -36,6 +36,7 @@ void BlockCache::Store(std::string const& contentHash, std::string_view language
 {
     auto const key = MakeKey(contentHash, languageName, minTokens, textSensitivity);
     _entries[key] = blocks;
+    _dirty = true;
 }
 
 auto BlockCache::Load() -> std::expected<void, BlockCacheError>
@@ -99,8 +100,11 @@ auto BlockCache::Load() -> std::expected<void, BlockCacheError>
     return {};
 }
 
-auto BlockCache::Save() const -> std::expected<void, BlockCacheError>
+auto BlockCache::Save() -> std::expected<void, BlockCacheError>
 {
+    if (!_dirty)
+        return {};
+
     // Ensure parent directory exists.
     auto const parentDir = _cachePath.parent_path();
     if (!parentDir.empty())
@@ -154,6 +158,7 @@ auto BlockCache::Save() const -> std::expected<void, BlockCacheError>
         return std::unexpected(BlockCacheError{.message = std::format("Cannot rename cache file: {}", ec.message())});
     }
 
+    _dirty = false;
     return {};
 }
 

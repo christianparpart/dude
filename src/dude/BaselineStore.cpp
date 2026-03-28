@@ -31,7 +31,11 @@ auto CurrentTimestamp() -> std::string
     auto const now = std::chrono::system_clock::now();
     auto const timeT = std::chrono::system_clock::to_time_t(now);
     std::tm utc{};
+#ifdef _WIN32
+    gmtime_s(&utc, &timeT);
+#else
     gmtime_r(&timeT, &utc);
+#endif
     return std::format("{:04d}-{:02d}-{:02d}T{:02d}:{:02d}:{:02d}Z", utc.tm_year + 1900, utc.tm_mon + 1, utc.tm_mday,
                        utc.tm_hour, utc.tm_min, utc.tm_sec);
 }
@@ -249,6 +253,16 @@ auto BaselineStore::BuildCloneIdentities(std::vector<CloneGroup> const& groups, 
                                          std::span<std::filesystem::path const> files,
                                          std::filesystem::path const& projectRoot) -> std::vector<CloneIdentity>
 {
+    // Pre-compute relative paths per file to avoid repeated filesystem::relative calls.
+    std::unordered_map<uint32_t, std::string> relPathCache;
+    auto const getRelPath = [&](uint32_t fileIdx) -> std::string const&
+    {
+        auto const [it, inserted] = relPathCache.try_emplace(fileIdx);
+        if (inserted)
+            it->second = RelativePath(files[fileIdx], projectRoot);
+        return it->second;
+    };
+
     std::vector<CloneIdentity> identities;
     identities.reserve(groups.size());
 
@@ -259,9 +273,8 @@ auto BaselineStore::BuildCloneIdentities(std::vector<CloneGroup> const& groups, 
         for (auto const blockIdx : group.blockIndices)
         {
             auto const& block = blocks[blockIdx];
-            auto const fileIdx = block.sourceRange.start.fileIndex;
             identity.members.push_back(CloneGroupMember{
-                .filePath = RelativePath(files[fileIdx], projectRoot),
+                .filePath = getRelPath(block.sourceRange.start.fileIndex),
                 .functionName = block.name,
                 .startLine = block.sourceRange.start.line,
                 .endLine = block.sourceRange.end.line,
