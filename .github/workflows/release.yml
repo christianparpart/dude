@@ -1,0 +1,107 @@
+name: Release
+
+on:
+  release:
+    types: [created, published]
+
+permissions:
+  contents: write
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    name: Linux (static)
+
+    env:
+      CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 500M
+      CCACHE_COMPRESS: 'true'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Clang 21
+        run: wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- 21
+
+      - name: Install dependencies
+        run: sudo apt-get install -y ninja-build catch2 ccache
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CPM_SOURCE_CACHE }}
+          key: cpm-clang-release-static-${{ hashFiles('CMakeLists.txt') }}
+          restore-keys: cpm-clang-release-static-
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-clang-release-static-${{ github.sha }}
+          restore-keys: ccache-clang-release-static-
+
+      - name: Configure
+        run: cmake --preset clang-release-static
+          -DCMAKE_C_COMPILER=clang-21 -DCMAKE_CXX_COMPILER=clang++-21
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+      - name: Build
+        run: cmake --build --preset clang-release-static
+
+      - name: Test
+        run: ctest --preset clang-release-static
+
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp build/clang-release-static/src/cli/dude dude-linux-x86_64
+          gh release upload ${{ github.event.release.tag_name }} dude-linux-x86_64 --clobber
+
+  windows:
+    runs-on: windows-latest
+    name: Windows
+
+    env:
+      CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/vcpkg-binary-cache
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Create vcpkg binary cache directory
+        run: New-Item -ItemType Directory -Force -Path ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+
+      - name: Cache vcpkg binary packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+          key: vcpkg-clangcl-release-${{ hashFiles('vcpkg.json') }}
+          restore-keys: vcpkg-clangcl-release-
+
+      - name: Cache CPM downloads
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CPM_SOURCE_CACHE }}
+          key: cpm-clangcl-release-${{ hashFiles('CMakeLists.txt') }}
+          restore-keys: cpm-clangcl-release-
+
+      - name: Configure
+        run: cmake --preset clangcl-release
+          "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+
+      - name: Build
+        run: cmake --build --preset clangcl-release
+
+      - name: Test
+        run: ctest --preset clangcl-release
+
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          Copy-Item build/clangcl-release/src/cli/dude.exe dude-windows-x86_64.exe
+          gh release upload ${{ github.event.release.tag_name }} dude-windows-x86_64.exe --clobber
