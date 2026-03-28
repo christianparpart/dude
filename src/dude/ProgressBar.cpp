@@ -42,11 +42,14 @@ void EnableVTProcessing(FILE* output)
 
 } // namespace
 
-ProgressBar::ProgressBar(std::string_view stageName, size_t totalItems, FILE* output, bool forceTTY)
+ProgressBar::ProgressBar(std::string_view stageName, size_t totalItems, FILE* output, bool forceTTY, size_t stageIndex,
+                         size_t totalStages)
     : _stageName(stageName)
     , _totalItems(totalItems)
     , _output(output)
     , _isTTY(forceTTY || DUDE_ISATTY(DUDE_FILENO(output)))
+    , _stageIndex(stageIndex)
+    , _totalStages(totalStages)
 {
 #ifdef _WIN32
     if (_isTTY)
@@ -99,7 +102,7 @@ void ProgressBar::Finish(bool clearLine)
     }
     else
     {
-        // Force 100% render
+        // Force 100% render and move to next line.
         auto const total = _totalItems.load(std::memory_order_relaxed);
         if (total > 0)
             _completedItems.store(total, std::memory_order_relaxed);
@@ -208,8 +211,9 @@ void ProgressBar::Render()
 
     auto const percentage = static_cast<int>(fraction * 100.0);
 
-    // Pad stage name to 14 chars for alignment
-    auto const paddedName = std::format("{:<14}", _stageName);
+    // Build display name with optional stage numbering prefix.
+    auto const prefix = (_totalStages > 0) ? std::format("[{}/{}] ", _stageIndex, _totalStages) : std::string{};
+    auto const paddedName = std::format("{:<25}", std::format("{}{}", prefix, _stageName));
 
     auto const line = std::format("\r\033[K{} [{}] {:3}%  elapsed: {}  ETA: {}", paddedName, bar, percentage,
                                   FormatDuration(elapsed), etaStr);

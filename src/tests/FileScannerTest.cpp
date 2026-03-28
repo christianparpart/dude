@@ -217,6 +217,47 @@ TEST_CASE("FileScanner.WithMultipleGlobPatterns", "[scanner]")
     CHECK(result->size() == 2);
 }
 
+TEST_CASE("FileScanner.WithExcludeFilter", "[scanner]")
+{
+    TempDir dir;
+    dir.CreateFile("main.cpp");
+    dir.CreateFile("main_test.cpp");
+    dir.CreateFile("helper.cpp");
+    dir.CreateFile("helper_test.cpp");
+
+    // Exclude filter that rejects filenames matching "*_test*".
+    auto const filter = dude::FileFilter([](std::filesystem::path const& path) -> bool
+                                         { return !dude::GlobMatch("*_test*", path.filename().string()); });
+
+    auto result = FileScanner::Scan(dir.Path(), FileScanner::DefaultExtensions(), filter);
+    REQUIRE(result.has_value());
+    CHECK(result->size() == 2); // main.cpp and helper.cpp
+}
+
+TEST_CASE("FileScanner.WithGlobAndExcludeFilter", "[scanner]")
+{
+    TempDir dir;
+    dir.CreateFile("main.cpp");
+    dir.CreateFile("main_test.cpp");
+    dir.CreateFile("helper.hpp");
+
+    // Include *.cpp, then exclude *_test*
+    auto const filter = dude::FileFilter(
+        [](std::filesystem::path const& path) -> bool
+        {
+            auto const filename = path.filename().string();
+            if (!dude::GlobMatch("*.cpp", filename))
+                return false;
+            if (dude::GlobMatch("*_test*", filename))
+                return false;
+            return true;
+        });
+
+    auto result = FileScanner::Scan(dir.Path(), {}, filter);
+    REQUIRE(result.has_value());
+    CHECK(result->size() == 1); // main.cpp only
+}
+
 // ---------------------------------------------------------------------------
 // Coverage: error path when path is a regular file (not a directory)
 // ---------------------------------------------------------------------------

@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
-#include <exec/static_thread_pool.hpp>
 #include <git/GitDiffParser.hpp>
 #include <git/GitFileFilter.hpp>
 #include <mcp/AnalysisSession.hpp>
 #include <mcp/McpTooling.hpp>
 #include <mcpprotocol/McpServer.hpp>
-#include <stdexec/execution.hpp>
 
 #include <dude/AnalysisScope.hpp>
 #include <dude/CloneDetector.hpp>
@@ -41,6 +39,7 @@
 #include <optional>
 #include <print>
 #include <ranges>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -101,14 +100,16 @@ constexpr auto versionString = DUDE_VERSION;
 /// @brief Parsed command-line arguments.
 struct CliOptions
 {
-    std::filesystem::path directory;                          ///< Directory to scan.
-    double threshold = 0.80;                                  ///< Similarity threshold.
-    size_t minTokens = 30;                                    ///< Minimum block size in tokens.
-    double textSensitivity = 0.3;                             ///< Text sensitivity blend factor.
-    bool useColor = true;                                     ///< Whether to use ANSI colors.
-    bool showSource = true;                                   ///< Whether to show source snippets.
-    dude::ColorTheme theme = dude::ColorTheme::Auto;          ///< Color theme.
-    std::vector<std::string> globPatterns;                    ///< Filename glob patterns to include.
+    std::filesystem::path directory;                 ///< Directory to scan.
+    double threshold = 0.90;                         ///< Similarity threshold.
+    size_t minTokens = 300;                          ///< Minimum block size in tokens.
+    size_t limit = 0;                                ///< Limit output to top N findings (0 = unlimited).
+    double textSensitivity = 0.3;                    ///< Text sensitivity blend factor.
+    bool useColor = true;                            ///< Whether to use ANSI colors.
+    bool showSource = true;                          ///< Whether to show source snippets.
+    dude::ColorTheme theme = dude::ColorTheme::Auto; ///< Color theme.
+    std::vector<std::string> globPatterns;           ///< Filename glob patterns to include.
+    std::vector<std::string> excludePatterns;        ///< Glob patterns to exclude (matched against relative path).
     dude::InputEncoding encoding = dude::InputEncoding::Auto; ///< Input file encoding.
     bool verbose = false;                                     ///< Show verbose diagnostics.
     bool showProgress = false;                                ///< Show progress bars.
@@ -120,6 +121,7 @@ struct CliOptions
     bool showInfo = false;                                    ///< Show system capabilities info.
     bool mcpMode = false;                                     ///< Run as MCP server.
     std::string diffBase;                                     ///< Git ref to diff against (enables diff mode).
+    std::vector<std::string> diffCommits;                     ///< Commit SHAs to diff (enables commit-diff mode).
     std::string reporterSpec; ///< Reporter spec (e.g. "console", "json", "json:file=out.json").
 };
 
@@ -129,14 +131,18 @@ void PrintUsage(FILE* out, bool useColor, dude::ColorTheme theme)
         "Usage: dude [OPTIONS] <directory>\n"
         "\n"
         "Options:\n"
-        "  -t, --threshold <N>         Similarity threshold 0.0-1.0 (default: 0.80)\n"
-        "  -m, --min-tokens <N>        Minimum block size in tokens (default: 30)\n"
+        "  -t, --threshold <N>         Similarity threshold 0.0-1.0 (default: 0.90)\n"
+        "  -m, --min-tokens <N>        Minimum block size in tokens (default: 300)\n"
+        "  -l, --limit <N>             Limit output to top N findings per category (default: unlimited)\n"
         "  --text-sensitivity <N>      Text sensitivity blend factor 0.0-1.0 (default: 0.3)\n"
         "  --diff-base <ref>           Git ref to diff against (enables diff mode for CI)\n"
+        "  --diff-commits <sha,...>    Comma-separated commit SHAs (enables commit-diff mode)\n"
         "  --no-color                  Disable ANSI color output\n"
         "  --no-source                 Don't print source code snippets\n"
         "  --theme <dark|light|auto>   Color theme (default: auto)\n"
         "  -g, --glob <pattern>        Filename glob filter (may be repeated, e.g., -g '*.cpp' -g '*Ctrl*')\n"
+        "  -x, --exclude <pattern>     Exclude files matching glob pattern against relative path\n"
+        "                              (may be repeated, e.g., -x '*_test*' -x 'test/*')\n"
         "  --encoding <enc>            Input encoding: auto, utf8, windows-1252 (default: auto)\n"
         "  -s, --scope <scopes>        Comma-separated analysis scopes (default: all)\n"
         "                              Valid: inter-file, intra-file, inter-function,\n"
@@ -235,6 +241,9 @@ void PrintExamples(bool useColor, dude::ColorTheme theme)
                                          "\n"
                                          "  # Diff mode with strict threshold for CI gates\n"
                                          "  dude --diff-base origin/master -t 0.90 /path/to/project\n"
+                                         "\n"
+                                         "  # Check duplicates introduced by specific commits\n"
+                                         "  dude --diff-commits abc123,def456 /path/to/project\n"
                                          "\n"
                                          "Combining Options\n"
                                          "-----------------\n"
@@ -457,6 +466,14 @@ auto ProcessArg(int argc, char* argv[], int& i, CliOptions& opts)
                     opts.minTokens = v;
                     return opts;
                 });
+    if (arg == "-l" || arg == "--limit")
+        return ParseSizeOption(argc, argv, i, "--limit")
+            .transform(
+                [&](size_t v) -> CliOptions
+                {
+                    opts.limit = v;
+                    return opts;
+                });
     if (arg == "--text-sensitivity")
         return ParseDoubleOption(argc, argv, i, "--text-sensitivity", 0.0, 1.0,
                                  "Text sensitivity must be between 0.0 and 1.0")
@@ -472,6 +489,20 @@ auto ProcessArg(int argc, char* argv[], int& i, CliOptions& opts)
                 [&](std::string v) -> CliOptions
                 {
                     opts.diffBase = std::move(v);
+                    return opts;
+                });
+    if (arg == "--diff-commits")
+        return ParseStringOption(argc, argv, i, "--diff-commits")
+            .transform(
+                [&](std::string const& v) -> CliOptions
+                {
+                    std::istringstream stream(v);
+                    std::string sha;
+                    while (std::getline(stream, sha, ','))
+                    {
+                        if (!sha.empty())
+                            opts.diffCommits.push_back(sha);
+                    }
                     return opts;
                 });
     if (arg == "--no-color")
@@ -498,6 +529,14 @@ auto ProcessArg(int argc, char* argv[], int& i, CliOptions& opts)
                 [&](std::string v) -> CliOptions
                 {
                     opts.globPatterns.push_back(std::move(v));
+                    return opts;
+                });
+    if (arg == "-x" || arg == "--exclude")
+        return ParseStringOption(argc, argv, i, "--exclude")
+            .transform(
+                [&](std::string v) -> CliOptions
+                {
+                    opts.excludePatterns.push_back(std::move(v));
                     return opts;
                 });
     if (arg == "--encoding")
@@ -588,6 +627,9 @@ auto ParseArgs(int argc, char* argv[]) -> std::expected<CliOptions, std::string>
         opts.directory.empty())
         return std::unexpected("No directory specified");
 
+    if (!opts.diffBase.empty() && !opts.diffCommits.empty())
+        return std::unexpected("--diff-base and --diff-commits are mutually exclusive");
+
     return opts;
 }
 
@@ -597,22 +639,34 @@ auto ParseArgs(int argc, char* argv[]) -> std::expected<CliOptions, std::string>
 
 /// @brief Runs git diff setup when diff mode is active (step 0).
 ///
-/// Executes git diff against the specified base ref and parses the output
-/// into structured diff data. Prints progress and results to stderr.
+/// Executes git diff against the specified base ref (or commit SHAs) and parses
+/// the output into structured diff data. Prints progress and results to stderr.
 ///
 /// @param opts The parsed CLI options.
 /// @return The parsed diff result on success, or an exit code on failure.
 ///         Returns an empty DiffResult if diff mode is not active.
 auto RunDiffSetup(CliOptions const& opts) -> std::expected<dude::DiffResult, int>
 {
-    if (opts.diffBase.empty())
+    if (opts.diffBase.empty() && opts.diffCommits.empty())
         return dude::DiffResult{};
 
-    if (opts.verbose)
-        std::println(stderr, "Running git diff against {}...", opts.diffBase);
-
     auto const projectRoot = std::filesystem::weakly_canonical(opts.directory);
-    auto const diffOutput = git::GitDiffParser::RunGitDiff(projectRoot, opts.diffBase);
+
+    // Obtain raw diff output from either --diff-base or --diff-commits.
+    std::expected<std::string, git::GitDiffError> diffOutput;
+    if (!opts.diffCommits.empty())
+    {
+        if (opts.verbose)
+            std::println(stderr, "Running git show for {} commits...", opts.diffCommits.size());
+        diffOutput = git::GitDiffParser::RunGitShow(projectRoot, opts.diffCommits);
+    }
+    else
+    {
+        if (opts.verbose)
+            std::println(stderr, "Running git diff against {}...", opts.diffBase);
+        diffOutput = git::GitDiffParser::RunGitDiff(projectRoot, opts.diffBase);
+    }
+
     if (!diffOutput)
     {
         std::println(stderr, "Error: {}", diffOutput.error().message);
@@ -635,13 +689,31 @@ auto RunDiffSetup(CliOptions const& opts) -> std::expected<dude::DiffResult, int
                       });
     }
 
+    // Post-filter by exclude patterns (matched against relative path)
+    if (!opts.excludePatterns.empty())
+    {
+        std::erase_if(diffResult,
+                      [&](auto const& fc)
+                      {
+                          auto const relative = fc.filePath.string();
+                          return std::ranges::any_of(opts.excludePatterns, [&relative](std::string const& pattern)
+                                                     { return dude::GlobMatch(pattern, relative); });
+                      });
+    }
+
     if (diffResult.empty())
     {
-        std::println("No C++ files changed relative to {}.", opts.diffBase);
+        if (!opts.diffCommits.empty())
+            std::println("No matching files changed in the specified commits.");
+        else
+            std::println("No C++ files changed relative to {}.", opts.diffBase);
         return std::unexpected(0);
     }
 
-    std::println(stderr, "Checking for duplication in changes relative to `{}`...", opts.diffBase);
+    if (!opts.diffCommits.empty())
+        std::println(stderr, "Checking for duplication in changes from {} commits...", opts.diffCommits.size());
+    else
+        std::println(stderr, "Checking for duplication in changes relative to `{}`...", opts.diffBase);
 
     if (opts.verbose)
     {
@@ -688,18 +760,34 @@ auto ScanFiles(CliOptions const& opts, dude::PerformanceTiming& timing)
                                                                      { return dude::GlobMatch(pattern, filename); });
                                       });
 
+    // Build an optional exclude filter (matches against relative path from scan directory).
+    auto const canonicalDir = std::filesystem::weakly_canonical(opts.directory);
+    auto const excludeFilter =
+        opts.excludePatterns.empty()
+            ? std::optional<dude::FileFilter>(std::nullopt)
+            : std::optional<dude::FileFilter>(
+                  [patterns = opts.excludePatterns, canonicalDir](std::filesystem::path const& path) -> bool
+                  {
+                      auto const relative = std::filesystem::relative(path, canonicalDir).string();
+                      return !std::ranges::any_of(patterns, [&relative](std::string const& pattern)
+                                                  { return dude::GlobMatch(pattern, relative); });
+                  });
+
     // Compose all filters into a single predicate.
-    auto const composedFilter = (gitFilter || globFilter)
-                                    ? std::optional<dude::FileFilter>(
-                                          [gitFilter, globFilter](std::filesystem::path const& path) -> bool
-                                          {
-                                              if (gitFilter && !(*gitFilter)(path))
-                                                  return false;
-                                              if (globFilter && !(*globFilter)(path))
-                                                  return false;
-                                              return true;
-                                          })
-                                    : std::optional<dude::FileFilter>(std::nullopt);
+    auto const composedFilter =
+        (gitFilter || globFilter || excludeFilter)
+            ? std::optional<dude::FileFilter>(
+                  [gitFilter, globFilter, excludeFilter](std::filesystem::path const& path) -> bool
+                  {
+                      if (gitFilter && !(*gitFilter)(path))
+                          return false;
+                      if (globFilter && !(*globFilter)(path))
+                          return false;
+                      if (excludeFilter && !(*excludeFilter)(path))
+                          return false;
+                      return true;
+                  })
+            : std::optional<dude::FileFilter>(std::nullopt);
 
     auto const filesResult = dude::FileScanner::Scan(opts.directory, extensions, composedFilter);
     timing.scanning = Clock::now() - scanStart;
@@ -715,135 +803,81 @@ auto ScanFiles(CliOptions const& opts, dude::PerformanceTiming& timing)
     return *filesResult;
 }
 
-/// @brief Tokenizes all source files (step 2).
+/// @brief Tokenizes all source files and extracts code blocks in a streaming per-file pipeline (steps 2+3).
 ///
-/// Each file is tokenized using the appropriate language implementation based on
-/// file extension. Files with unrecognized extensions or tokenization failures
-/// produce a warning on stderr and contribute an empty token vector.
+/// Each file is tokenized, normalized, and block-extracted in a single pass.
+/// Tokens are released after each file, keeping peak memory proportional to
+/// the largest single file rather than the entire codebase.
 ///
-/// @param files The source file paths to tokenize.
-/// @param opts The parsed CLI options (for encoding and verbosity).
-/// @param timing Performance timing struct to record tokenization duration.
-/// @return A pair of (token vectors, language pointers), one per file (in the same order as files).
-auto TokenizeFiles(std::vector<std::filesystem::path> const& files, CliOptions const& opts,
-                   dude::PerformanceTiming& timing, dude::ProgressBar* progressBar)
-    -> std::pair<std::vector<std::vector<dude::Token>>, std::vector<dude::Language const*>>
+/// @param files The source file paths to process.
+/// @param opts The parsed CLI options (for encoding, minTokens, textSensitivity, verbosity).
+/// @param timing Performance timing struct to record tokenization and normalization duration.
+/// @param progressBar Optional progress bar to report per-file progress.
+/// @return A tuple of (all extracted code blocks, block-to-file-index mapping, language pointers per file).
+auto TokenizeAndExtractBlocks(std::vector<std::filesystem::path> const& files, CliOptions const& opts,
+                              dude::PerformanceTiming& timing, dude::ProgressBar* progressBar)
+    -> std::tuple<std::vector<dude::CodeBlock>, std::vector<size_t>, std::vector<dude::Language const*>>
 {
     using Clock = std::chrono::steady_clock;
 
-    auto const tokenizeStart = Clock::now();
+    auto const startTime = Clock::now();
     auto const numFiles = files.size();
 
-    std::vector<std::vector<dude::Token>> allTokens(numFiles);
-    std::vector<dude::Language const*> fileLanguages(numFiles, nullptr);
-
     auto const& registry = dude::LanguageRegistry::Instance();
-
-    // Pre-resolve languages (lightweight, sequential)
+    std::vector<dude::Language const*> fileLanguages(numFiles, nullptr);
     for (size_t fi = 0; fi < numFiles; ++fi)
         fileLanguages[fi] = registry.FindByPath(files[fi]);
 
-    // Parallel tokenization using stdexec::bulk
-    {
-        exec::static_thread_pool pool(std::thread::hardware_concurrency());
-        auto sched = pool.get_scheduler();
-
-        auto work = stdexec::starts_on(
-            sched, stdexec::just() | stdexec::bulk(stdexec::par, numFiles,
-                                                   [&](std::size_t fi)
-                                                   {
-                                                       auto const* language = fileLanguages[fi];
-                                                       if (!language)
-                                                           return;
-                                                       auto const fileIndex = static_cast<uint32_t>(fi);
-                                                       auto result =
-                                                           language->TokenizeFile(files[fi], fileIndex, opts.encoding);
-                                                       if (result)
-                                                           allTokens[fi] = std::move(*result);
-                                                       if (progressBar)
-                                                           progressBar->Tick();
-                                                   }));
-        stdexec::sync_wait(work);
-    }
-
-    // Sequential verbose output and error reporting
-    if (opts.verbose)
-    {
-        for (size_t fi = 0; fi < numFiles; ++fi)
-        {
-            auto const logMsg = [&](std::string const& msg)
-            {
-                if (progressBar && progressBar->IsActive())
-                    progressBar->Log(msg);
-                else
-                    std::println(stderr, "{}", msg);
-            };
-
-            if (!fileLanguages[fi])
-                logMsg(std::format("Warning: No language support for {}", files[fi].string()));
-            else if (allTokens[fi].empty())
-                logMsg(std::format("Warning: Failed to tokenize {}", files[fi].string()));
-            else
-                logMsg(std::format("Tokenized ({}): {}", fileLanguages[fi]->Name(), files[fi].string()));
-        }
-    }
-
-    timing.tokenizing = Clock::now() - tokenizeStart;
-
-    return {std::move(allTokens), std::move(fileLanguages)};
-}
-
-/// @brief Normalizes tokens and extracts code blocks (step 3).
-///
-/// For each non-empty token vector, normalizes the tokens structurally (and
-/// optionally text-preserving) using language-aware stripping, and extracts
-/// function-level code blocks via the language's block extractor.
-///
-/// @param allTokens Token vectors for all files.
-/// @param fileLanguages Language pointers for each file (may be nullptr).
-/// @param files Source file paths (for verbose output).
-/// @param opts The parsed CLI options (for minTokens, textSensitivity, verbosity).
-/// @param timing Performance timing struct to record normalization duration.
-/// @return A tuple of (all extracted code blocks, block-to-file-index mapping).
-auto ExtractBlocks(std::vector<std::vector<dude::Token>> const& allTokens,
-                   std::vector<dude::Language const*> const& fileLanguages,
-                   std::vector<std::filesystem::path> const& files, CliOptions const& opts,
-                   dude::PerformanceTiming& timing, dude::ProgressBar* progressBar)
-    -> std::tuple<std::vector<dude::CodeBlock>, std::vector<size_t>>
-{
-    using Clock = std::chrono::steady_clock;
-
-    auto const normalizeStart = Clock::now();
     dude::TokenNormalizer normalizer;
-    dude::CodeBlockExtractorConfig const config{.minTokens = opts.minTokens};
+    dude::CodeBlockExtractorConfig const blockConfig{.minTokens = opts.minTokens};
+    auto const useTextSensitivity = opts.textSensitivity > 0.0;
 
     std::vector<dude::CodeBlock> allBlocks;
     std::vector<size_t> blockToFileIndex;
 
-    auto const useTextSensitivity = opts.textSensitivity > 0.0;
-
-    for (auto const fi : std::views::iota(size_t{0}, allTokens.size()))
+    auto const logVerbose = [&](std::string const& msg)
     {
-        if (allTokens[fi].empty())
-            continue;
+        if (!opts.verbose)
+            return;
+        if (progressBar && progressBar->IsActive())
+            progressBar->Log(msg);
+        else
+            std::println(stderr, "{}", msg);
+    };
 
+    for (auto const fi : std::views::iota(size_t{0}, numFiles))
+    {
         auto const* language = fileLanguages[fi];
         if (!language)
-            continue;
-
-        auto normalized = normalizer.Normalize(allTokens[fi], language);
-        auto textPreserving = useTextSensitivity ? normalizer.NormalizeTextPreserving(allTokens[fi], language)
-                                                 : std::vector<dude::NormalizedToken>{};
-        auto blocks = language->ExtractBlocks(allTokens[fi], normalized, textPreserving, config);
-
-        if (opts.verbose && !blocks.empty())
         {
-            auto const msg = std::format("  {} blocks from {}", blocks.size(), files[fi].string());
-            if (progressBar && progressBar->IsActive())
-                progressBar->Log(msg);
-            else
-                std::println(stderr, "{}", msg);
+            logVerbose(std::format("Warning: No language support for {}", files[fi].string()));
+            if (progressBar)
+                progressBar->Tick();
+            continue;
         }
+
+        // Tokenize this single file
+        auto const fileIndex = static_cast<uint32_t>(fi);
+        auto tokensResult = language->TokenizeFile(files[fi], fileIndex, opts.encoding);
+        if (!tokensResult || tokensResult->empty())
+        {
+            logVerbose(std::format("Warning: Failed to tokenize {}", files[fi].string()));
+            if (progressBar)
+                progressBar->Tick();
+            continue;
+        }
+
+        auto& tokens = *tokensResult;
+        logVerbose(std::format("Tokenized ({}): {}", language->Name(), files[fi].string()));
+
+        // Normalize and extract blocks, then release tokens
+        auto normalized = normalizer.Normalize(tokens, language);
+        auto textPreserving = useTextSensitivity ? normalizer.NormalizeTextPreserving(tokens, language)
+                                                 : std::vector<dude::NormalizedToken>{};
+        auto blocks = language->ExtractBlocks(tokens, normalized, textPreserving, blockConfig);
+
+        if (!blocks.empty())
+            logVerbose(std::format("  {} blocks from {}", blocks.size(), files[fi].string()));
 
         for (auto& block : blocks)
         {
@@ -851,15 +885,60 @@ auto ExtractBlocks(std::vector<std::vector<dude::Token>> const& allTokens,
             allBlocks.push_back(std::move(block));
         }
 
+        // tokens released here when tokensResult goes out of scope at end of iteration
+
         if (progressBar)
             progressBar->Tick();
     }
-    timing.normalizing = Clock::now() - normalizeStart;
 
-    if (opts.verbose)
-        std::println(stderr, "Extracted {} code blocks total", allBlocks.size());
+    timing.tokenizing = Clock::now() - startTime;
+    logVerbose(std::format("Extracted {} code blocks total", allBlocks.size()));
 
-    return {std::move(allBlocks), std::move(blockToFileIndex)};
+    return {std::move(allBlocks), std::move(blockToFileIndex), std::move(fileLanguages)};
+}
+
+/// @brief Re-tokenizes only the files that participate in detected clone results.
+///
+/// After clone detection, only a subset of files appear in the results.
+/// This function re-tokenizes only those files from disk for use by reporters
+/// that need access to original token text (e.g., syntax highlighting).
+///
+/// @param groups The detected clone groups.
+/// @param intraResults The detected intra-function clone results.
+/// @param blockToFileIndex Mapping from block index to file index.
+/// @param files The source file paths.
+/// @param fileLanguages Language pointers per file.
+/// @param encoding Input encoding setting.
+/// @return Sparse token vector (only participating file indices are populated).
+auto RetokenizeParticipatingFiles(std::vector<dude::CloneGroup> const& groups,
+                                  std::vector<dude::IntraCloneResult> const& intraResults,
+                                  std::vector<size_t> const& blockToFileIndex,
+                                  std::vector<std::filesystem::path> const& files,
+                                  std::vector<dude::Language const*> const& fileLanguages, dude::InputEncoding encoding)
+    -> std::vector<std::vector<dude::Token>>
+{
+    // Identify files that appear in results
+    std::unordered_set<size_t> participatingFiles;
+    for (auto const& group : groups)
+        for (auto const idx : group.blockIndices)
+            participatingFiles.insert(blockToFileIndex[idx]);
+    for (auto const& result : intraResults)
+        participatingFiles.insert(blockToFileIndex[result.blockIndex]);
+
+    // Re-tokenize only those files
+    std::vector<std::vector<dude::Token>> allTokens(files.size());
+    for (auto const fi : participatingFiles)
+    {
+        auto const* language = fileLanguages[fi];
+        if (!language)
+            continue;
+        auto const fileIndex = static_cast<uint32_t>(fi);
+        auto tokensResult = language->TokenizeFile(files[fi], fileIndex, encoding);
+        if (tokensResult)
+            allTokens[fi] = std::move(*tokensResult);
+    }
+
+    return allTokens;
 }
 
 } // namespace
@@ -917,7 +996,7 @@ int main(int argc, char* argv[])
 
     InstallSignalHandlers();
 
-    auto const diffMode = !opts.diffBase.empty();
+    auto const diffMode = !opts.diffBase.empty() || !opts.diffCommits.empty();
 
     // Step 0: Parse git diff if in diff mode.
     auto const diffSetupResult = RunDiffSetup(opts);
@@ -939,27 +1018,24 @@ int main(int argc, char* argv[])
     if (auto const interrupted = CheckInterrupted())
         return *interrupted;
 
-    // Step 2: Tokenize all files (language-aware)
-    auto tokenBar =
-        opts.showProgress ? std::make_optional<dude::ProgressBar>("Tokenizing", files.size()) : std::nullopt;
-    if (tokenBar)
-        tokenBar->Start();
-    auto [allTokens, fileLanguages] = TokenizeFiles(files, opts, timing, tokenBar ? &*tokenBar : nullptr);
-    if (tokenBar)
-        tokenBar->Finish();
+    // Compute total progress stages based on active scope.
+    size_t totalStages = 1; // Processing (tokenize + extract, fused)
+    if (dude::HasInterFunctionScope(opts.scope))
+        totalStages += 4; // Fingerprinting, Gather Candidates, Collecting, Detecting
+    if (dude::HasScope(opts.scope, dude::AnalysisScope::IntraFunction))
+        totalStages += 1; // Intra-detect
+    size_t currentStage = 0;
 
-    if (auto const interrupted = CheckInterrupted())
-        return *interrupted;
-
-    // Step 3: Normalize and extract blocks (language-aware)
-    auto extractBar =
-        opts.showProgress ? std::make_optional<dude::ProgressBar>("Extracting", files.size()) : std::nullopt;
-    if (extractBar)
-        extractBar->Start();
-    auto [allBlocks, blockToFileIndex] =
-        ExtractBlocks(allTokens, fileLanguages, files, opts, timing, extractBar ? &*extractBar : nullptr);
-    if (extractBar)
-        extractBar->Finish();
+    // Steps 2+3: Streaming tokenize + normalize + extract blocks (per file)
+    auto processBar = opts.showProgress ? std::make_optional<dude::ProgressBar>("Processing", files.size(), stderr,
+                                                                                false, ++currentStage, totalStages)
+                                        : std::nullopt;
+    if (processBar)
+        processBar->Start();
+    auto [allBlocks, blockToFileIndex, fileLanguages] =
+        TokenizeAndExtractBlocks(files, opts, timing, processBar ? &*processBar : nullptr);
+    if (processBar)
+        processBar->Finish(false);
 
     if (auto const interrupted = CheckInterrupted())
         return *interrupted;
@@ -978,19 +1054,24 @@ int main(int argc, char* argv[])
         });
 
         auto fingerprintBar = opts.showProgress
-                                  ? std::make_optional<dude::ProgressBar>("Fingerprinting", allBlocks.size())
+                                  ? std::make_optional<dude::ProgressBar>("Fingerprinting", allBlocks.size(), stderr,
+                                                                          false, ++currentStage, totalStages)
                                   : std::nullopt;
         if (fingerprintBar)
             fingerprintBar->Start();
 
-        auto candidateBar =
-            opts.showProgress ? std::make_optional<dude::ProgressBar>("Gather Candidates", size_t{0}) : std::nullopt;
+        auto candidateBar = opts.showProgress
+                                ? std::make_optional<dude::ProgressBar>("Gather Candidates", size_t{0}, stderr, false,
+                                                                        ++currentStage, totalStages)
+                                : std::nullopt;
 
-        auto collectBar =
-            opts.showProgress ? std::make_optional<dude::ProgressBar>("Collecting", size_t{0}) : std::nullopt;
+        auto collectBar = opts.showProgress ? std::make_optional<dude::ProgressBar>("Collecting", size_t{0}, stderr,
+                                                                                    false, ++currentStage, totalStages)
+                                            : std::nullopt;
 
-        auto detectBar =
-            opts.showProgress ? std::make_optional<dude::ProgressBar>("Detecting", size_t{0}) : std::nullopt;
+        auto detectBar = opts.showProgress ? std::make_optional<dude::ProgressBar>("Detecting", size_t{0}, stderr,
+                                                                                   false, ++currentStage, totalStages)
+                                           : std::nullopt;
 
         groups = detector.Detect(
             allBlocks, detectBar ? detectBar->MakeAbsoluteCallback() : dude::ProgressCallback{},
@@ -1002,7 +1083,7 @@ int main(int argc, char* argv[])
                 {
                     if (fingerprintBar)
                     {
-                        fingerprintBar->Finish();
+                        fingerprintBar->Finish(false);
                         fingerprintBar.reset();
                     }
                     if (candidateBar)
@@ -1017,7 +1098,7 @@ int main(int argc, char* argv[])
                 {
                     if (candidateBar)
                     {
-                        candidateBar->Finish();
+                        candidateBar->Finish(false);
                         candidateBar.reset();
                     }
                     if (collectBar)
@@ -1032,7 +1113,7 @@ int main(int argc, char* argv[])
                 {
                     if (collectBar)
                     {
-                        collectBar->Finish();
+                        collectBar->Finish(false);
                         collectBar.reset();
                     }
                     if (detectBar)
@@ -1041,13 +1122,13 @@ int main(int argc, char* argv[])
             });
 
         if (fingerprintBar)
-            fingerprintBar->Finish(); // safety: edge case with < 2 blocks
+            fingerprintBar->Finish(false); // safety: edge case with < 2 blocks
         if (candidateBar)
-            candidateBar->Finish(); // safety: no fingerprints edge case
+            candidateBar->Finish(false); // safety: no fingerprints edge case
         if (collectBar)
-            collectBar->Finish(); // safety: no candidates edge case
+            collectBar->Finish(false); // safety: no candidates edge case
         if (detectBar)
-            detectBar->Finish();
+            detectBar->Finish(false);
         timing.cloneDetection = Clock::now() - detectStart;
 
         // Apply scope-based filtering (inter-file vs intra-file).
@@ -1081,14 +1162,16 @@ int main(int argc, char* argv[])
             .textSensitivity = opts.textSensitivity,
         });
 
-        auto intraBar =
-            opts.showProgress ? std::make_optional<dude::ProgressBar>("Intra-detect", allBlocks.size()) : std::nullopt;
+        auto intraBar = opts.showProgress
+                            ? std::make_optional<dude::ProgressBar>("Intra-detect", allBlocks.size(), stderr, false,
+                                                                    ++currentStage, totalStages)
+                            : std::nullopt;
         if (intraBar)
             intraBar->Start();
         intraResults =
             intraDetector.Detect(allBlocks, intraBar ? intraBar->MakeAbsoluteCallback() : dude::ProgressCallback{});
         if (intraBar)
-            intraBar->Finish();
+            intraBar->Finish(false);
         timing.intraDetection = Clock::now() - intraStart;
 
         std::ranges::sort(intraResults,
@@ -1128,32 +1211,27 @@ int main(int argc, char* argv[])
         intraResults = dude::DiffFilter::FilterIntraResults(intraResults, changedBlocks);
     }
 
-    // Step 4d: Release token vectors for non-participating files to reduce peak memory.
+    // Step 4d: Apply --limit to truncate results to top N per category.
+    if (opts.limit > 0)
     {
-        std::unordered_set<size_t> participatingFiles;
-        for (auto const& group : groups)
-            for (auto const idx : group.blockIndices)
-                participatingFiles.insert(blockToFileIndex[idx]);
-        for (auto const& result : intraResults)
-            participatingFiles.insert(blockToFileIndex[result.blockIndex]);
-
-        for (size_t fi = 0; fi < allTokens.size(); ++fi)
-        {
-            if (!participatingFiles.contains(fi))
-            {
-                allTokens[fi].clear();
-                allTokens[fi].shrink_to_fit();
-            }
-        }
-
-        if (opts.verbose)
-        {
-            auto const released = allTokens.size() - participatingFiles.size();
-            std::println(stderr, "Released token vectors for {} non-participating files", released);
-        }
+        if (groups.size() > opts.limit)
+            groups.resize(opts.limit);
+        if (intraResults.size() > opts.limit)
+            intraResults.resize(opts.limit);
     }
 
-    // Step 5: Report results
+    // Step 5: Re-tokenize participating files for reporter output and report results.
+    auto const allTokens =
+        RetokenizeParticipatingFiles(groups, intraResults, blockToFileIndex, files, fileLanguages, opts.encoding);
+
+    if (opts.verbose)
+    {
+        size_t participatingCount = 0;
+        for (auto const& tokens : allTokens)
+            if (!tokens.empty())
+                ++participatingCount;
+        std::println(stderr, "Re-tokenized {} participating files for reporting", participatingCount);
+    }
     dude::ReporterConfig const consoleConfig{
         .useColor = opts.useColor,
         .showSourceCode = opts.showSource,

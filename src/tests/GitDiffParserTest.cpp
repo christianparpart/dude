@@ -280,3 +280,54 @@ index 1234567..abcdefg 100644
     // The file should be skipped because we couldn't extract the b/ path
     CHECK(result.empty());
 }
+
+// ---------------------------------------------------------------------------
+// Coverage: Concatenated git-show output (multiple commits touching same file)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("GitDiffParser.ConcatenatedShowOutputMergesFileRanges", "[gitdiff]")
+{
+    // Simulates concatenated output from `git show` of two commits:
+    // - Commit 1 modifies src/foo.cpp (lines 10-14) and src/bar.cpp (lines 20-22)
+    // - Commit 2 modifies src/foo.cpp (lines 32-33)
+    // ParseDiffOutput should merge the two foo.cpp entries.
+    auto const* const diff = R"(diff --git a/src/foo.cpp b/src/foo.cpp
+index 1234567..abcdefg 100644
+--- a/src/foo.cpp
++++ b/src/foo.cpp
+@@ -10,3 +10,5 @@ void foo()
++    int a = 1;
++    int b = 2;
+diff --git a/src/bar.cpp b/src/bar.cpp
+index 1234567..abcdefg 100644
+--- a/src/bar.cpp
++++ b/src/bar.cpp
+@@ -20,2 +20,3 @@ void bar()
++    int c = 3;
+diff --git a/src/foo.cpp b/src/foo.cpp
+index abcdefg..1111111 100644
+--- a/src/foo.cpp
++++ b/src/foo.cpp
+@@ -30,0 +32,2 @@
++    int d = 4;
++    int e = 5;
+)";
+
+    auto const result = GitDiffParser::ParseDiffOutput(diff);
+    REQUIRE(result.size() == 2); // foo.cpp and bar.cpp
+    CHECK(result[0].filePath == "src/foo.cpp");
+    REQUIRE(result[0].changedRanges.size() == 2); // Both hunks merged into one entry
+    CHECK(result[0].changedRanges[0].startLine == 10);
+    CHECK(result[0].changedRanges[0].endLine == 14);
+    CHECK(result[0].changedRanges[1].startLine == 32);
+    CHECK(result[0].changedRanges[1].endLine == 33);
+    CHECK(result[1].filePath == "src/bar.cpp");
+    REQUIRE(result[1].changedRanges.size() == 1);
+}
+
+TEST_CASE("GitDiffParser.RunGitShow.EmptyCommits", "[gitdiff]")
+{
+    auto const result = GitDiffParser::RunGitShow("/tmp", {});
+    REQUIRE(!result.has_value());
+    CHECK(result.error().message.find("empty") != std::string::npos);
+}

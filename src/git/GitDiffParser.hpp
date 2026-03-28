@@ -32,6 +32,20 @@ public:
                                          std::string const& sourceRef = "HEAD")
         -> std::expected<std::string, GitDiffError>;
 
+    /// @brief Executes `git show --no-color -U0 --format=` for each commit SHA
+    /// and returns the concatenated diff output.
+    ///
+    /// This enables analyzing changes introduced by specific commits rather than
+    /// comparing two branches. The output format is identical to `git diff`, so
+    /// it can be parsed by ParseDiffOutput().
+    ///
+    /// @param projectRoot The directory in which to run git show.
+    /// @param commits One or more commit SHAs to produce diffs for.
+    /// @return The concatenated raw diff output, or an error if git fails.
+    [[nodiscard]] static auto RunGitShow(std::filesystem::path const& projectRoot,
+                                         std::vector<std::string> const& commits)
+        -> std::expected<std::string, GitDiffError>;
+
     /// @brief Parses unified diff output into structured file-change data.
     ///
     /// Extracts file paths from `diff --git a/... b/...` lines and line ranges from
