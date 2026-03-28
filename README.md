@@ -45,7 +45,7 @@ cmake --build --preset clang-release
 
 | Language | Extensions |
 |----------|------------|
-| C++ | `.cpp`, `.hpp`, `.cc`, `.cxx`, `.h` |
+| C++ | `.cpp`, `.cxx`, `.cc`, `.c`, `.h`, `.hpp`, `.hxx` |
 | C# | `.cs` |
 | Python | `.py` |
 
@@ -110,7 +110,7 @@ cp build/clang-release-static/src/cli/dude /usr/local/bin/
 ```
 
 Pre-built static binaries for Linux and Windows are available as
-[CI build artifacts](https://github.com/christianparpartr/dude/actions).
+[CI build artifacts](https://github.com/christianparpart/dude/actions).
 
 ## Usage
 
@@ -122,15 +122,17 @@ dude [OPTIONS] <directory>
 
 | Option | Description |
 |--------|-------------|
-| `-t, --threshold <N>` | Similarity threshold 0.0–1.0 (default: `0.80`) |
-| `-m, --min-tokens <N>` | Minimum block size in tokens (default: `30`) |
+| `-t, --threshold <N>` | Similarity threshold 0.0–1.0 (default: `0.90`) |
+| `-m, --min-tokens <N>` | Minimum block size in tokens (default: `300`) |
 | `--text-sensitivity <N>` | Text sensitivity blend factor 0.0–1.0 (default: `0.3`) |
+| `-l, --limit <N>` | Limit output to top N findings per category (0 = unlimited, default: `0`) |
 
 ### File Filtering
 
 | Option | Description |
 |--------|-------------|
 | `-g, --glob <pattern>` | Filename glob filter (repeatable, e.g. `-g '*.cpp'` `-g '*Controller*'`) |
+| `-x, --exclude <pattern>` | Exclude files matching glob pattern against relative path (repeatable) |
 | `--encoding <enc>` | Input encoding: `auto`, `utf8`, `windows-1252` (default: `auto`) |
 | `--gitignore` | Respect `.gitignore` when scanning (default) |
 | `--no-gitignore` | Include gitignored files in analysis |
@@ -157,6 +159,7 @@ Valid scopes: `inter-file`, `intra-file`, `inter-function`, `intra-function`, `a
 | Option | Description |
 |--------|-------------|
 | `--diff-base <ref>` | Git ref to diff against (enables diff mode) |
+| `--diff-commits <sha,...>` | Comma-separated commit SHAs (enables commit-diff mode) |
 
 ### Miscellaneous
 
@@ -165,6 +168,7 @@ Valid scopes: `inter-file`, `intra-file`, `inter-function`, `intra-function`, `a
 | `-p, --progress` | Show progress bars during analysis |
 | `-v, --verbose` | Show verbose diagnostics during scanning |
 | `--mcp` | Run as MCP server (JSON-RPC over stdio) |
+| `--info` | Show system capabilities (thread count, SIMD support) |
 | `--show-examples` | Show categorized usage examples |
 | `-h, --help` | Show help |
 | `--version` | Show version |
@@ -235,11 +239,21 @@ blocks, and generating reports.
 | Tool | Description |
 |------|-------------|
 | `analyze_directory` | Scan a directory and detect code duplicates |
-| `get_clone_groups` | Retrieve detected clone groups with pagination |
+| `analyze_file` | Analyze a single file for duplication (within-file and cross-file) |
+| `analyze_branch_duplicates` | Compare a branch against its base for introduced duplicates |
+| `find_introduced_duplicates` | Find duplicates introduced by specific commits |
+| `get_clone_groups` | Retrieve detected clone groups with pagination and filtering |
 | `get_code_block` | Read source code of a specific code block |
 | `query_file_duplicates` | Find all duplicates involving a specific file |
 | `get_summary` | Get a summary report (text or JSON) |
 | `configure_analysis` | Update detection parameters and re-analyze |
+
+### Available MCP Prompts
+
+| Prompt | Description |
+|--------|-------------|
+| `analyze_and_report` | Multi-step analysis and report generation with refactoring suggestions |
+| `review_file` | File-focused review with duplication context and recommendations |
 
 ### Claude Code Integration
 
