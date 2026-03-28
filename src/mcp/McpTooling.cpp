@@ -53,6 +53,19 @@ auto BuildSummaryStats(AnalysisSession const& session, size_t limit = 0) -> nloh
     };
 }
 
+/// @brief Parses glob_patterns and exclude_patterns from JSON args into an AnalysisConfig.
+void ParseGlobAndExcludePatterns(nlohmann::json const& args, AnalysisConfig& config)
+{
+    if (args.contains("glob_patterns") && args["glob_patterns"].is_array())
+        for (auto const& pat : args["glob_patterns"])
+            if (pat.is_string())
+                config.globPatterns.push_back(pat.get<std::string>());
+    if (args.contains("exclude_patterns") && args["exclude_patterns"].is_array())
+        for (auto const& pat : args["exclude_patterns"])
+            if (pat.is_string())
+                config.excludePatterns.push_back(pat.get<std::string>());
+}
+
 /// @brief Checks that analysis has been run.
 auto RequireAnalysis(AnalysisSession const& session) -> std::expected<void, std::string>
 {
@@ -142,16 +155,7 @@ auto HandleAnalyzeDirectory(AnalysisSession& session, nlohmann::json const& args
             config.globPatterns.push_back("*" + s);
         }
     }
-    if (args.contains("glob_patterns"))
-    {
-        for (auto const& pat : args["glob_patterns"])
-            config.globPatterns.push_back(pat.get<std::string>());
-    }
-    if (args.contains("exclude_patterns"))
-    {
-        for (auto const& pat : args["exclude_patterns"])
-            config.excludePatterns.push_back(pat.get<std::string>());
-    }
+    ParseGlobAndExcludePatterns(args, config);
 
     auto result = session.Analyze(config);
     if (!result)
@@ -804,6 +808,15 @@ auto MakeAnalyzeBranchDuplicatesDescriptor() -> mcpprotocol::ToolDescriptor
                       {{"type", "array"},
                        {"items", {{"type", "string"}}},
                        {"description", R"(File extensions to filter diff (e.g. [".cpp", ".hpp"]))"}}},
+                     {"glob_patterns",
+                      {{"type", "array"},
+                       {"items", {{"type", "string"}}},
+                       {"description", R"(Filename glob patterns for analysis (e.g. "*.cpp", "*Controller*"))"}}},
+                     {"exclude_patterns",
+                      {{"type", "array"},
+                       {"items", {{"type", "string"}}},
+                       {"description",
+                        R"(Glob patterns to exclude, matched against relative path (e.g. "*_test*", "test/*"))"}}},
                      {"limit",
                       {{"type", "integer"},
                        {"description",
@@ -830,14 +843,16 @@ auto BuildDuplicatesResult(AnalysisSession& session, nlohmann::json const& args,
     auto const directory = std::filesystem::path(args.at("directory").get<std::string>());
     auto const projectRoot = std::filesystem::weakly_canonical(directory);
 
-    // Run or reuse project analysis.
-    if (!session.HasResults() || std::filesystem::weakly_canonical(session.Config().directory) != projectRoot)
+    // Build desired config and run analysis if needed or if config changed.
+    AnalysisConfig config;
+    config.directory = projectRoot;
+    config.threshold = args.value("threshold", 0.90);
+    config.minTokens = args.value("min_tokens", size_t{300});
+    config.textSensitivity = args.value("text_sensitivity", 0.3);
+    ParseGlobAndExcludePatterns(args, config);
+
+    if (!session.HasResults() || session.Config() != config)
     {
-        AnalysisConfig config;
-        config.directory = directory;
-        config.threshold = args.value("threshold", 0.90);
-        config.minTokens = args.value("min_tokens", size_t{300});
-        config.textSensitivity = args.value("text_sensitivity", 0.3);
         auto result = session.Analyze(config);
         if (!result)
             return std::unexpected(result.error().message);
@@ -1017,6 +1032,15 @@ auto MakeFindIntroducedDuplicatesDescriptor() -> mcpprotocol::ToolDescriptor
                       {{"type", "array"},
                        {"items", {{"type", "string"}}},
                        {"description", R"(File extensions to filter diff (e.g. [".cpp", ".hpp"]))"}}},
+                     {"glob_patterns",
+                      {{"type", "array"},
+                       {"items", {{"type", "string"}}},
+                       {"description", R"(Filename glob patterns for analysis (e.g. "*.cpp", "*Controller*"))"}}},
+                     {"exclude_patterns",
+                      {{"type", "array"},
+                       {"items", {{"type", "string"}}},
+                       {"description",
+                        R"(Glob patterns to exclude, matched against relative path (e.g. "*_test*", "test/*"))"}}},
                      {"limit",
                       {{"type", "integer"},
                        {"description",
