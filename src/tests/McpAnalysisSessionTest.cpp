@@ -96,6 +96,7 @@ TEST_CASE("AnalysisSession.AnalyzeValidDirectory", "[mcp][session]")
     AnalysisSession session;
     AnalysisConfig config;
     config.directory = dir.root;
+    config.minTokens = 10;
     auto const result = session.Analyze(config);
     REQUIRE(result.has_value());
     CHECK(session.HasResults());
@@ -204,6 +205,7 @@ TEST_CASE("AnalysisSession.Accessors", "[mcp][session]")
     AnalysisSession session;
     AnalysisConfig config;
     config.directory = dir.root;
+    config.minTokens = 10;
     REQUIRE(session.Analyze(config).has_value());
 
     // Exercise all accessor methods

@@ -103,8 +103,9 @@ constexpr auto versionString = DUDE_VERSION;
 struct CliOptions
 {
     std::filesystem::path directory;                          ///< Directory to scan.
-    double threshold = 0.80;                                  ///< Similarity threshold.
-    size_t minTokens = 30;                                    ///< Minimum block size in tokens.
+    double threshold = 0.90;                                  ///< Similarity threshold.
+    size_t minTokens = 300;                                   ///< Minimum block size in tokens.
+    size_t limit = 0;                                         ///< Limit output to top N findings (0 = unlimited).
     double textSensitivity = 0.3;                             ///< Text sensitivity blend factor.
     bool useColor = true;                                     ///< Whether to use ANSI colors.
     bool showSource = true;                                   ///< Whether to show source snippets.
@@ -131,8 +132,9 @@ void PrintUsage(FILE* out, bool useColor, dude::ColorTheme theme)
         "Usage: dude [OPTIONS] <directory>\n"
         "\n"
         "Options:\n"
-        "  -t, --threshold <N>         Similarity threshold 0.0-1.0 (default: 0.80)\n"
-        "  -m, --min-tokens <N>        Minimum block size in tokens (default: 30)\n"
+        "  -t, --threshold <N>         Similarity threshold 0.0-1.0 (default: 0.90)\n"
+        "  -m, --min-tokens <N>        Minimum block size in tokens (default: 300)\n"
+        "  -l, --limit <N>             Limit output to top N findings per category (default: unlimited)\n"
         "  --text-sensitivity <N>      Text sensitivity blend factor 0.0-1.0 (default: 0.3)\n"
         "  --diff-base <ref>           Git ref to diff against (enables diff mode for CI)\n"
         "  --diff-commits <sha,...>    Comma-separated commit SHAs (enables commit-diff mode)\n"
@@ -461,6 +463,14 @@ auto ProcessArg(int argc, char* argv[], int& i, CliOptions& opts)
                 [&](size_t v) -> CliOptions
                 {
                     opts.minTokens = v;
+                    return opts;
+                });
+    if (arg == "-l" || arg == "--limit")
+        return ParseSizeOption(argc, argv, i, "--limit")
+            .transform(
+                [&](size_t v) -> CliOptions
+                {
+                    opts.limit = v;
                     return opts;
                 });
     if (arg == "--text-sensitivity")
@@ -980,27 +990,37 @@ int main(int argc, char* argv[])
     if (auto const interrupted = CheckInterrupted())
         return *interrupted;
 
+    // Compute total progress stages based on active scope.
+    size_t totalStages = 2; // Tokenizing + Extracting (always present)
+    if (dude::HasInterFunctionScope(opts.scope))
+        totalStages += 4; // Fingerprinting, Gather Candidates, Collecting, Detecting
+    if (dude::HasScope(opts.scope, dude::AnalysisScope::IntraFunction))
+        totalStages += 1; // Intra-detect
+    size_t currentStage = 0;
+
     // Step 2: Tokenize all files (language-aware)
-    auto tokenBar =
-        opts.showProgress ? std::make_optional<dude::ProgressBar>("Tokenizing", files.size()) : std::nullopt;
+    auto tokenBar = opts.showProgress ? std::make_optional<dude::ProgressBar>("Tokenizing", files.size(), stderr, false,
+                                                                              ++currentStage, totalStages)
+                                      : std::nullopt;
     if (tokenBar)
         tokenBar->Start();
     auto [allTokens, fileLanguages] = TokenizeFiles(files, opts, timing, tokenBar ? &*tokenBar : nullptr);
     if (tokenBar)
-        tokenBar->Finish();
+        tokenBar->Finish(false);
 
     if (auto const interrupted = CheckInterrupted())
         return *interrupted;
 
     // Step 3: Normalize and extract blocks (language-aware)
-    auto extractBar =
-        opts.showProgress ? std::make_optional<dude::ProgressBar>("Extracting", files.size()) : std::nullopt;
+    auto extractBar = opts.showProgress ? std::make_optional<dude::ProgressBar>("Extracting", files.size(), stderr,
+                                                                                false, ++currentStage, totalStages)
+                                        : std::nullopt;
     if (extractBar)
         extractBar->Start();
     auto [allBlocks, blockToFileIndex] =
         ExtractBlocks(allTokens, fileLanguages, files, opts, timing, extractBar ? &*extractBar : nullptr);
     if (extractBar)
-        extractBar->Finish();
+        extractBar->Finish(false);
 
     if (auto const interrupted = CheckInterrupted())
         return *interrupted;
@@ -1019,19 +1039,24 @@ int main(int argc, char* argv[])
         });
 
         auto fingerprintBar = opts.showProgress
-                                  ? std::make_optional<dude::ProgressBar>("Fingerprinting", allBlocks.size())
+                                  ? std::make_optional<dude::ProgressBar>("Fingerprinting", allBlocks.size(), stderr,
+                                                                          false, ++currentStage, totalStages)
                                   : std::nullopt;
         if (fingerprintBar)
             fingerprintBar->Start();
 
-        auto candidateBar =
-            opts.showProgress ? std::make_optional<dude::ProgressBar>("Gather Candidates", size_t{0}) : std::nullopt;
+        auto candidateBar = opts.showProgress
+                                ? std::make_optional<dude::ProgressBar>("Gather Candidates", size_t{0}, stderr, false,
+                                                                        ++currentStage, totalStages)
+                                : std::nullopt;
 
-        auto collectBar =
-            opts.showProgress ? std::make_optional<dude::ProgressBar>("Collecting", size_t{0}) : std::nullopt;
+        auto collectBar = opts.showProgress ? std::make_optional<dude::ProgressBar>("Collecting", size_t{0}, stderr,
+                                                                                    false, ++currentStage, totalStages)
+                                            : std::nullopt;
 
-        auto detectBar =
-            opts.showProgress ? std::make_optional<dude::ProgressBar>("Detecting", size_t{0}) : std::nullopt;
+        auto detectBar = opts.showProgress ? std::make_optional<dude::ProgressBar>("Detecting", size_t{0}, stderr,
+                                                                                   false, ++currentStage, totalStages)
+                                           : std::nullopt;
 
         groups = detector.Detect(
             allBlocks, detectBar ? detectBar->MakeAbsoluteCallback() : dude::ProgressCallback{},
@@ -1043,7 +1068,7 @@ int main(int argc, char* argv[])
                 {
                     if (fingerprintBar)
                     {
-                        fingerprintBar->Finish();
+                        fingerprintBar->Finish(false);
                         fingerprintBar.reset();
                     }
                     if (candidateBar)
@@ -1058,7 +1083,7 @@ int main(int argc, char* argv[])
                 {
                     if (candidateBar)
                     {
-                        candidateBar->Finish();
+                        candidateBar->Finish(false);
                         candidateBar.reset();
                     }
                     if (collectBar)
@@ -1073,7 +1098,7 @@ int main(int argc, char* argv[])
                 {
                     if (collectBar)
                     {
-                        collectBar->Finish();
+                        collectBar->Finish(false);
                         collectBar.reset();
                     }
                     if (detectBar)
@@ -1082,13 +1107,13 @@ int main(int argc, char* argv[])
             });
 
         if (fingerprintBar)
-            fingerprintBar->Finish(); // safety: edge case with < 2 blocks
+            fingerprintBar->Finish(false); // safety: edge case with < 2 blocks
         if (candidateBar)
-            candidateBar->Finish(); // safety: no fingerprints edge case
+            candidateBar->Finish(false); // safety: no fingerprints edge case
         if (collectBar)
-            collectBar->Finish(); // safety: no candidates edge case
+            collectBar->Finish(false); // safety: no candidates edge case
         if (detectBar)
-            detectBar->Finish();
+            detectBar->Finish(false);
         timing.cloneDetection = Clock::now() - detectStart;
 
         // Apply scope-based filtering (inter-file vs intra-file).
@@ -1122,14 +1147,16 @@ int main(int argc, char* argv[])
             .textSensitivity = opts.textSensitivity,
         });
 
-        auto intraBar =
-            opts.showProgress ? std::make_optional<dude::ProgressBar>("Intra-detect", allBlocks.size()) : std::nullopt;
+        auto intraBar = opts.showProgress
+                            ? std::make_optional<dude::ProgressBar>("Intra-detect", allBlocks.size(), stderr, false,
+                                                                    ++currentStage, totalStages)
+                            : std::nullopt;
         if (intraBar)
             intraBar->Start();
         intraResults =
             intraDetector.Detect(allBlocks, intraBar ? intraBar->MakeAbsoluteCallback() : dude::ProgressCallback{});
         if (intraBar)
-            intraBar->Finish();
+            intraBar->Finish(false);
         timing.intraDetection = Clock::now() - intraStart;
 
         std::ranges::sort(intraResults,
@@ -1169,7 +1196,16 @@ int main(int argc, char* argv[])
         intraResults = dude::DiffFilter::FilterIntraResults(intraResults, changedBlocks);
     }
 
-    // Step 4d: Release token vectors for non-participating files to reduce peak memory.
+    // Step 4d: Apply --limit to truncate results to top N per category.
+    if (opts.limit > 0)
+    {
+        if (groups.size() > opts.limit)
+            groups.resize(opts.limit);
+        if (intraResults.size() > opts.limit)
+            intraResults.resize(opts.limit);
+    }
+
+    // Step 4e: Release token vectors for non-participating files to reduce peak memory.
     {
         std::unordered_set<size_t> participatingFiles;
         for (auto const& group : groups)

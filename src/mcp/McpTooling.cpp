@@ -19,26 +19,34 @@ namespace
 {
 
 /// @brief Builds summary stats JSON from an analysis session.
-auto BuildSummaryStats(AnalysisSession const& session) -> nlohmann::json
+/// @param session The analysis session with results.
+/// @param limit Maximum number of clone groups to include (0 = unlimited).
+auto BuildSummaryStats(AnalysisSession const& session, size_t limit = 0) -> nlohmann::json
 {
+    auto const& groups = session.CloneGroups();
+    auto const groupCount = (limit > 0 && limit < groups.size()) ? limit : groups.size();
+
     size_t totalDuplicatedLines = 0;
-    for (auto const& group : session.CloneGroups())
-        for (auto const blockIdx : group.blockIndices)
+    for (size_t i = 0; i < groupCount; ++i)
+        for (auto const blockIdx : groups[i].blockIndices)
         {
             auto const& range = session.AllBlocks()[blockIdx].sourceRange;
             totalDuplicatedLines += range.end.line - range.start.line + 1;
         }
 
+    auto const& intraResults = session.IntraResults();
+    auto const intraCount = (limit > 0 && limit < intraResults.size()) ? limit : intraResults.size();
+
     size_t totalIntraPairs = 0;
-    for (auto const& r : session.IntraResults())
-        totalIntraPairs += r.pairs.size();
+    for (size_t i = 0; i < intraCount; ++i)
+        totalIntraPairs += intraResults[i].pairs.size();
 
     auto const totalMs = std::chrono::duration_cast<std::chrono::milliseconds>(session.Timing().Total()).count();
 
     return nlohmann::json{
         {"total_files", session.Files().size()},
         {"total_blocks", session.AllBlocks().size()},
-        {"total_clone_groups", session.CloneGroups().size()},
+        {"total_clone_groups", groupCount},
         {"total_intra_pairs", totalIntraPairs},
         {"total_duplicated_lines", totalDuplicatedLines},
         {"timing_ms", totalMs},
@@ -71,9 +79,9 @@ auto MakeAnalyzeDirectoryDescriptor() -> mcpprotocol::ToolDescriptor
                  {
                      {"directory", {{"type", "string"}, {"description", "Path to the directory to scan"}}},
                      {"threshold",
-                      {{"type", "number"}, {"description", "Similarity threshold 0.0-1.0 (default: 0.80)"}}},
+                      {{"type", "number"}, {"description", "Similarity threshold 0.0-1.0 (default: 0.90)"}}},
                      {"min_tokens",
-                      {{"type", "integer"}, {"description", "Minimum block size in tokens (default: 30)"}}},
+                      {{"type", "integer"}, {"description", "Minimum block size in tokens (default: 300)"}}},
                      {"text_sensitivity",
                       {{"type", "number"}, {"description", "Text sensitivity 0.0-1.0 (default: 0.3)"}}},
                      {"scope",
@@ -88,6 +96,10 @@ auto MakeAnalyzeDirectoryDescriptor() -> mcpprotocol::ToolDescriptor
                       {{"type", "array"},
                        {"items", {{"type", "string"}}},
                        {"description", R"(Filename glob patterns (e.g. "*.cpp", "*Controller*"))"}}},
+                     {"limit",
+                      {{"type", "integer"},
+                       {"description",
+                        "Maximum number of clone groups to include in summary, largest first (default: unlimited)"}}},
                  }},
             },
         .outputSchema = nullptr,
@@ -103,8 +115,8 @@ auto HandleAnalyzeDirectory(AnalysisSession& session, nlohmann::json const& args
 {
     AnalysisConfig config;
     config.directory = args.at("directory").get<std::string>();
-    config.threshold = args.value("threshold", 0.80);
-    config.minTokens = args.value("min_tokens", size_t{30});
+    config.threshold = args.value("threshold", 0.90);
+    config.minTokens = args.value("min_tokens", size_t{300});
     config.textSensitivity = args.value("text_sensitivity", 0.3);
 
     if (args.contains("scope"))
@@ -135,7 +147,8 @@ auto HandleAnalyzeDirectory(AnalysisSession& session, nlohmann::json const& args
     if (!result)
         return std::unexpected(result.error().message);
 
-    return mcpprotocol::BuildToolResultJson(BuildSummaryStats(session));
+    auto const limit = args.value("limit", size_t{0});
+    return mcpprotocol::BuildToolResultJson(BuildSummaryStats(session, limit));
 }
 
 // ---------------------------------------------------------------------------
@@ -587,9 +600,9 @@ auto MakeAnalyzeFileDescriptor() -> mcpprotocol::ToolDescriptor
                       {{"type", "string"},
                        {"description", "Project root directory (defaults to file's parent directory)"}}},
                      {"threshold",
-                      {{"type", "number"}, {"description", "Similarity threshold 0.0-1.0 (default: 0.80)"}}},
+                      {{"type", "number"}, {"description", "Similarity threshold 0.0-1.0 (default: 0.90)"}}},
                      {"min_tokens",
-                      {{"type", "integer"}, {"description", "Minimum block size in tokens (default: 30)"}}},
+                      {{"type", "integer"}, {"description", "Minimum block size in tokens (default: 300)"}}},
                      {"text_sensitivity",
                       {{"type", "number"}, {"description", "Text sensitivity 0.0-1.0 (default: 0.3)"}}},
                      {"limit",
@@ -621,8 +634,8 @@ auto HandleAnalyzeFile(AnalysisSession& session, nlohmann::json const& args)
     {
         AnalysisConfig config;
         config.directory = directory;
-        config.threshold = args.value("threshold", 0.80);
-        config.minTokens = args.value("min_tokens", size_t{30});
+        config.threshold = args.value("threshold", 0.90);
+        config.minTokens = args.value("min_tokens", size_t{300});
         config.textSensitivity = args.value("text_sensitivity", 0.3);
         auto result = session.Analyze(config);
         if (!result)
@@ -772,9 +785,9 @@ auto MakeAnalyzeBranchDuplicatesDescriptor() -> mcpprotocol::ToolDescriptor
                      {"source_ref",
                       {{"type", "string"}, {"description", "Git ref for the source branch (default: \"HEAD\")"}}},
                      {"threshold",
-                      {{"type", "number"}, {"description", "Similarity threshold 0.0-1.0 (default: 0.80)"}}},
+                      {{"type", "number"}, {"description", "Similarity threshold 0.0-1.0 (default: 0.90)"}}},
                      {"min_tokens",
-                      {{"type", "integer"}, {"description", "Minimum block size in tokens (default: 30)"}}},
+                      {{"type", "integer"}, {"description", "Minimum block size in tokens (default: 300)"}}},
                      {"text_sensitivity",
                       {{"type", "number"}, {"description", "Text sensitivity 0.0-1.0 (default: 0.3)"}}},
                      {"extensions",
@@ -812,8 +825,8 @@ auto BuildDuplicatesResult(AnalysisSession& session, nlohmann::json const& args,
     {
         AnalysisConfig config;
         config.directory = directory;
-        config.threshold = args.value("threshold", 0.80);
-        config.minTokens = args.value("min_tokens", size_t{30});
+        config.threshold = args.value("threshold", 0.90);
+        config.minTokens = args.value("min_tokens", size_t{300});
         config.textSensitivity = args.value("text_sensitivity", 0.3);
         auto result = session.Analyze(config);
         if (!result)
@@ -985,9 +998,9 @@ auto MakeFindIntroducedDuplicatesDescriptor() -> mcpprotocol::ToolDescriptor
                        {"items", {{"type", "string"}}},
                        {"description", "List of commit SHAs to analyze for introduced duplicates"}}},
                      {"threshold",
-                      {{"type", "number"}, {"description", "Similarity threshold 0.0-1.0 (default: 0.80)"}}},
+                      {{"type", "number"}, {"description", "Similarity threshold 0.0-1.0 (default: 0.90)"}}},
                      {"min_tokens",
-                      {{"type", "integer"}, {"description", "Minimum block size in tokens (default: 30)"}}},
+                      {{"type", "integer"}, {"description", "Minimum block size in tokens (default: 300)"}}},
                      {"text_sensitivity",
                       {{"type", "number"}, {"description", "Text sensitivity 0.0-1.0 (default: 0.3)"}}},
                      {"extensions",

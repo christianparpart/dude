@@ -26,7 +26,10 @@ public:
     /// @param totalItems Total number of items to process (0 if unknown).
     /// @param output File stream to write progress to (default: stderr).
     /// @param forceTTY If true, forces TTY mode regardless of actual terminal detection (for testing).
-    ProgressBar(std::string_view stageName, size_t totalItems, FILE* output = stderr, bool forceTTY = false);
+    /// @param stageIndex 1-based index of this stage (0 = no numbering).
+    /// @param totalStages Total number of stages (0 = no numbering).
+    ProgressBar(std::string_view stageName, size_t totalItems, FILE* output = stderr, bool forceTTY = false,
+                size_t stageIndex = 0, size_t totalStages = 0);
 
     ProgressBar(ProgressBar const&) = delete;
     ProgressBar& operator=(ProgressBar const&) = delete;
@@ -40,6 +43,8 @@ public:
         , _startTime(other._startTime)
         , _lastRenderTime(other._lastRenderTime)
         , _smoothedRate(other._smoothedRate)
+        , _stageIndex(other._stageIndex)
+        , _totalStages(other._totalStages)
     {
     }
 
@@ -100,6 +105,8 @@ private:
     std::chrono::steady_clock::time_point _startTime{};             ///< Start time of this stage.
     std::chrono::steady_clock::time_point _lastRenderTime{};        ///< Last render timestamp for rate limiting.
     double _smoothedRate = 0.0;                                     ///< EMA-smoothed items/second throughput.
+    size_t _stageIndex = 0;                                         ///< 1-based stage index (0 = no numbering).
+    size_t _totalStages = 0;                                        ///< Total number of stages (0 = no numbering).
     static constexpr std::chrono::milliseconds kRenderInterval{50}; ///< Minimum interval between renders.
     static constexpr double kSmoothingAlpha = 0.1;                  ///< EMA smoothing factor for throughput.
     static constexpr size_t kBarWidth = 30;                         ///< Width of the visual progress bar in characters.

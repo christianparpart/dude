@@ -292,3 +292,55 @@ TEST_CASE("ProgressBar.ForceTTY.TickRendersOnInterval", "[ProgressBar]")
     // Should have rendered at least once with the stage name
     CHECK(content.find("Ticking") != std::string::npos);
 }
+
+TEST_CASE("ProgressBar.ForceTTY.StageNumbering", "[ProgressBar]")
+{
+    NonTtyFile nf;
+    REQUIRE(nf.file != nullptr);
+
+    ProgressBar bar("Tokenizing", 10, nf.file, /*forceTTY=*/true, /*stageIndex=*/3, /*totalStages=*/7);
+    bar.Start();
+    for (size_t i = 0; i < 10; ++i)
+        bar.Tick();
+    bar.Finish(/*clearLine=*/false);
+
+    auto const content = nf.ReadContent();
+    CHECK(content.find("[3/7]") != std::string::npos);
+    CHECK(content.find("Tokenizing") != std::string::npos);
+}
+
+TEST_CASE("ProgressBar.ForceTTY.NoStageNumberingByDefault", "[ProgressBar]")
+{
+    NonTtyFile nf;
+    REQUIRE(nf.file != nullptr);
+
+    ProgressBar bar("Extracting", 10, nf.file, /*forceTTY=*/true);
+    bar.Start();
+    for (size_t i = 0; i < 10; ++i)
+        bar.Tick();
+    bar.Finish(/*clearLine=*/false);
+
+    auto const content = nf.ReadContent();
+    // No stage numbering prefix like [1/7] should be present
+    CHECK(content.find("[1/") == std::string::npos);
+    CHECK(content.find("Extracting") != std::string::npos);
+}
+
+TEST_CASE("ProgressBar.MoveConstructorPreservesStageInfo", "[ProgressBar]")
+{
+    NonTtyFile nf;
+    REQUIRE(nf.file != nullptr);
+
+    ProgressBar bar("Moving", 10, nf.file, /*forceTTY=*/true, /*stageIndex=*/2, /*totalStages=*/5);
+    bar.Start();
+    bar.Tick();
+
+    ProgressBar bar2(std::move(bar));
+    CHECK(bar2.IsActive());
+    for (size_t i = 0; i < 9; ++i)
+        bar2.Tick();
+    bar2.Finish(/*clearLine=*/false);
+
+    auto const content = nf.ReadContent();
+    CHECK(content.find("[2/5]") != std::string::npos);
+}

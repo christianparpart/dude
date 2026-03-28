@@ -7,9 +7,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
-#include <array>
 #include <atomic>
-#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <format>
@@ -585,7 +583,7 @@ struct TempGitRepo
     void RunGit(std::string const& gitArgs) const
     {
         auto const cmd = std::format("git -C {} {}", root.string(), gitArgs);
-        // NOLINTNEXTLINE(cert-env33-c) -- popen is intentional for test setup
+        // NOLINTNEXTLINE(cert-env33-c) -- std::system is intentional for test setup
         auto const status = std::system(cmd.c_str());
         REQUIRE(status == 0);
     }
@@ -599,15 +597,15 @@ struct TempGitRepo
     /// @brief Returns the current HEAD commit SHA.
     [[nodiscard]] auto GetHeadSha() const -> std::string
     {
-        auto const cmd = std::format("git -C {} rev-parse HEAD", root.string());
-        // NOLINTNEXTLINE(cert-env33-c) -- popen is intentional for test setup
-        auto* pipe = popen(cmd.c_str(), "r");
-        REQUIRE(pipe != nullptr);
-        std::array<char, 128> buffer{};
+        auto const shaFile = root / "head_sha.tmp";
+        auto const cmd = std::format("git -C {} rev-parse HEAD > \"{}\"", root.string(), shaFile.string());
+        // NOLINTNEXTLINE(cert-env33-c) -- std::system is intentional for test setup
+        auto const status = std::system(cmd.c_str());
+        REQUIRE(status == 0);
+        std::ifstream in(shaFile);
         std::string sha;
-        while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) != nullptr)
-            sha += buffer.data();
-        pclose(pipe);
+        std::getline(in, sha);
+        std::filesystem::remove(shaFile);
         while (!sha.empty() && (sha.back() == '\n' || sha.back() == '\r'))
             sha.pop_back();
         return sha;
