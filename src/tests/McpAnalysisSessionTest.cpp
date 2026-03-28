@@ -194,7 +194,7 @@ TEST_CASE("AnalysisSession.TimingIsPopulated", "[mcp][session]")
 }
 
 // ---------------------------------------------------------------------------
-// Coverage: accessor methods (Config, AllTokens, IntraResults, BlockToFileIndex)
+// Coverage: accessor methods (Config, IntraResults, BlockToFileIndex)
 // ---------------------------------------------------------------------------
 
 TEST_CASE("AnalysisSession.Accessors", "[mcp][session]")
@@ -211,9 +211,6 @@ TEST_CASE("AnalysisSession.Accessors", "[mcp][session]")
     // Exercise all accessor methods
     auto const& cfg = session.Config();
     CHECK(cfg.directory == dir.root);
-
-    auto const& allTokens = session.AllTokens();
-    CHECK_FALSE(allTokens.empty());
 
     auto const& intraResults = session.IntraResults();
     // IntraResults may or may not be empty depending on the source

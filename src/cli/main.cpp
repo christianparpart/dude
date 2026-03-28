@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
-#include <exec/static_thread_pool.hpp>
 #include <git/GitDiffParser.hpp>
 #include <git/GitFileFilter.hpp>
 #include <mcp/AnalysisSession.hpp>
 #include <mcp/McpTooling.hpp>
 #include <mcpprotocol/McpServer.hpp>
-#include <stdexec/execution.hpp>
 
 #include <dude/AnalysisScope.hpp>
 #include <dude/CloneDetector.hpp>
@@ -766,135 +764,81 @@ auto ScanFiles(CliOptions const& opts, dude::PerformanceTiming& timing)
     return *filesResult;
 }
 
-/// @brief Tokenizes all source files (step 2).
+/// @brief Tokenizes all source files and extracts code blocks in a streaming per-file pipeline (steps 2+3).
 ///
-/// Each file is tokenized using the appropriate language implementation based on
-/// file extension. Files with unrecognized extensions or tokenization failures
-/// produce a warning on stderr and contribute an empty token vector.
+/// Each file is tokenized, normalized, and block-extracted in a single pass.
+/// Tokens are released after each file, keeping peak memory proportional to
+/// the largest single file rather than the entire codebase.
 ///
-/// @param files The source file paths to tokenize.
-/// @param opts The parsed CLI options (for encoding and verbosity).
-/// @param timing Performance timing struct to record tokenization duration.
-/// @return A pair of (token vectors, language pointers), one per file (in the same order as files).
-auto TokenizeFiles(std::vector<std::filesystem::path> const& files, CliOptions const& opts,
-                   dude::PerformanceTiming& timing, dude::ProgressBar* progressBar)
-    -> std::pair<std::vector<std::vector<dude::Token>>, std::vector<dude::Language const*>>
+/// @param files The source file paths to process.
+/// @param opts The parsed CLI options (for encoding, minTokens, textSensitivity, verbosity).
+/// @param timing Performance timing struct to record tokenization and normalization duration.
+/// @param progressBar Optional progress bar to report per-file progress.
+/// @return A tuple of (all extracted code blocks, block-to-file-index mapping, language pointers per file).
+auto TokenizeAndExtractBlocks(std::vector<std::filesystem::path> const& files, CliOptions const& opts,
+                              dude::PerformanceTiming& timing, dude::ProgressBar* progressBar)
+    -> std::tuple<std::vector<dude::CodeBlock>, std::vector<size_t>, std::vector<dude::Language const*>>
 {
     using Clock = std::chrono::steady_clock;
 
-    auto const tokenizeStart = Clock::now();
+    auto const startTime = Clock::now();
     auto const numFiles = files.size();
 
-    std::vector<std::vector<dude::Token>> allTokens(numFiles);
-    std::vector<dude::Language const*> fileLanguages(numFiles, nullptr);
-
     auto const& registry = dude::LanguageRegistry::Instance();
-
-    // Pre-resolve languages (lightweight, sequential)
+    std::vector<dude::Language const*> fileLanguages(numFiles, nullptr);
     for (size_t fi = 0; fi < numFiles; ++fi)
         fileLanguages[fi] = registry.FindByPath(files[fi]);
 
-    // Parallel tokenization using stdexec::bulk
-    {
-        exec::static_thread_pool pool(std::thread::hardware_concurrency());
-        auto sched = pool.get_scheduler();
-
-        auto work = stdexec::starts_on(
-            sched, stdexec::just() | stdexec::bulk(stdexec::par, numFiles,
-                                                   [&](std::size_t fi)
-                                                   {
-                                                       auto const* language = fileLanguages[fi];
-                                                       if (!language)
-                                                           return;
-                                                       auto const fileIndex = static_cast<uint32_t>(fi);
-                                                       auto result =
-                                                           language->TokenizeFile(files[fi], fileIndex, opts.encoding);
-                                                       if (result)
-                                                           allTokens[fi] = std::move(*result);
-                                                       if (progressBar)
-                                                           progressBar->Tick();
-                                                   }));
-        stdexec::sync_wait(work);
-    }
-
-    // Sequential verbose output and error reporting
-    if (opts.verbose)
-    {
-        for (size_t fi = 0; fi < numFiles; ++fi)
-        {
-            auto const logMsg = [&](std::string const& msg)
-            {
-                if (progressBar && progressBar->IsActive())
-                    progressBar->Log(msg);
-                else
-                    std::println(stderr, "{}", msg);
-            };
-
-            if (!fileLanguages[fi])
-                logMsg(std::format("Warning: No language support for {}", files[fi].string()));
-            else if (allTokens[fi].empty())
-                logMsg(std::format("Warning: Failed to tokenize {}", files[fi].string()));
-            else
-                logMsg(std::format("Tokenized ({}): {}", fileLanguages[fi]->Name(), files[fi].string()));
-        }
-    }
-
-    timing.tokenizing = Clock::now() - tokenizeStart;
-
-    return {std::move(allTokens), std::move(fileLanguages)};
-}
-
-/// @brief Normalizes tokens and extracts code blocks (step 3).
-///
-/// For each non-empty token vector, normalizes the tokens structurally (and
-/// optionally text-preserving) using language-aware stripping, and extracts
-/// function-level code blocks via the language's block extractor.
-///
-/// @param allTokens Token vectors for all files.
-/// @param fileLanguages Language pointers for each file (may be nullptr).
-/// @param files Source file paths (for verbose output).
-/// @param opts The parsed CLI options (for minTokens, textSensitivity, verbosity).
-/// @param timing Performance timing struct to record normalization duration.
-/// @return A tuple of (all extracted code blocks, block-to-file-index mapping).
-auto ExtractBlocks(std::vector<std::vector<dude::Token>> const& allTokens,
-                   std::vector<dude::Language const*> const& fileLanguages,
-                   std::vector<std::filesystem::path> const& files, CliOptions const& opts,
-                   dude::PerformanceTiming& timing, dude::ProgressBar* progressBar)
-    -> std::tuple<std::vector<dude::CodeBlock>, std::vector<size_t>>
-{
-    using Clock = std::chrono::steady_clock;
-
-    auto const normalizeStart = Clock::now();
     dude::TokenNormalizer normalizer;
-    dude::CodeBlockExtractorConfig const config{.minTokens = opts.minTokens};
+    dude::CodeBlockExtractorConfig const blockConfig{.minTokens = opts.minTokens};
+    auto const useTextSensitivity = opts.textSensitivity > 0.0;
 
     std::vector<dude::CodeBlock> allBlocks;
     std::vector<size_t> blockToFileIndex;
 
-    auto const useTextSensitivity = opts.textSensitivity > 0.0;
-
-    for (auto const fi : std::views::iota(size_t{0}, allTokens.size()))
+    auto const logVerbose = [&](std::string const& msg)
     {
-        if (allTokens[fi].empty())
-            continue;
+        if (!opts.verbose)
+            return;
+        if (progressBar && progressBar->IsActive())
+            progressBar->Log(msg);
+        else
+            std::println(stderr, "{}", msg);
+    };
 
+    for (auto const fi : std::views::iota(size_t{0}, numFiles))
+    {
         auto const* language = fileLanguages[fi];
         if (!language)
-            continue;
-
-        auto normalized = normalizer.Normalize(allTokens[fi], language);
-        auto textPreserving = useTextSensitivity ? normalizer.NormalizeTextPreserving(allTokens[fi], language)
-                                                 : std::vector<dude::NormalizedToken>{};
-        auto blocks = language->ExtractBlocks(allTokens[fi], normalized, textPreserving, config);
-
-        if (opts.verbose && !blocks.empty())
         {
-            auto const msg = std::format("  {} blocks from {}", blocks.size(), files[fi].string());
-            if (progressBar && progressBar->IsActive())
-                progressBar->Log(msg);
-            else
-                std::println(stderr, "{}", msg);
+            logVerbose(std::format("Warning: No language support for {}", files[fi].string()));
+            if (progressBar)
+                progressBar->Tick();
+            continue;
         }
+
+        // Tokenize this single file
+        auto const fileIndex = static_cast<uint32_t>(fi);
+        auto tokensResult = language->TokenizeFile(files[fi], fileIndex, opts.encoding);
+        if (!tokensResult || tokensResult->empty())
+        {
+            logVerbose(std::format("Warning: Failed to tokenize {}", files[fi].string()));
+            if (progressBar)
+                progressBar->Tick();
+            continue;
+        }
+
+        auto& tokens = *tokensResult;
+        logVerbose(std::format("Tokenized ({}): {}", language->Name(), files[fi].string()));
+
+        // Normalize and extract blocks, then release tokens
+        auto normalized = normalizer.Normalize(tokens, language);
+        auto textPreserving = useTextSensitivity ? normalizer.NormalizeTextPreserving(tokens, language)
+                                                 : std::vector<dude::NormalizedToken>{};
+        auto blocks = language->ExtractBlocks(tokens, normalized, textPreserving, blockConfig);
+
+        if (!blocks.empty())
+            logVerbose(std::format("  {} blocks from {}", blocks.size(), files[fi].string()));
 
         for (auto& block : blocks)
         {
@@ -902,15 +846,60 @@ auto ExtractBlocks(std::vector<std::vector<dude::Token>> const& allTokens,
             allBlocks.push_back(std::move(block));
         }
 
+        // tokens released here when tokensResult goes out of scope at end of iteration
+
         if (progressBar)
             progressBar->Tick();
     }
-    timing.normalizing = Clock::now() - normalizeStart;
 
-    if (opts.verbose)
-        std::println(stderr, "Extracted {} code blocks total", allBlocks.size());
+    timing.tokenizing = Clock::now() - startTime;
+    logVerbose(std::format("Extracted {} code blocks total", allBlocks.size()));
 
-    return {std::move(allBlocks), std::move(blockToFileIndex)};
+    return {std::move(allBlocks), std::move(blockToFileIndex), std::move(fileLanguages)};
+}
+
+/// @brief Re-tokenizes only the files that participate in detected clone results.
+///
+/// After clone detection, only a subset of files appear in the results.
+/// This function re-tokenizes only those files from disk for use by reporters
+/// that need access to original token text (e.g., syntax highlighting).
+///
+/// @param groups The detected clone groups.
+/// @param intraResults The detected intra-function clone results.
+/// @param blockToFileIndex Mapping from block index to file index.
+/// @param files The source file paths.
+/// @param fileLanguages Language pointers per file.
+/// @param encoding Input encoding setting.
+/// @return Sparse token vector (only participating file indices are populated).
+auto RetokenizeParticipatingFiles(std::vector<dude::CloneGroup> const& groups,
+                                  std::vector<dude::IntraCloneResult> const& intraResults,
+                                  std::vector<size_t> const& blockToFileIndex,
+                                  std::vector<std::filesystem::path> const& files,
+                                  std::vector<dude::Language const*> const& fileLanguages, dude::InputEncoding encoding)
+    -> std::vector<std::vector<dude::Token>>
+{
+    // Identify files that appear in results
+    std::unordered_set<size_t> participatingFiles;
+    for (auto const& group : groups)
+        for (auto const idx : group.blockIndices)
+            participatingFiles.insert(blockToFileIndex[idx]);
+    for (auto const& result : intraResults)
+        participatingFiles.insert(blockToFileIndex[result.blockIndex]);
+
+    // Re-tokenize only those files
+    std::vector<std::vector<dude::Token>> allTokens(files.size());
+    for (auto const fi : participatingFiles)
+    {
+        auto const* language = fileLanguages[fi];
+        if (!language)
+            continue;
+        auto const fileIndex = static_cast<uint32_t>(fi);
+        auto tokensResult = language->TokenizeFile(files[fi], fileIndex, encoding);
+        if (tokensResult)
+            allTokens[fi] = std::move(*tokensResult);
+    }
+
+    return allTokens;
 }
 
 } // namespace
@@ -991,36 +980,23 @@ int main(int argc, char* argv[])
         return *interrupted;
 
     // Compute total progress stages based on active scope.
-    size_t totalStages = 2; // Tokenizing + Extracting (always present)
+    size_t totalStages = 1; // Processing (tokenize + extract, fused)
     if (dude::HasInterFunctionScope(opts.scope))
         totalStages += 4; // Fingerprinting, Gather Candidates, Collecting, Detecting
     if (dude::HasScope(opts.scope, dude::AnalysisScope::IntraFunction))
         totalStages += 1; // Intra-detect
     size_t currentStage = 0;
 
-    // Step 2: Tokenize all files (language-aware)
-    auto tokenBar = opts.showProgress ? std::make_optional<dude::ProgressBar>("Tokenizing", files.size(), stderr, false,
-                                                                              ++currentStage, totalStages)
-                                      : std::nullopt;
-    if (tokenBar)
-        tokenBar->Start();
-    auto [allTokens, fileLanguages] = TokenizeFiles(files, opts, timing, tokenBar ? &*tokenBar : nullptr);
-    if (tokenBar)
-        tokenBar->Finish(false);
-
-    if (auto const interrupted = CheckInterrupted())
-        return *interrupted;
-
-    // Step 3: Normalize and extract blocks (language-aware)
-    auto extractBar = opts.showProgress ? std::make_optional<dude::ProgressBar>("Extracting", files.size(), stderr,
+    // Steps 2+3: Streaming tokenize + normalize + extract blocks (per file)
+    auto processBar = opts.showProgress ? std::make_optional<dude::ProgressBar>("Processing", files.size(), stderr,
                                                                                 false, ++currentStage, totalStages)
                                         : std::nullopt;
-    if (extractBar)
-        extractBar->Start();
-    auto [allBlocks, blockToFileIndex] =
-        ExtractBlocks(allTokens, fileLanguages, files, opts, timing, extractBar ? &*extractBar : nullptr);
-    if (extractBar)
-        extractBar->Finish(false);
+    if (processBar)
+        processBar->Start();
+    auto [allBlocks, blockToFileIndex, fileLanguages] =
+        TokenizeAndExtractBlocks(files, opts, timing, processBar ? &*processBar : nullptr);
+    if (processBar)
+        processBar->Finish(false);
 
     if (auto const interrupted = CheckInterrupted())
         return *interrupted;
@@ -1205,32 +1181,18 @@ int main(int argc, char* argv[])
             intraResults.resize(opts.limit);
     }
 
-    // Step 4e: Release token vectors for non-participating files to reduce peak memory.
+    // Step 5: Re-tokenize participating files for reporter output and report results.
+    auto const allTokens =
+        RetokenizeParticipatingFiles(groups, intraResults, blockToFileIndex, files, fileLanguages, opts.encoding);
+
+    if (opts.verbose)
     {
-        std::unordered_set<size_t> participatingFiles;
-        for (auto const& group : groups)
-            for (auto const idx : group.blockIndices)
-                participatingFiles.insert(blockToFileIndex[idx]);
-        for (auto const& result : intraResults)
-            participatingFiles.insert(blockToFileIndex[result.blockIndex]);
-
-        for (size_t fi = 0; fi < allTokens.size(); ++fi)
-        {
-            if (!participatingFiles.contains(fi))
-            {
-                allTokens[fi].clear();
-                allTokens[fi].shrink_to_fit();
-            }
-        }
-
-        if (opts.verbose)
-        {
-            auto const released = allTokens.size() - participatingFiles.size();
-            std::println(stderr, "Released token vectors for {} non-participating files", released);
-        }
+        size_t participatingCount = 0;
+        for (auto const& tokens : allTokens)
+            if (!tokens.empty())
+                ++participatingCount;
+        std::println(stderr, "Re-tokenized {} participating files for reporting", participatingCount);
     }
-
-    // Step 5: Report results
     dude::ReporterConfig const consoleConfig{
         .useColor = opts.useColor,
         .showSourceCode = opts.showSource,

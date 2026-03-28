@@ -49,39 +49,19 @@ auto AnalysisSession::Analyze(AnalysisConfig const& config) -> std::expected<voi
 
     _files = *filesResult;
 
-    // Step 2: Tokenize all files
-    auto const tokenizeStart = Clock::now();
-    _allTokens.clear();
+    // Step 2: Resolve languages for each file
     _fileLanguages.clear();
-    _allTokens.reserve(_files.size());
     _fileLanguages.reserve(_files.size());
 
     auto const& registry = dude::LanguageRegistry::Instance();
     for (auto const& file : _files)
-    {
-        auto const* language = registry.FindByPath(file);
-        if (!language)
-        {
-            _allTokens.emplace_back();
-            _fileLanguages.push_back(nullptr);
-            continue;
-        }
+        _fileLanguages.push_back(registry.FindByPath(file));
 
-        auto const fileIndex = static_cast<uint32_t>(_allTokens.size());
-        auto tokensResult = language->TokenizeFile(file, fileIndex, config.encoding);
-        if (!tokensResult)
-        {
-            _allTokens.emplace_back();
-            _fileLanguages.push_back(language);
-            continue;
-        }
-        _allTokens.push_back(std::move(*tokensResult));
-        _fileLanguages.push_back(language);
-    }
-    _timing.tokenizing = Clock::now() - tokenizeStart;
+    // Step 3: Streaming tokenize + normalize + extract blocks (per file)
+    RunBlockExtraction();
 
-    // Steps 3-4: Extract blocks and detect clones
-    RunBlockExtractionAndDetection();
+    // Step 4: Detect clones
+    RunDetection();
 
     _hasResults = true;
     return {};
@@ -99,17 +79,18 @@ auto AnalysisSession::Reconfigure(double threshold, size_t minTokens, double tex
     _config.textSensitivity = textSensitivity;
     _config.scope = scope;
 
-    RunBlockExtractionAndDetection();
+    // Re-tokenize from disk and re-extract blocks with new parameters
+    RunBlockExtraction();
+    RunDetection();
 
     return {};
 }
 
-void AnalysisSession::RunBlockExtractionAndDetection()
+void AnalysisSession::RunBlockExtraction()
 {
     using Clock = std::chrono::steady_clock;
 
-    // Step 3: Normalize and extract blocks
-    auto const normalizeStart = Clock::now();
+    auto const tokenizeStart = Clock::now();
     dude::TokenNormalizer normalizer;
     dude::CodeBlockExtractorConfig const blockConfig{.minTokens = _config.minTokens};
     auto const useTextSensitivity = _config.textSensitivity > 0.0;
@@ -117,29 +98,42 @@ void AnalysisSession::RunBlockExtractionAndDetection()
     _allBlocks.clear();
     _blockToFileIndex.clear();
 
-    for (auto const fi : std::views::iota(size_t{0}, _allTokens.size()))
+    for (auto const fi : std::views::iota(size_t{0}, _files.size()))
     {
-        if (_allTokens[fi].empty())
-            continue;
-
         auto const* language = _fileLanguages[fi];
         if (!language)
             continue;
 
-        auto normalized = normalizer.Normalize(_allTokens[fi], language);
-        auto textPreserving = useTextSensitivity ? normalizer.NormalizeTextPreserving(_allTokens[fi], language)
+        // Tokenize this single file
+        auto const fileIndex = static_cast<uint32_t>(fi);
+        auto tokensResult = language->TokenizeFile(_files[fi], fileIndex, _config.encoding);
+        if (!tokensResult || tokensResult->empty())
+            continue;
+
+        auto& tokens = *tokensResult;
+
+        // Normalize and extract blocks from this file's tokens
+        auto normalized = normalizer.Normalize(tokens, language);
+        auto textPreserving = useTextSensitivity ? normalizer.NormalizeTextPreserving(tokens, language)
                                                  : std::vector<dude::NormalizedToken>{};
-        auto blocks = language->ExtractBlocks(_allTokens[fi], normalized, textPreserving, blockConfig);
+        auto blocks = language->ExtractBlocks(tokens, normalized, textPreserving, blockConfig);
 
         for (auto& block : blocks)
         {
             _blockToFileIndex.push_back(fi);
             _allBlocks.push_back(std::move(block));
         }
-    }
-    _timing.normalizing = Clock::now() - normalizeStart;
 
-    // Step 4: Detect inter-function clones
+        // tokens is released here when tokensResult goes out of scope at end of iteration
+    }
+    _timing.tokenizing = Clock::now() - tokenizeStart;
+}
+
+void AnalysisSession::RunDetection()
+{
+    using Clock = std::chrono::steady_clock;
+
+    // Detect inter-function clones
     _groups.clear();
     if (dude::HasInterFunctionScope(_config.scope))
     {
@@ -166,7 +160,7 @@ void AnalysisSession::RunBlockExtractionAndDetection()
                           });
     }
 
-    // Step 4b: Detect intra-function clones
+    // Detect intra-function clones
     _intraResults.clear();
     if (dude::HasScope(_config.scope, dude::AnalysisScope::IntraFunction))
     {

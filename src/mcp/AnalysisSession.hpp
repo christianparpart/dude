@@ -7,13 +7,17 @@
 #include <dude/Encoding.hpp>
 #include <dude/IntraFunctionDetector.hpp>
 #include <dude/Reporter.hpp>
-#include <dude/Token.hpp>
 
 #include <cstddef>
 #include <expected>
 #include <filesystem>
 #include <string>
 #include <vector>
+
+namespace dude
+{
+class Language;
+}
 
 namespace mcp
 {
@@ -38,8 +42,10 @@ struct AnalysisError
 
 /// @brief Caches a full analysis pipeline run for interactive MCP access.
 ///
-/// Wraps the scan → tokenize → normalize → extract → detect pipeline,
-/// storing all intermediate results for subsequent tool queries.
+/// Uses a streaming tokenize-extract pipeline: each file is tokenized, normalized,
+/// and block-extracted in a single pass, then its tokens are released immediately.
+/// Only the compact extracted blocks are retained, keeping memory usage proportional
+/// to block count rather than total token count.
 class AnalysisSession
 {
 public:
@@ -48,9 +54,9 @@ public:
     /// @return void on success, or an AnalysisError on failure.
     auto Analyze(AnalysisConfig const& config) -> std::expected<void, AnalysisError>;
 
-    /// @brief Reconfigures detection parameters and re-runs detection on cached data.
+    /// @brief Reconfigures detection parameters and re-runs the full pipeline.
     ///
-    /// Reuses cached files and tokens but re-runs block extraction and detection
+    /// Re-tokenizes files from disk and re-runs block extraction and detection
     /// since minTokens, threshold, or scope may have changed.
     ///
     /// @param threshold New similarity threshold.
@@ -69,9 +75,6 @@ public:
 
     /// @brief Returns the scanned file paths.
     [[nodiscard]] auto Files() const -> std::vector<std::filesystem::path> const& { return _files; }
-
-    /// @brief Returns the token vectors for all files.
-    [[nodiscard]] auto AllTokens() const -> std::vector<std::vector<dude::Token>> const& { return _allTokens; }
 
     /// @brief Returns all extracted code blocks.
     [[nodiscard]] auto AllBlocks() const -> std::vector<dude::CodeBlock> const& { return _allBlocks; }
@@ -97,7 +100,6 @@ private:
     bool _hasResults = false;
     AnalysisConfig _config;
     std::vector<std::filesystem::path> _files;
-    std::vector<std::vector<dude::Token>> _allTokens;
     std::vector<dude::Language const*> _fileLanguages;
     std::vector<dude::CodeBlock> _allBlocks;
     std::vector<size_t> _blockToFileIndex;
@@ -105,7 +107,15 @@ private:
     std::vector<dude::IntraCloneResult> _intraResults;
     dude::PerformanceTiming _timing{};
 
-    void RunBlockExtractionAndDetection();
+    /// @brief Tokenizes all files and extracts blocks using a streaming per-file pipeline.
+    ///
+    /// Each file is tokenized, normalized, and block-extracted in a single pass.
+    /// Tokens are released after each file, keeping peak memory proportional to
+    /// the largest single file rather than the entire codebase.
+    void RunBlockExtraction();
+
+    /// @brief Runs clone detection and intra-function detection on extracted blocks.
+    void RunDetection();
 };
 
 } // namespace mcp
