@@ -19,6 +19,8 @@ namespace mcp
 namespace
 {
 
+constexpr auto DudeCacheDir = ".dude-cache";
+
 /// @brief Serializes a single code block to JSON with standard fields.
 /// @param bi Block index.
 /// @param block The code block.
@@ -1213,7 +1215,7 @@ auto HandleSaveBaseline(AnalysisSession const& session, nlohmann::json const& ar
 
     auto const name = args.at("name").get<std::string>();
     auto const projectRoot = std::filesystem::weakly_canonical(session.Config().directory);
-    auto const baselineDir = projectRoot / ".dude-cache" / "baselines";
+    auto const baselineDir = projectRoot / DudeCacheDir / "baselines";
 
     dude::BaselineStore store(baselineDir);
     auto const result = store.Save(name, session.CloneGroups(), session.IntraResults(), session.AllBlocks(),
@@ -1267,7 +1269,7 @@ auto HandleCompareBaseline(AnalysisSession const& session, nlohmann::json const&
     auto const name = args.at("name").get<std::string>();
     auto const limit = args.value("limit", size_t{0});
     auto const projectRoot = std::filesystem::weakly_canonical(session.Config().directory);
-    auto const baselineDir = projectRoot / ".dude-cache" / "baselines";
+    auto const baselineDir = projectRoot / DudeCacheDir / "baselines";
 
     dude::BaselineStore store(baselineDir);
     auto const baseline = store.Load(name);

@@ -19,13 +19,11 @@ namespace dude
 namespace
 {
 
-/// @brief Computes a relative path from projectRoot to filePath.
 auto RelativePath(std::filesystem::path const& filePath, std::filesystem::path const& projectRoot) -> std::string
 {
     return std::filesystem::relative(filePath, projectRoot).string();
 }
 
-/// @brief Returns current UTC timestamp in ISO 8601 format.
 auto CurrentTimestamp() -> std::string
 {
     auto const now = std::chrono::system_clock::now();
@@ -40,7 +38,12 @@ auto CurrentTimestamp() -> std::string
                        utc.tm_hour, utc.tm_min, utc.tm_sec);
 }
 
-/// @brief Simple hash for CloneIdentity to enable set lookup.
+/// @brief Boost-style hash combine for building composite hashes.
+void HashCombine(size_t& h, auto const& value)
+{
+    h ^= std::hash<std::remove_cvref_t<decltype(value)>>{}(value) + 0x9e3779b9 + (h << 6) + (h >> 2);
+}
+
 struct CloneIdentityHash
 {
     auto operator()(CloneIdentity const& id) const -> size_t
@@ -48,28 +51,27 @@ struct CloneIdentityHash
         size_t h = 0;
         for (auto const& m : id.members)
         {
-            h ^= std::hash<std::string>{}(m.filePath) + 0x9e3779b9 + (h << 6) + (h >> 2);
-            h ^= std::hash<std::string>{}(m.functionName) + 0x9e3779b9 + (h << 6) + (h >> 2);
-            h ^= std::hash<uint32_t>{}(m.startLine) + 0x9e3779b9 + (h << 6) + (h >> 2);
-            h ^= std::hash<uint32_t>{}(m.endLine) + 0x9e3779b9 + (h << 6) + (h >> 2);
+            HashCombine(h, m.filePath);
+            HashCombine(h, m.functionName);
+            HashCombine(h, m.startLine);
+            HashCombine(h, m.endLine);
         }
         return h;
     }
 };
 
-/// @brief Simple hash for IntraCloneIdentity to enable set lookup.
 struct IntraCloneIdentityHash
 {
     auto operator()(IntraCloneIdentity const& id) const -> size_t
     {
         size_t h = 0;
-        h ^= std::hash<std::string>{}(id.filePath) + 0x9e3779b9 + (h << 6) + (h >> 2);
-        h ^= std::hash<std::string>{}(id.functionName) + 0x9e3779b9 + (h << 6) + (h >> 2);
-        h ^= std::hash<uint32_t>{}(id.startLine) + 0x9e3779b9 + (h << 6) + (h >> 2);
-        h ^= std::hash<size_t>{}(id.regionAStart) + 0x9e3779b9 + (h << 6) + (h >> 2);
-        h ^= std::hash<size_t>{}(id.regionALength) + 0x9e3779b9 + (h << 6) + (h >> 2);
-        h ^= std::hash<size_t>{}(id.regionBStart) + 0x9e3779b9 + (h << 6) + (h >> 2);
-        h ^= std::hash<size_t>{}(id.regionBLength) + 0x9e3779b9 + (h << 6) + (h >> 2);
+        HashCombine(h, id.filePath);
+        HashCombine(h, id.functionName);
+        HashCombine(h, id.startLine);
+        HashCombine(h, id.regionAStart);
+        HashCombine(h, id.regionALength);
+        HashCombine(h, id.regionBStart);
+        HashCombine(h, id.regionBLength);
         return h;
     }
 };
@@ -161,12 +163,9 @@ auto BaselineStore::Save(std::string const& name, std::vector<CloneGroup> const&
 auto BaselineStore::Load(std::string const& name) const -> std::expected<Baseline, BaselineError>
 {
     auto const path = BaselinePath(name);
-    if (!std::filesystem::exists(path))
-        return std::unexpected(BaselineError{.message = std::format("Baseline '{}' not found", name)});
-
     std::ifstream file(path);
     if (!file)
-        return std::unexpected(BaselineError{.message = std::format("Cannot open baseline file: {}", path.string())});
+        return std::unexpected(BaselineError{.message = std::format("Baseline '{}' not found", name)});
 
     nlohmann::json root;
     try
@@ -293,12 +292,20 @@ auto BaselineStore::BuildIntraCloneIdentities(std::vector<IntraCloneResult> cons
                                               std::filesystem::path const& projectRoot)
     -> std::vector<IntraCloneIdentity>
 {
+    std::unordered_map<uint32_t, std::string> relPathCache;
+    auto const getRelPath = [&](uint32_t fileIdx) -> std::string const&
+    {
+        auto const [it, inserted] = relPathCache.try_emplace(fileIdx);
+        if (inserted)
+            it->second = RelativePath(files[fileIdx], projectRoot);
+        return it->second;
+    };
+
     std::vector<IntraCloneIdentity> identities;
     for (auto const& result : results)
     {
         auto const& block = blocks[result.blockIndex];
-        auto const fileIdx = block.sourceRange.start.fileIndex;
-        auto const relPath = RelativePath(files[fileIdx], projectRoot);
+        auto const& relPath = getRelPath(block.sourceRange.start.fileIndex);
 
         for (auto const& pair : result.pairs)
         {

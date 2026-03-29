@@ -17,7 +17,6 @@ namespace dude
 namespace
 {
 
-/// @brief Returns the current time as Unix epoch seconds.
 auto NowEpochSeconds() -> int64_t
 {
     return std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch())
@@ -44,9 +43,15 @@ auto BlockCache::Lookup(std::string const& contentHash, std::string_view languag
     auto const it = _entries.find(key);
     if (it == _entries.end())
         return std::nullopt;
-    // Update last-accessed timestamp on cache hit so hot entries are not evicted.
-    it->second.lastAccessedEpoch = NowEpochSeconds();
-    _dirty = true;
+    // Touch the entry so hot entries are not evicted. Only mark dirty if the
+    // epoch-day actually changed, avoiding a full cache rewrite every run.
+    auto const now = NowEpochSeconds();
+    constexpr int64_t secondsPerDay = 86400;
+    if (now / secondsPerDay != it->second.lastAccessedEpoch / secondsPerDay)
+    {
+        it->second.lastAccessedEpoch = now;
+        _dirty = true;
+    }
     return std::span<CodeBlock const>{it->second.blocks};
 }
 
@@ -60,13 +65,9 @@ void BlockCache::Store(std::string const& contentHash, std::string_view language
 
 auto BlockCache::Load() -> std::expected<void, BlockCacheError>
 {
-    if (!std::filesystem::exists(_cachePath))
-        return {};
-
     std::ifstream file(_cachePath);
     if (!file)
-        return std::unexpected(
-            BlockCacheError{.message = std::format("Cannot open cache file: {}", _cachePath.string())});
+        return {}; // No cache file yet — not an error.
 
     nlohmann::json root;
     try

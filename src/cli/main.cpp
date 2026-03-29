@@ -99,6 +99,9 @@ auto CheckInterrupted() -> std::optional<int>
     return std::nullopt;
 }
 
+/// @brief Name of the cache directory created under the project root.
+constexpr auto DudeCacheDir = ".dude-cache";
+
 constexpr auto versionString = DUDE_VERSION;
 
 /// @brief Parsed command-line arguments.
@@ -937,7 +940,6 @@ auto TokenizeAndExtractBlocks(std::vector<std::filesystem::path> const& files, C
 
         auto const fileIndex = static_cast<uint32_t>(fi);
 
-        // Compute content hash once for cache lookup and store.
         std::string contentHash;
         if (cache)
         {
@@ -946,7 +948,6 @@ auto TokenizeAndExtractBlocks(std::vector<std::filesystem::path> const& files, C
                 contentHash = dude::ComputeContentHash(mappedFile->View());
         }
 
-        // Try loading from cache first.
         if (cache && !contentHash.empty() &&
             TryLoadCachedBlocks(*cache, contentHash, *language, opts, fileIndex, allBlocks, blockToFileIndex))
         {
@@ -978,7 +979,6 @@ auto TokenizeAndExtractBlocks(std::vector<std::filesystem::path> const& files, C
         if (!blocks.empty())
             logVerbose(std::format("  {} blocks from {}", blocks.size(), files[fi].string()));
 
-        // Store in cache using pre-computed hash.
         if (cache && !contentHash.empty())
             cache->Store(contentHash, language->Name(), opts.minTokens, opts.textSensitivity, blocks);
 
@@ -1131,7 +1131,7 @@ int main(int argc, char* argv[])
 
     // Set up block cache if enabled.
     auto const projectRoot = std::filesystem::weakly_canonical(opts.directory);
-    auto const cachePath = projectRoot / ".dude-cache" / "blocks.json";
+    auto const cachePath = projectRoot / DudeCacheDir / "blocks.json";
     std::optional<dude::BlockCache> blockCache;
     if (opts.enableCache)
     {
@@ -1337,44 +1337,47 @@ int main(int argc, char* argv[])
         intraResults = dude::DiffFilter::FilterIntraResults(intraResults, changedBlocks);
     }
 
-    // Step 4d: Save baseline if requested.
-    if (!opts.saveBaseline.empty())
+    // Step 4d/4e: Save and/or compare baselines.
+    if (!opts.saveBaseline.empty() || !opts.compareBaseline.empty())
     {
-        auto baselineName = opts.saveBaseline;
-        if (baselineName == "auto")
+        dude::BaselineStore store(projectRoot / DudeCacheDir / "baselines");
+
+        if (!opts.saveBaseline.empty())
         {
-            auto const headSha = git::GitDiffParser::GetHeadSha(projectRoot);
-            baselineName = headSha.value_or("unknown");
-        }
-
-        dude::BaselineStore store(projectRoot / ".dude-cache" / "baselines");
-        auto const saveResult = store.Save(baselineName, groups, intraResults, allBlocks, files, projectRoot);
-        if (saveResult)
-            std::println(stderr, "Saved baseline '{}'", baselineName);
-        else
-            std::println(stderr, "Warning: Failed to save baseline: {}", saveResult.error().message);
-    }
-
-    // Step 4e: Filter to new-only if baseline comparison requested.
-    if (!opts.compareBaseline.empty())
-    {
-        dude::BaselineStore store(projectRoot / ".dude-cache" / "baselines");
-        auto const baseline = store.Load(opts.compareBaseline);
-        if (baseline)
-        {
-            groups = dude::BaselineStore::FindNewCloneGroups(groups, *baseline, allBlocks, files, projectRoot);
-            intraResults =
-                dude::BaselineStore::FindNewIntraClones(intraResults, *baseline, allBlocks, files, projectRoot);
-
-            if (opts.verbose)
+            auto baselineName = opts.saveBaseline;
+            if (baselineName == "auto")
             {
-                std::println(stderr, "Filtered against baseline '{}': {} new clone groups, {} new intra-clone results",
-                             opts.compareBaseline, groups.size(), intraResults.size());
+                auto const headSha = git::GitDiffParser::GetHeadSha(projectRoot);
+                baselineName = headSha.value_or("unknown");
             }
+
+            auto const saveResult = store.Save(baselineName, groups, intraResults, allBlocks, files, projectRoot);
+            if (saveResult)
+                std::println(stderr, "Saved baseline '{}'", baselineName);
+            else
+                std::println(stderr, "Warning: Failed to save baseline: {}", saveResult.error().message);
         }
-        else
+
+        if (!opts.compareBaseline.empty())
         {
-            std::println(stderr, "Warning: Baseline '{}' not found, showing all results", opts.compareBaseline);
+            auto const baseline = store.Load(opts.compareBaseline);
+            if (baseline)
+            {
+                groups = dude::BaselineStore::FindNewCloneGroups(groups, *baseline, allBlocks, files, projectRoot);
+                intraResults =
+                    dude::BaselineStore::FindNewIntraClones(intraResults, *baseline, allBlocks, files, projectRoot);
+
+                if (opts.verbose)
+                {
+                    std::println(stderr,
+                                 "Filtered against baseline '{}': {} new clone groups, {} new intra-clone results",
+                                 opts.compareBaseline, groups.size(), intraResults.size());
+                }
+            }
+            else
+            {
+                std::println(stderr, "Warning: Baseline '{}' not found, showing all results", opts.compareBaseline);
+            }
         }
     }
 
