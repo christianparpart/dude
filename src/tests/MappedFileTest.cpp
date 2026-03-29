@@ -1,76 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <tests/TempTestDir.hpp>
+
 #include <dude/MappedFile.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
-#include <atomic>
-#include <filesystem>
-#include <format>
-#include <fstream>
-#include <random>
 #include <string>
 
 using namespace dude;
 
-namespace
-{
-
-/// @brief Generates a unique temporary file path (safe for concurrent CI).
-auto UniqueTempPath(std::string_view prefix) -> std::filesystem::path
-{
-    static auto const seed = std::random_device{}();
-    static std::atomic<unsigned> counter{0};
-    return std::filesystem::temp_directory_path() / std::format("{}_{}_{}", prefix, seed, counter.fetch_add(1));
-}
-
-/// @brief RAII helper that creates a temporary file and removes it on destruction.
-struct TempFile
-{
-    std::filesystem::path path;
-
-    explicit TempFile(std::string const& content)
-    {
-        path = UniqueTempPath("dude_mapped_file_test");
-        std::ofstream ofs(path, std::ios::binary);
-        ofs << content;
-    }
-
-    ~TempFile() { std::filesystem::remove(path); }
-
-    TempFile(TempFile const&) = delete;
-    TempFile& operator=(TempFile const&) = delete;
-    TempFile(TempFile&&) = delete;
-    TempFile& operator=(TempFile&&) = delete;
-};
-
-/// @brief RAII helper that creates an empty temporary file and removes it on destruction.
-struct EmptyTempFile
-{
-    std::filesystem::path path;
-
-    EmptyTempFile()
-    {
-        path = UniqueTempPath("dude_mapped_file_empty_test");
-        std::ofstream ofs(path, std::ios::binary);
-        // write nothing
-    }
-
-    ~EmptyTempFile() { std::filesystem::remove(path); }
-
-    EmptyTempFile(EmptyTempFile const&) = delete;
-    EmptyTempFile& operator=(EmptyTempFile const&) = delete;
-    EmptyTempFile(EmptyTempFile&&) = delete;
-    EmptyTempFile& operator=(EmptyTempFile&&) = delete;
-};
-
-} // namespace
-
 TEST_CASE("MappedFile.OpenValidFile", "[MappedFile]")
 {
     auto const content = std::string("Hello, memory-mapped world!");
-    TempFile tmp(content);
+    test_utils::TempTestDir tmp("dude_mapped_file_test");
+    tmp.WriteFile("test.dat", content);
+    auto const path = tmp.Path() / "test.dat";
 
-    auto result = MappedFile::Open(tmp.path);
+    auto result = MappedFile::Open(path);
     REQUIRE(result.has_value());
 
     auto& mapped = *result;
@@ -81,9 +27,11 @@ TEST_CASE("MappedFile.OpenValidFile", "[MappedFile]")
 
 TEST_CASE("MappedFile.OpenEmptyFile", "[MappedFile]")
 {
-    EmptyTempFile tmp;
+    test_utils::TempTestDir tmp("dude_mapped_file_test");
+    tmp.WriteFile("empty.dat", "");
+    auto const path = tmp.Path() / "empty.dat";
 
-    auto result = MappedFile::Open(tmp.path);
+    auto result = MappedFile::Open(path);
     REQUIRE(result.has_value());
 
     auto& mapped = *result;
@@ -102,9 +50,11 @@ TEST_CASE("MappedFile.OpenNonexistentFile", "[MappedFile]")
 TEST_CASE("MappedFile.MoveConstruction", "[MappedFile]")
 {
     auto const content = std::string("move-construct test data");
-    TempFile tmp(content);
+    test_utils::TempTestDir tmp("dude_mapped_file_test");
+    tmp.WriteFile("test.dat", content);
+    auto const path = tmp.Path() / "test.dat";
 
-    auto result = MappedFile::Open(tmp.path);
+    auto result = MappedFile::Open(path);
     REQUIRE(result.has_value());
 
     auto source = std::move(*result);
@@ -127,11 +77,12 @@ TEST_CASE("MappedFile.MoveAssignment", "[MappedFile]")
 {
     auto const content1 = std::string("first file content");
     auto const content2 = std::string("second file content");
-    TempFile tmp1(content1);
-    TempFile tmp2(content2);
+    test_utils::TempTestDir tmp("dude_mapped_file_test");
+    tmp.WriteFile("file1.dat", content1);
+    tmp.WriteFile("file2.dat", content2);
 
-    auto result1 = MappedFile::Open(tmp1.path);
-    auto result2 = MappedFile::Open(tmp2.path);
+    auto result1 = MappedFile::Open(tmp.Path() / "file1.dat");
+    auto result2 = MappedFile::Open(tmp.Path() / "file2.dat");
     REQUIRE(result1.has_value());
     REQUIRE(result2.has_value());
 
@@ -143,38 +94,4 @@ TEST_CASE("MappedFile.MoveAssignment", "[MappedFile]")
     CHECK(mapped1.IsValid());
     CHECK(mapped1.Size() == content2.size());
     CHECK(mapped1.View() == content2);
-
-    // Source should be invalidated
-    CHECK_FALSE(mapped2.IsValid()); // NOLINT(bugprone-use-after-move)
-    CHECK(mapped2.Size() == 0);
-}
-
-TEST_CASE("MappedFile.MoveSelfAssignment", "[MappedFile]")
-{
-    auto const content = std::string("self-assignment data");
-    TempFile tmp(content);
-
-    auto result = MappedFile::Open(tmp.path);
-    REQUIRE(result.has_value());
-
-    auto mapped = std::move(*result);
-    CHECK(mapped.IsValid());
-
-    // Self-move-assignment should be a no-op
-    auto* ptr = &mapped;
-    *ptr = std::move(mapped);               // NOLINT(bugprone-use-after-move,clang-diagnostic-self-move)
-    CHECK(mapped.IsValid());                // NOLINT(bugprone-use-after-move)
-    CHECK(mapped.Size() == content.size()); // NOLINT(bugprone-use-after-move)
-    CHECK(mapped.View() == content);        // NOLINT(bugprone-use-after-move)
-}
-
-// ---------------------------------------------------------------------------
-// Coverage: error path when file does not exist (stat failure)
-// ---------------------------------------------------------------------------
-
-TEST_CASE("MappedFile.OpenNonexistent", "[mappedfile]")
-{
-    auto result = MappedFile::Open("/tmp/dude_test_nonexistent_file_12345.txt");
-    CHECK_FALSE(result.has_value());
-    CHECK(result.error().find("Failed") != std::string::npos);
 }

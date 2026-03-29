@@ -19,6 +19,22 @@ namespace mcp
 namespace
 {
 
+/// @brief Serializes a single code block to JSON with standard fields.
+/// @param bi Block index.
+/// @param block The code block.
+/// @param filePath The file path string for this block.
+/// @return JSON object with block_index, name, file, start_line, end_line.
+auto SerializeBlockToJson(size_t bi, dude::CodeBlock const& block, std::string const& filePath) -> nlohmann::json
+{
+    return {
+        {"block_index", bi},
+        {"name", block.name},
+        {"file", filePath},
+        {"start_line", block.sourceRange.start.line},
+        {"end_line", block.sourceRange.end.line},
+    };
+}
+
 /// @brief Builds summary stats JSON from an analysis session.
 /// @param session The analysis session with results.
 /// @param limit Maximum number of clone groups to include (0 = unlimited).
@@ -254,14 +270,9 @@ auto HandleGetCloneGroups(AnalysisSession const& session, nlohmann::json const& 
         for (auto const bi : group.blockIndices)
         {
             auto const fi = blockToFileIndex[bi];
-            blocksArray.push_back({
-                {"block_index", bi},
-                {"name", blocks[bi].name},
-                {"file", files[fi].string()},
-                {"start_line", blocks[bi].sourceRange.start.line},
-                {"end_line", blocks[bi].sourceRange.end.line},
-                {"token_count", blocks[bi].tokenEnd - blocks[bi].tokenStart},
-            });
+            auto blockJson = SerializeBlockToJson(bi, blocks[bi], files[fi].string());
+            blockJson["token_count"] = blocks[bi].tokenEnd - blocks[bi].tokenStart;
+            blocksArray.push_back(std::move(blockJson));
         }
 
         groupsArray.push_back({
@@ -402,13 +413,7 @@ auto HandleQueryFileDuplicates(AnalysisSession const& session, nlohmann::json co
         for (auto const bi : groups[gi].blockIndices)
         {
             auto const fi = blockToFileIndex[bi];
-            blocksArray.push_back({
-                {"block_index", bi},
-                {"name", blocks[bi].name},
-                {"file", files[fi].string()},
-                {"start_line", blocks[bi].sourceRange.start.line},
-                {"end_line", blocks[bi].sourceRange.end.line},
-            });
+            blocksArray.push_back(SerializeBlockToJson(bi, blocks[bi], files[fi].string()));
         }
         interGroups.push_back({
             {"group_index", gi},
@@ -708,14 +713,9 @@ auto HandleAnalyzeFile(AnalysisSession& session, nlohmann::json const& args)
         for (auto const bi : group.blockIndices)
         {
             auto const fi = blockToFileIndex[bi];
-            blocksArray.push_back({
-                {"block_index", bi},
-                {"name", blocks[bi].name},
-                {"file", files[fi].string()},
-                {"start_line", blocks[bi].sourceRange.start.line},
-                {"end_line", blocks[bi].sourceRange.end.line},
-                {"token_count", blocks[bi].tokenEnd - blocks[bi].tokenStart},
-            });
+            auto blockJson = SerializeBlockToJson(bi, blocks[bi], files[fi].string());
+            blockJson["token_count"] = blocks[bi].tokenEnd - blocks[bi].tokenStart;
+            blocksArray.push_back(std::move(blockJson));
         }
 
         auto groupJson = nlohmann::json{
@@ -895,15 +895,10 @@ auto BuildDuplicatesResult(AnalysisSession& session, nlohmann::json const& args,
         for (auto const bi : group.blockIndices)
         {
             auto const fi = blockToFileIndex[bi];
-            blocksArray.push_back({
-                {"block_index", bi},
-                {"name", blocks[bi].name},
-                {"file", files[fi].string()},
-                {"start_line", blocks[bi].sourceRange.start.line},
-                {"end_line", blocks[bi].sourceRange.end.line},
-                {"token_count", blocks[bi].tokenEnd - blocks[bi].tokenStart},
-                {"is_changed", changedBlocks.contains(bi)},
-            });
+            auto blockJson = SerializeBlockToJson(bi, blocks[bi], files[fi].string());
+            blockJson["token_count"] = blocks[bi].tokenEnd - blocks[bi].tokenStart;
+            blockJson["is_changed"] = changedBlocks.contains(bi);
+            blocksArray.push_back(std::move(blockJson));
         }
 
         auto groupJson = nlohmann::json{
@@ -1298,13 +1293,7 @@ auto HandleCompareBaseline(AnalysisSession const& session, nlohmann::json const&
         for (auto const bi : group.blockIndices)
         {
             auto const fi = blockToFileIndex[bi];
-            blocksArray.push_back({
-                {"block_index", bi},
-                {"name", blocks[bi].name},
-                {"file", files[fi].string()},
-                {"start_line", blocks[bi].sourceRange.start.line},
-                {"end_line", blocks[bi].sourceRange.end.line},
-            });
+            blocksArray.push_back(SerializeBlockToJson(bi, blocks[bi], files[fi].string()));
         }
         groupsJson.push_back({
             {"avg_similarity", group.avgSimilarity},

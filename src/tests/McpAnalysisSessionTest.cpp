@@ -1,47 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include <mcp/AnalysisSession.hpp>
+#include <tests/TempTestDir.hpp>
 
 #include <catch2/catch_test_macros.hpp>
-
-#include <atomic>
-#include <filesystem>
-#include <format>
-#include <fstream>
-#include <random>
 
 using namespace mcp;
 
 namespace
 {
-
-/// @brief Creates a unique temporary directory for testing (safe for concurrent CI).
-struct TempTestDir
-{
-    std::filesystem::path root;
-
-    TempTestDir()
-    {
-        static auto const seed = std::random_device{}();
-        static std::atomic<unsigned> counter{0};
-        root =
-            std::filesystem::temp_directory_path() / std::format("mcp_session_test_{}_{}", seed, counter.fetch_add(1));
-        std::filesystem::create_directories(root);
-    }
-
-    TempTestDir(TempTestDir const&) = delete;
-    TempTestDir(TempTestDir&&) = delete;
-    auto operator=(TempTestDir const&) -> TempTestDir& = delete;
-    auto operator=(TempTestDir&&) -> TempTestDir& = delete;
-
-    void WriteFile(std::string const& name, std::string const& content) const
-    {
-        std::ofstream out(root / name);
-        out << content;
-    }
-
-    ~TempTestDir() { std::filesystem::remove_all(root); }
-};
 
 auto constexpr kDuplicateSource = R"(
 void functionA(int x) {
@@ -90,12 +57,12 @@ TEST_CASE("AnalysisSession.AnalyzeNonExistentDirectory", "[mcp][session]")
 
 TEST_CASE("AnalysisSession.AnalyzeValidDirectory", "[mcp][session]")
 {
-    TempTestDir dir;
+    test_utils::TempTestDir dir("mcp_session_test");
     dir.WriteFile("test.cpp", kDuplicateSource);
 
     AnalysisSession session;
     AnalysisConfig config;
-    config.directory = dir.root;
+    config.directory = dir.Path();
     config.minTokens = 10;
     auto const result = session.Analyze(config);
     REQUIRE(result.has_value());
@@ -106,12 +73,12 @@ TEST_CASE("AnalysisSession.AnalyzeValidDirectory", "[mcp][session]")
 
 TEST_CASE("AnalysisSession.DetectsClones", "[mcp][session]")
 {
-    TempTestDir dir;
+    test_utils::TempTestDir dir("mcp_session_test");
     dir.WriteFile("dup.cpp", kDuplicateSource);
 
     AnalysisSession session;
     AnalysisConfig config;
-    config.directory = dir.root;
+    config.directory = dir.Path();
     config.threshold = 0.70;
     config.minTokens = 10;
     config.textSensitivity = 0.0;
@@ -129,12 +96,12 @@ TEST_CASE("AnalysisSession.ReconfigureWithoutAnalysis", "[mcp][session]")
 
 TEST_CASE("AnalysisSession.ReconfigureAfterAnalysis", "[mcp][session]")
 {
-    TempTestDir dir;
+    test_utils::TempTestDir dir("mcp_session_test");
     dir.WriteFile("test.cpp", kDuplicateSource);
 
     AnalysisSession session;
     AnalysisConfig config;
-    config.directory = dir.root;
+    config.directory = dir.Path();
     config.threshold = 0.70;
     config.minTokens = 10;
     REQUIRE(session.Analyze(config).has_value());
@@ -148,12 +115,12 @@ TEST_CASE("AnalysisSession.ReconfigureAfterAnalysis", "[mcp][session]")
 
 TEST_CASE("AnalysisSession.ReadBlockSource", "[mcp][session]")
 {
-    TempTestDir dir;
+    test_utils::TempTestDir dir("mcp_session_test");
     dir.WriteFile("src.cpp", kDuplicateSource);
 
     AnalysisSession session;
     AnalysisConfig config;
-    config.directory = dir.root;
+    config.directory = dir.Path();
     config.minTokens = 10;
     REQUIRE(session.Analyze(config).has_value());
     REQUIRE(!session.AllBlocks().empty());
@@ -165,12 +132,12 @@ TEST_CASE("AnalysisSession.ReadBlockSource", "[mcp][session]")
 
 TEST_CASE("AnalysisSession.ReadBlockSourceOutOfRange", "[mcp][session]")
 {
-    TempTestDir dir;
+    test_utils::TempTestDir dir("mcp_session_test");
     dir.WriteFile("src.cpp", kDuplicateSource);
 
     AnalysisSession session;
     AnalysisConfig config;
-    config.directory = dir.root;
+    config.directory = dir.Path();
     REQUIRE(session.Analyze(config).has_value());
 
     auto const source = session.ReadBlockSource(99999);
@@ -179,12 +146,12 @@ TEST_CASE("AnalysisSession.ReadBlockSourceOutOfRange", "[mcp][session]")
 
 TEST_CASE("AnalysisSession.TimingIsPopulated", "[mcp][session]")
 {
-    TempTestDir dir;
+    test_utils::TempTestDir dir("mcp_session_test");
     dir.WriteFile("test.cpp", kDuplicateSource);
 
     AnalysisSession session;
     AnalysisConfig config;
-    config.directory = dir.root;
+    config.directory = dir.Path();
     REQUIRE(session.Analyze(config).has_value());
 
     auto const& timing = session.Timing();
@@ -199,18 +166,18 @@ TEST_CASE("AnalysisSession.TimingIsPopulated", "[mcp][session]")
 
 TEST_CASE("AnalysisSession.Accessors", "[mcp][session]")
 {
-    TempTestDir dir;
+    test_utils::TempTestDir dir("mcp_session_test");
     dir.WriteFile("test.cpp", kDuplicateSource);
 
     AnalysisSession session;
     AnalysisConfig config;
-    config.directory = dir.root;
+    config.directory = dir.Path();
     config.minTokens = 10;
     REQUIRE(session.Analyze(config).has_value());
 
     // Exercise all accessor methods
     auto const& cfg = session.Config();
-    CHECK(cfg.directory == dir.root);
+    CHECK(cfg.directory == dir.Path());
 
     auto const& intraResults = session.IntraResults();
     // IntraResults may or may not be empty depending on the source
@@ -226,13 +193,13 @@ TEST_CASE("AnalysisSession.Accessors", "[mcp][session]")
 
 TEST_CASE("AnalysisSession.AnalyzeWithGlobPatterns", "[mcp][session]")
 {
-    TempTestDir dir;
+    test_utils::TempTestDir dir("mcp_session_test");
     dir.WriteFile("test.cpp", kDuplicateSource);
     dir.WriteFile("test.py", "def foo():\n    pass\n");
 
     AnalysisSession session;
     AnalysisConfig config;
-    config.directory = dir.root;
+    config.directory = dir.Path();
     config.globPatterns = {"*.cpp"};
     REQUIRE(session.Analyze(config).has_value());
     CHECK(session.HasResults());
@@ -244,7 +211,7 @@ TEST_CASE("AnalysisSession.AnalyzeWithGlobPatterns", "[mcp][session]")
 
 TEST_CASE("AnalysisSession.AnalyzeWithExcludePatterns", "[mcp][session]")
 {
-    TempTestDir dir;
+    test_utils::TempTestDir dir("mcp_session_test");
     dir.WriteFile("main.cpp", kDuplicateSource);
     dir.WriteFile("main_test.cpp", kDuplicateSource);
 
@@ -252,7 +219,7 @@ TEST_CASE("AnalysisSession.AnalyzeWithExcludePatterns", "[mcp][session]")
     {
         AnalysisSession session;
         AnalysisConfig config;
-        config.directory = dir.root;
+        config.directory = dir.Path();
         config.minTokens = 10;
         REQUIRE(session.Analyze(config).has_value());
         CHECK(session.Files().size() == 2);
@@ -262,7 +229,7 @@ TEST_CASE("AnalysisSession.AnalyzeWithExcludePatterns", "[mcp][session]")
     {
         AnalysisSession session;
         AnalysisConfig config;
-        config.directory = dir.root;
+        config.directory = dir.Path();
         config.minTokens = 10;
         config.excludePatterns = {"*_test*"};
         REQUIRE(session.Analyze(config).has_value());
@@ -272,7 +239,7 @@ TEST_CASE("AnalysisSession.AnalyzeWithExcludePatterns", "[mcp][session]")
 
 TEST_CASE("AnalysisSession.AnalyzeWithGlobAndExclude", "[mcp][session]")
 {
-    TempTestDir dir;
+    test_utils::TempTestDir dir("mcp_session_test");
     dir.WriteFile("main.cpp", kDuplicateSource);
     dir.WriteFile("helper.hpp", "class Helper {};");
     dir.WriteFile("main_test.cpp", kDuplicateSource);
@@ -280,7 +247,7 @@ TEST_CASE("AnalysisSession.AnalyzeWithGlobAndExclude", "[mcp][session]")
     // Glob selects *.cpp, exclude removes *_test*
     AnalysisSession session;
     AnalysisConfig config;
-    config.directory = dir.root;
+    config.directory = dir.Path();
     config.minTokens = 10;
     config.globPatterns = {"*.cpp"};
     config.excludePatterns = {"*_test*"};
@@ -305,7 +272,7 @@ TEST_CASE("AnalysisSession.ReconfigureWithoutAnalysisDefaults", "[mcp][session]"
 
 TEST_CASE("AnalysisSession.AnalyzeWithMultipleGroupsAndIntra", "[mcp][session]")
 {
-    TempTestDir dir;
+    test_utils::TempTestDir dir("mcp_session_test");
     // Create a file with multiple function pairs that form different clone groups,
     // and a function with internal duplication for intra-function detection.
     dir.WriteFile("multi.cpp", R"(
@@ -351,7 +318,7 @@ void bigFunc(int n) {
 
     AnalysisSession session;
     AnalysisConfig config;
-    config.directory = dir.root;
+    config.directory = dir.Path();
     config.minTokens = 5;
     config.threshold = 0.70;
     config.scope = dude::AnalysisScope::All;

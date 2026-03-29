@@ -2,19 +2,14 @@
 
 #include "GitDiffParser.hpp"
 
+#include "GitCommand.hpp"
+
 #include <algorithm>
-#include <array>
 #include <charconv>
-#include <cstdio>
 #include <format>
 #include <ranges>
 #include <sstream>
 #include <string_view>
-
-#ifdef _WIN32
-#define popen _popen
-#define pclose _pclose
-#endif
 
 namespace git
 {
@@ -22,35 +17,12 @@ namespace git
 auto GitDiffParser::RunGitDiff(std::filesystem::path const& projectRoot, std::string const& baseRef,
                                std::string const& sourceRef) -> std::expected<std::string, GitDiffError>
 {
-    // Build the command: git -C <dir> diff --no-color -U0 <baseRef>...<sourceRef>
     auto const command =
         std::format("git -C {} diff --no-color -U0 {}...{} 2>&1", projectRoot.string(), baseRef, sourceRef);
 
-    // NOLINTNEXTLINE(cert-env33-c) -- popen is intentional for git subprocess communication
-    auto* pipe = popen(command.c_str(), "r");
-    if (!pipe)
-        return std::unexpected(GitDiffError{.message = "Failed to execute git diff (is git on PATH?)"});
-
-    std::string output;
-    std::array<char, 4096> buffer{};
-    while (auto* result = fgets(buffer.data(), static_cast<int>(buffer.size()), pipe))
-        output += result;
-
-    auto const status = pclose(pipe);
-    if (status != 0)
-    {
-        // If git produced output, use it as the error message (trimmed).
-        if (!output.empty())
-        {
-            // Trim trailing newlines.
-            while (!output.empty() && (output.back() == '\n' || output.back() == '\r'))
-                output.pop_back();
-            return std::unexpected(GitDiffError{.message = std::format("git diff failed: {}", output)});
-        }
-        return std::unexpected(GitDiffError{.message = std::format("git diff exited with status {}", status)});
-    }
-
-    return output;
+    return RunCommand(command, "git diff")
+        .transform([](GitCommandResult r) { return std::move(r.output); })
+        .transform_error([](GitCommandError e) { return GitDiffError{.message = std::move(e.message)}; });
 }
 
 auto GitDiffParser::RunGitShow(std::filesystem::path const& projectRoot, std::vector<std::string> const& commits)
@@ -60,37 +32,15 @@ auto GitDiffParser::RunGitShow(std::filesystem::path const& projectRoot, std::ve
         return std::unexpected(GitDiffError{.message = "No commits specified (empty list)"});
 
     std::string combined;
-
     for (auto const& sha : commits)
     {
         auto const command = std::format("git -C {} show --no-color -U0 --format= {} 2>&1", projectRoot.string(), sha);
 
-        // NOLINTNEXTLINE(cert-env33-c) -- popen is intentional for git subprocess communication
-        auto* pipe = popen(command.c_str(), "r");
-        if (!pipe)
-            return std::unexpected(GitDiffError{
-                .message = std::format("Failed to execute git show for commit {} (is git on PATH?)", sha)});
+        auto result = RunCommand(command, std::format("git show (commit {})", sha));
+        if (!result)
+            return std::unexpected(GitDiffError{.message = std::move(result.error().message)});
 
-        std::string output;
-        std::array<char, 4096> buffer{};
-        while (auto* result = fgets(buffer.data(), static_cast<int>(buffer.size()), pipe))
-            output += result;
-
-        auto const status = pclose(pipe);
-        if (status != 0)
-        {
-            if (!output.empty())
-            {
-                while (!output.empty() && (output.back() == '\n' || output.back() == '\r'))
-                    output.pop_back();
-                return std::unexpected(
-                    GitDiffError{.message = std::format("git show failed for commit {}: {}", sha, output)});
-            }
-            return std::unexpected(
-                GitDiffError{.message = std::format("git show for commit {} exited with status {}", sha, status)});
-        }
-
-        combined += output;
+        combined += result->output;
     }
 
     return combined;
@@ -251,33 +201,9 @@ auto GitDiffParser::GetHeadSha(std::filesystem::path const& projectRoot) -> std:
 {
     auto const command = std::format("git -C {} rev-parse HEAD 2>&1", projectRoot.string());
 
-    // NOLINTNEXTLINE(cert-env33-c) -- popen is intentional for git subprocess communication
-    auto* pipe = popen(command.c_str(), "r");
-    if (!pipe)
-        return std::unexpected(GitDiffError{.message = "Failed to execute git rev-parse (is git on PATH?)"});
-
-    std::string output;
-    std::array<char, 256> buffer{};
-    while (auto* result = fgets(buffer.data(), static_cast<int>(buffer.size()), pipe))
-        output += result;
-
-    auto const status = pclose(pipe);
-    if (status != 0)
-    {
-        if (!output.empty())
-        {
-            while (!output.empty() && (output.back() == '\n' || output.back() == '\r'))
-                output.pop_back();
-            return std::unexpected(GitDiffError{.message = std::format("git rev-parse failed: {}", output)});
-        }
-        return std::unexpected(GitDiffError{.message = std::format("git rev-parse exited with status {}", status)});
-    }
-
-    // Trim trailing whitespace.
-    while (!output.empty() && (output.back() == '\n' || output.back() == '\r' || output.back() == ' '))
-        output.pop_back();
-
-    return output;
+    return RunCommand(command, "git rev-parse")
+        .transform([](GitCommandResult r) { return std::move(r.output); })
+        .transform_error([](GitCommandError e) { return GitDiffError{.message = std::move(e.message)}; });
 }
 
 } // namespace git

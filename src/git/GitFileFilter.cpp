@@ -2,16 +2,11 @@
 
 #include "GitFileFilter.hpp"
 
-#include <array>
-#include <cstdio>
+#include "GitCommand.hpp"
+
 #include <format>
 #include <memory>
 #include <print>
-
-#ifdef _WIN32
-#define popen _popen
-#define pclose _pclose
-#endif
 
 namespace git
 {
@@ -27,28 +22,14 @@ auto GitFileFilter::FindGitRoot(std::filesystem::path const& directory)
 {
     auto const command = std::format("git -C {} rev-parse --show-toplevel 2>{}", directory.string(), nullDevice);
 
-    // NOLINTNEXTLINE(cert-env33-c) -- popen is intentional for git subprocess communication
-    auto* pipe = popen(command.c_str(), "r");
-    if (!pipe)
-        return std::unexpected(GitFileFilterError{.message = "Failed to execute git (is git on PATH?)"});
-
-    std::string output;
-    std::array<char, 4096> buffer{};
-    while (auto* result = fgets(buffer.data(), static_cast<int>(buffer.size()), pipe))
-        output += result;
-
-    auto const status = pclose(pipe);
-    if (status != 0)
+    auto result = RunCommand(command, "git rev-parse --show-toplevel");
+    if (!result)
         return std::unexpected(GitFileFilterError{.message = "Not a git repository"});
 
-    // Trim trailing newlines.
-    while (!output.empty() && (output.back() == '\n' || output.back() == '\r'))
-        output.pop_back();
-
-    if (output.empty())
+    if (result->output.empty())
         return std::unexpected(GitFileFilterError{.message = "git rev-parse returned empty output"});
 
-    return std::filesystem::path(output);
+    return std::filesystem::path(result->output);
 }
 
 auto GitFileFilter::QueryNonIgnoredFiles(std::filesystem::path const& gitRoot, std::filesystem::path const& directory)
@@ -59,20 +40,11 @@ auto GitFileFilter::QueryNonIgnoredFiles(std::filesystem::path const& gitRoot, s
     auto const command = std::format("git -C {} ls-files --cached --others --exclude-standard -z -- {} 2>{}",
                                      gitRoot.string(), directory.string(), nullDevice);
 
-    // NOLINTNEXTLINE(cert-env33-c) -- popen is intentional for git subprocess communication
-    auto* pipe = popen(command.c_str(), "r");
-    if (!pipe)
-        return std::unexpected(GitFileFilterError{.message = "Failed to execute git ls-files"});
+    auto rawResult = RunCommandRaw(command, "git ls-files");
+    if (!rawResult)
+        return std::unexpected(GitFileFilterError{.message = std::move(rawResult.error().message)});
 
-    // Read binary output (NUL-delimited), so use fread instead of fgets.
-    std::string output;
-    std::array<char, 8192> buffer{};
-    while (auto const bytesRead = fread(buffer.data(), 1, buffer.size(), pipe))
-        output.append(buffer.data(), bytesRead);
-
-    auto const status = pclose(pipe);
-    if (status != 0)
-        return std::unexpected(GitFileFilterError{.message = "git ls-files failed"});
+    auto const& output = *rawResult;
 
     // Parse NUL-separated paths and resolve to canonical paths.
     std::unordered_set<std::string> files;

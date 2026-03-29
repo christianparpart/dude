@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
+#include <nlohmann/json.hpp>
+#include <tests/TempTestDir.hpp>
+
 #include <dude/BlockCache.hpp>
 #include <dude/ContentHash.hpp>
 #include <dude/SourceLocation.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
-#include <filesystem>
+#include <chrono>
 #include <fstream>
 #include <span>
 
@@ -30,32 +33,18 @@ auto MakeTestBlock(std::string name, uint32_t startLine, uint32_t endLine,
     return block;
 }
 
-// NOLINTBEGIN(cppcoreguidelines-special-member-functions)
-struct TempCacheFile
-{
-    std::filesystem::path path;
-
-    TempCacheFile() : path(std::filesystem::temp_directory_path() / "dude-test-cache" / "blocks.json") {}
-
-    ~TempCacheFile()
-    {
-        std::error_code ec;
-        std::filesystem::remove_all(path.parent_path(), ec);
-    }
-};
-// NOLINTEND(cppcoreguidelines-special-member-functions)
-
 } // namespace
 
 TEST_CASE("BlockCache.RoundTrip", "[BlockCache]")
 {
-    TempCacheFile tmp;
+    test_utils::TempTestDir tmp("dude_cache_test");
+    auto const cachePath = tmp.Path() / "blocks.json";
 
     auto const hash = dude::ComputeContentHash("test file content");
     auto blocks = std::vector{MakeTestBlock("foo", 10, 20, {1000, 42, 1000, 43})};
 
     {
-        dude::BlockCache cache(tmp.path);
+        dude::BlockCache cache(cachePath);
         cache.Store(hash, "C++", 300, 0.3, blocks);
         REQUIRE(cache.Size() == 1);
         auto const saveResult = cache.Save();
@@ -63,7 +52,7 @@ TEST_CASE("BlockCache.RoundTrip", "[BlockCache]")
     }
 
     {
-        dude::BlockCache cache(tmp.path);
+        dude::BlockCache cache(cachePath);
         auto const loadResult = cache.Load();
         REQUIRE(loadResult.has_value());
         REQUIRE(cache.Size() == 1);
@@ -81,8 +70,8 @@ TEST_CASE("BlockCache.RoundTrip", "[BlockCache]")
 
 TEST_CASE("BlockCache.CacheMissDifferentHash", "[BlockCache]")
 {
-    TempCacheFile tmp;
-    dude::BlockCache cache(tmp.path);
+    test_utils::TempTestDir tmp("dude_cache_test");
+    dude::BlockCache cache(tmp.Path() / "blocks.json");
 
     auto const hash = dude::ComputeContentHash("content A");
     cache.Store(hash, "C++", 300, 0.3, {MakeTestBlock("foo", 1, 10, {1000})});
@@ -93,24 +82,21 @@ TEST_CASE("BlockCache.CacheMissDifferentHash", "[BlockCache]")
 
 TEST_CASE("BlockCache.CacheMissDifferentParams", "[BlockCache]")
 {
-    TempCacheFile tmp;
-    dude::BlockCache cache(tmp.path);
+    test_utils::TempTestDir tmp("dude_cache_test");
+    dude::BlockCache cache(tmp.Path() / "blocks.json");
 
     auto const hash = dude::ComputeContentHash("content");
     cache.Store(hash, "C++", 300, 0.3, {MakeTestBlock("foo", 1, 10, {1000})});
 
-    // Different minTokens
     CHECK_FALSE(cache.Lookup(hash, "C++", 100, 0.3).has_value());
-    // Different textSensitivity
     CHECK_FALSE(cache.Lookup(hash, "C++", 300, 0.5).has_value());
-    // Different language
     CHECK_FALSE(cache.Lookup(hash, "Python", 300, 0.3).has_value());
 }
 
 TEST_CASE("BlockCache.EmptyCacheLoad", "[BlockCache]")
 {
-    auto const path = std::filesystem::temp_directory_path() / "dude-test-nonexistent" / "blocks.json";
-    dude::BlockCache cache(path);
+    test_utils::TempTestDir tmp("dude_cache_test");
+    dude::BlockCache cache(tmp.Path() / "nonexistent" / "blocks.json");
     auto const result = cache.Load();
     CHECK(result.has_value());
     CHECK(cache.Size() == 0);
@@ -118,30 +104,30 @@ TEST_CASE("BlockCache.EmptyCacheLoad", "[BlockCache]")
 
 TEST_CASE("BlockCache.CorruptFile", "[BlockCache]")
 {
-    TempCacheFile tmp;
+    test_utils::TempTestDir tmp("dude_cache_test");
+    auto const cachePath = tmp.Path() / "blocks.json";
 
-    std::filesystem::create_directories(tmp.path.parent_path());
     {
-        std::ofstream file(tmp.path);
+        std::ofstream file(cachePath);
         file << "this is not valid JSON{{{";
     }
 
-    dude::BlockCache cache(tmp.path);
+    dude::BlockCache cache(cachePath);
     auto const result = cache.Load();
     CHECK_FALSE(result.has_value());
 }
 
 TEST_CASE("BlockCache.VersionMismatch", "[BlockCache]")
 {
-    TempCacheFile tmp;
+    test_utils::TempTestDir tmp("dude_cache_test");
+    auto const cachePath = tmp.Path() / "blocks.json";
 
-    std::filesystem::create_directories(tmp.path.parent_path());
     {
-        std::ofstream file(tmp.path);
+        std::ofstream file(cachePath);
         file << R"({"version": 999, "entries": {}})";
     }
 
-    dude::BlockCache cache(tmp.path);
+    dude::BlockCache cache(cachePath);
     auto const result = cache.Load();
     CHECK(result.has_value());
     CHECK(cache.Size() == 0);
@@ -149,8 +135,8 @@ TEST_CASE("BlockCache.VersionMismatch", "[BlockCache]")
 
 TEST_CASE("BlockCache.Clear", "[BlockCache]")
 {
-    TempCacheFile tmp;
-    dude::BlockCache cache(tmp.path);
+    test_utils::TempTestDir tmp("dude_cache_test");
+    dude::BlockCache cache(tmp.Path() / "blocks.json");
 
     cache.Store("hash1", "C++", 300, 0.3, {MakeTestBlock("foo", 1, 10, {1000})});
     REQUIRE(cache.Size() == 1);
@@ -160,21 +146,85 @@ TEST_CASE("BlockCache.Clear", "[BlockCache]")
 
 TEST_CASE("BlockCache.FileIndexIsSentinel", "[BlockCache]")
 {
-    TempCacheFile tmp;
-    dude::BlockCache cache(tmp.path);
+    test_utils::TempTestDir tmp("dude_cache_test");
+    auto const cachePath = tmp.Path() / "blocks.json";
+    dude::BlockCache cache(cachePath);
 
     auto block = MakeTestBlock("bar", 5, 15, {42, 43, 44});
-    block.sourceRange.start.fileIndex = 7; // Simulate a non-sentinel value
+    block.sourceRange.start.fileIndex = 7;
     cache.Store("hash", "C++", 300, 0.3, {block});
     REQUIRE(cache.Save().has_value());
 
-    dude::BlockCache cache2(tmp.path);
+    dude::BlockCache cache2(cachePath);
     REQUIRE(cache2.Load().has_value());
     auto result = cache2.Lookup("hash", "C++", 300, 0.3);
     REQUIRE(result.has_value());
     auto const loadedBlocks = result.value_or(std::span<dude::CodeBlock const>{});
     REQUIRE(loadedBlocks.size() == 1);
-    // After load, fileIndex should always be NoFileIndex
     CHECK(loadedBlocks[0].sourceRange.start.fileIndex == dude::NoFileIndex);
     CHECK(loadedBlocks[0].sourceRange.end.fileIndex == dude::NoFileIndex);
+}
+
+TEST_CASE("BlockCache.EvictionByAge", "[BlockCache]")
+{
+    test_utils::TempTestDir tmp("dude_cache_test");
+    auto const cachePath = tmp.Path() / "blocks.json";
+
+    // Store two entries and save.
+    {
+        dude::BlockCache cache(cachePath);
+        cache.Store("fresh", "C++", 300, 0.3, {MakeTestBlock("freshFunc", 1, 10, {1000})});
+        cache.Store("stale", "C++", 300, 0.3, {MakeTestBlock("staleFunc", 20, 30, {1001})});
+        REQUIRE(cache.Save().has_value());
+    }
+
+    // Manually patch the cache file to make the "stale" entry old.
+    {
+        std::ifstream in(cachePath);
+        nlohmann::json root;
+        in >> root;
+        in.close();
+
+        // Set the stale entry's lastAccessed to 5 weeks ago.
+        auto const fiveWeeksAgo =
+            std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch())
+                .count() -
+            (5 * 7 * 24 * 3600);
+        for (auto const& [key, value] : root["entries"].items())
+        {
+            if (key.starts_with("stale:"))
+                root["entries"][key]["lastAccessed"] = fiveWeeksAgo;
+        }
+
+        std::ofstream out(cachePath);
+        out << root.dump(2);
+    }
+
+    // Load with default maxAge (4 weeks) -- stale entry should be evicted.
+    {
+        dude::BlockCache cache(cachePath);
+        REQUIRE(cache.Load().has_value());
+        CHECK(cache.Size() == 1); // Only "fresh" survives
+        CHECK(cache.Lookup("fresh", "C++", 300, 0.3).has_value());
+        CHECK_FALSE(cache.Lookup("stale", "C++", 300, 0.3).has_value());
+    }
+}
+
+TEST_CASE("BlockCache.NoEvictionWithLargeMaxAge", "[BlockCache]")
+{
+    test_utils::TempTestDir tmp("dude_cache_test");
+    auto const cachePath = tmp.Path() / "blocks.json";
+
+    {
+        dude::BlockCache cache(cachePath);
+        cache.Store("entry", "C++", 300, 0.3, {MakeTestBlock("func", 1, 10, {1000})});
+        REQUIRE(cache.Save().has_value());
+    }
+
+    // Load with a very large maxAge -- nothing should be evicted.
+    {
+        dude::BlockCache cache(cachePath, std::chrono::seconds{365 * 24 * 3600});
+        REQUIRE(cache.Load().has_value());
+        CHECK(cache.Size() == 1);
+    }
 }

@@ -5,6 +5,7 @@
 #include <dude/BlockCache.hpp>
 #include <dude/SourceLocation.hpp>
 
+#include <chrono>
 #include <filesystem>
 #include <format>
 #include <fstream>
@@ -13,7 +14,22 @@
 namespace dude
 {
 
-BlockCache::BlockCache(std::filesystem::path cachePath) : _cachePath(std::move(cachePath)) {}
+namespace
+{
+
+/// @brief Returns the current time as Unix epoch seconds.
+auto NowEpochSeconds() -> int64_t
+{
+    return std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch())
+        .count();
+}
+
+} // namespace
+
+BlockCache::BlockCache(std::filesystem::path cachePath, std::chrono::seconds maxAge)
+    : _cachePath(std::move(cachePath)), _maxAge(maxAge)
+{
+}
 
 auto BlockCache::MakeKey(std::string const& contentHash, std::string_view languageName, size_t minTokens,
                          double textSensitivity) -> std::string
@@ -22,20 +38,23 @@ auto BlockCache::MakeKey(std::string const& contentHash, std::string_view langua
 }
 
 auto BlockCache::Lookup(std::string const& contentHash, std::string_view languageName, size_t minTokens,
-                        double textSensitivity) const -> std::optional<std::span<CodeBlock const>>
+                        double textSensitivity) -> std::optional<std::span<CodeBlock const>>
 {
     auto const key = MakeKey(contentHash, languageName, minTokens, textSensitivity);
     auto const it = _entries.find(key);
     if (it == _entries.end())
         return std::nullopt;
-    return std::span<CodeBlock const>{it->second};
+    // Update last-accessed timestamp on cache hit so hot entries are not evicted.
+    it->second.lastAccessedEpoch = NowEpochSeconds();
+    _dirty = true;
+    return std::span<CodeBlock const>{it->second.blocks};
 }
 
 void BlockCache::Store(std::string const& contentHash, std::string_view languageName, size_t minTokens,
                        double textSensitivity, std::vector<CodeBlock> const& blocks)
 {
     auto const key = MakeKey(contentHash, languageName, minTokens, textSensitivity);
-    _entries[key] = blocks;
+    _entries[key] = CacheEntry{.blocks = blocks, .lastAccessedEpoch = NowEpochSeconds()};
     _dirty = true;
 }
 
@@ -68,10 +87,23 @@ auto BlockCache::Load() -> std::expected<void, BlockCacheError>
     if (!root.contains("entries") || !root["entries"].is_object())
         return {};
 
+    auto const now = NowEpochSeconds();
+    auto const cutoff = now - _maxAge.count();
+    size_t evicted = 0;
+
     for (auto const& [key, value] : root["entries"].items())
     {
         if (!value.contains("blocks") || !value["blocks"].is_array())
             continue;
+
+        auto const lastAccessed = value.value("lastAccessed", now);
+
+        // Evict stale entries.
+        if (lastAccessed < cutoff)
+        {
+            ++evicted;
+            continue;
+        }
 
         std::vector<CodeBlock> blocks;
         for (auto const& blockJson : value["blocks"])
@@ -94,8 +126,12 @@ auto BlockCache::Load() -> std::expected<void, BlockCacheError>
 
             blocks.push_back(std::move(block));
         }
-        _entries[key] = std::move(blocks);
+        _entries[key] = CacheEntry{.blocks = std::move(blocks), .lastAccessedEpoch = lastAccessed};
     }
+
+    // If entries were evicted, mark dirty so Save() will write the trimmed cache.
+    if (evicted > 0)
+        _dirty = true;
 
     return {};
 }
@@ -120,10 +156,10 @@ auto BlockCache::Save() -> std::expected<void, BlockCacheError>
     root["version"] = 1;
     auto& entries = root["entries"];
 
-    for (auto const& [key, blocks] : _entries)
+    for (auto const& [key, entry] : _entries)
     {
         auto blocksJson = nlohmann::json::array();
-        for (auto const& block : blocks)
+        for (auto const& block : entry.blocks)
         {
             nlohmann::json blockJson;
             blockJson["name"] = block.name;
@@ -138,7 +174,10 @@ auto BlockCache::Save() -> std::expected<void, BlockCacheError>
                 blockJson["textPreservingIds"] = block.textPreservingIds;
             blocksJson.push_back(std::move(blockJson));
         }
-        entries[key] = nlohmann::json{{"blocks", std::move(blocksJson)}};
+        entries[key] = nlohmann::json{
+            {"blocks", std::move(blocksJson)},
+            {"lastAccessed", entry.lastAccessedEpoch},
+        };
     }
 
     // Write to a temp file first, then rename for atomicity.

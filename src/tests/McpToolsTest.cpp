@@ -3,16 +3,12 @@
 #include <mcp/AnalysisSession.hpp>
 #include <mcp/McpTooling.hpp>
 #include <mcpprotocol/McpServer.hpp>
+#include <tests/TempTestDir.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
-#include <atomic>
 #include <cstdlib>
-#include <filesystem>
-#include <format>
-#include <fstream>
-#include <random>
 #include <sstream>
 
 using namespace mcp;
@@ -20,32 +16,6 @@ using namespace mcpprotocol;
 
 namespace
 {
-
-struct TempTestDir
-{
-    std::filesystem::path root;
-
-    TempTestDir()
-    {
-        static auto const seed = std::random_device{}();
-        static std::atomic<unsigned> counter{0};
-        root = std::filesystem::temp_directory_path() / std::format("mcp_tools_test_{}_{}", seed, counter.fetch_add(1));
-        std::filesystem::create_directories(root);
-    }
-
-    TempTestDir(TempTestDir const&) = delete;
-    TempTestDir(TempTestDir&&) = delete;
-    auto operator=(TempTestDir const&) -> TempTestDir& = delete;
-    auto operator=(TempTestDir&&) -> TempTestDir& = delete;
-
-    void WriteFile(std::string const& name, std::string const& content) const
-    {
-        std::ofstream out(root / name);
-        out << content;
-    }
-
-    ~TempTestDir() { std::filesystem::remove_all(root); }
-};
 
 auto constexpr kDuplicateSource = R"(
 void functionA(int x) {
@@ -173,7 +143,7 @@ TEST_CASE("McpTools.PromptsAreRegistered", "[mcp][tools]")
 
 TEST_CASE("McpTools.AnalyzeDirectory.Success", "[mcp][tools]")
 {
-    TempTestDir dir;
+    test_utils::TempTestDir dir("mcp_tools_test");
     dir.WriteFile("test.cpp", kDuplicateSource);
 
     AnalysisSession session;
@@ -182,7 +152,7 @@ TEST_CASE("McpTools.AnalyzeDirectory.Success", "[mcp][tools]")
     InitServer(server);
 
     auto const resp = CallTool(server, "analyze_directory",
-                               {{"directory", dir.root.string()}, {"min_tokens", 10}, {"threshold", 0.70}});
+                               {{"directory", dir.Path().string()}, {"min_tokens", 10}, {"threshold", 0.70}});
     auto const data = ParseToolResultText(resp);
     CHECK(data["total_files"].get<int>() == 1);
     CHECK(data["total_blocks"].get<int>() >= 2);
@@ -218,7 +188,7 @@ TEST_CASE("McpTools.GetCloneGroups.RequiresAnalysis", "[mcp][tools]")
 
 TEST_CASE("McpTools.GetCloneGroups.WithResults", "[mcp][tools]")
 {
-    TempTestDir dir;
+    test_utils::TempTestDir dir("mcp_tools_test");
     dir.WriteFile("test.cpp", kDuplicateSource);
 
     AnalysisSession session;
@@ -226,7 +196,8 @@ TEST_CASE("McpTools.GetCloneGroups.WithResults", "[mcp][tools]")
     RegisterDudeTools(server, session);
     InitServer(server);
 
-    CallTool(server, "analyze_directory", {{"directory", dir.root.string()}, {"min_tokens", 10}, {"threshold", 0.70}});
+    CallTool(server, "analyze_directory",
+             {{"directory", dir.Path().string()}, {"min_tokens", 10}, {"threshold", 0.70}});
 
     auto const resp = CallTool(server, "get_clone_groups", {{"limit", 10}});
     auto const data = ParseToolResultText(resp);
@@ -253,7 +224,7 @@ TEST_CASE("McpTools.GetCodeBlock.RequiresAnalysis", "[mcp][tools]")
 
 TEST_CASE("McpTools.GetCodeBlock.WithResults", "[mcp][tools]")
 {
-    TempTestDir dir;
+    test_utils::TempTestDir dir("mcp_tools_test");
     dir.WriteFile("test.cpp", kDuplicateSource);
 
     AnalysisSession session;
@@ -261,7 +232,7 @@ TEST_CASE("McpTools.GetCodeBlock.WithResults", "[mcp][tools]")
     RegisterDudeTools(server, session);
     InitServer(server);
 
-    CallTool(server, "analyze_directory", {{"directory", dir.root.string()}, {"min_tokens", 10}});
+    CallTool(server, "analyze_directory", {{"directory", dir.Path().string()}, {"min_tokens", 10}});
 
     auto const resp = CallTool(server, "get_code_block", {{"block_index", 0}});
     auto const data = ParseToolResultText(resp);
@@ -276,7 +247,7 @@ TEST_CASE("McpTools.GetCodeBlock.WithResults", "[mcp][tools]")
 
 TEST_CASE("McpTools.GetSummary.TextFormat", "[mcp][tools]")
 {
-    TempTestDir dir;
+    test_utils::TempTestDir dir("mcp_tools_test");
     dir.WriteFile("test.cpp", kDuplicateSource);
 
     AnalysisSession session;
@@ -284,7 +255,7 @@ TEST_CASE("McpTools.GetSummary.TextFormat", "[mcp][tools]")
     RegisterDudeTools(server, session);
     InitServer(server);
 
-    CallTool(server, "analyze_directory", {{"directory", dir.root.string()}, {"min_tokens", 10}});
+    CallTool(server, "analyze_directory", {{"directory", dir.Path().string()}, {"min_tokens", 10}});
 
     auto const resp = CallTool(server, "get_summary", {{"format", "text"}});
     REQUIRE(resp.result.has_value());
@@ -295,7 +266,7 @@ TEST_CASE("McpTools.GetSummary.TextFormat", "[mcp][tools]")
 
 TEST_CASE("McpTools.GetSummary.JsonFormat", "[mcp][tools]")
 {
-    TempTestDir dir;
+    test_utils::TempTestDir dir("mcp_tools_test");
     dir.WriteFile("test.cpp", kDuplicateSource);
 
     AnalysisSession session;
@@ -303,7 +274,7 @@ TEST_CASE("McpTools.GetSummary.JsonFormat", "[mcp][tools]")
     RegisterDudeTools(server, session);
     InitServer(server);
 
-    CallTool(server, "analyze_directory", {{"directory", dir.root.string()}, {"min_tokens", 10}});
+    CallTool(server, "analyze_directory", {{"directory", dir.Path().string()}, {"min_tokens", 10}});
 
     auto const resp = CallTool(server, "get_summary", {{"format", "json"}});
     auto const data = ParseToolResultText(resp);
@@ -330,7 +301,7 @@ TEST_CASE("McpTools.ConfigureAnalysis.RequiresAnalysis", "[mcp][tools]")
 
 TEST_CASE("McpTools.ConfigureAnalysis.UpdatesParameters", "[mcp][tools]")
 {
-    TempTestDir dir;
+    test_utils::TempTestDir dir("mcp_tools_test");
     dir.WriteFile("test.cpp", kDuplicateSource);
 
     AnalysisSession session;
@@ -338,7 +309,8 @@ TEST_CASE("McpTools.ConfigureAnalysis.UpdatesParameters", "[mcp][tools]")
     RegisterDudeTools(server, session);
     InitServer(server);
 
-    CallTool(server, "analyze_directory", {{"directory", dir.root.string()}, {"min_tokens", 10}, {"threshold", 0.70}});
+    CallTool(server, "analyze_directory",
+             {{"directory", dir.Path().string()}, {"min_tokens", 10}, {"threshold", 0.70}});
 
     auto const resp = CallTool(server, "configure_analysis", {{"threshold", 0.99}});
     auto const data = ParseToolResultText(resp);
@@ -363,7 +335,7 @@ TEST_CASE("McpTools.QueryFileDuplicates.RequiresAnalysis", "[mcp][tools]")
 
 TEST_CASE("McpTools.QueryFileDuplicates.WithResults", "[mcp][tools]")
 {
-    TempTestDir dir;
+    test_utils::TempTestDir dir("mcp_tools_test");
     dir.WriteFile("test.cpp", kDuplicateSource);
 
     AnalysisSession session;
@@ -371,7 +343,8 @@ TEST_CASE("McpTools.QueryFileDuplicates.WithResults", "[mcp][tools]")
     RegisterDudeTools(server, session);
     InitServer(server);
 
-    CallTool(server, "analyze_directory", {{"directory", dir.root.string()}, {"min_tokens", 10}, {"threshold", 0.70}});
+    CallTool(server, "analyze_directory",
+             {{"directory", dir.Path().string()}, {"min_tokens", 10}, {"threshold", 0.70}});
 
     auto const resp = CallTool(server, "query_file_duplicates", {{"file_path", "test.cpp"}});
     auto const data = ParseToolResultText(resp);
@@ -440,7 +413,7 @@ TEST_CASE("McpTools.ReviewFilePrompt.MissingArg", "[mcp][tools]")
 
 TEST_CASE("McpTools.AnalyzeFile.SelfContained", "[mcp][tools]")
 {
-    TempTestDir dir;
+    test_utils::TempTestDir dir("mcp_tools_test");
     dir.WriteFile("dup.cpp", kDuplicateSource);
 
     AnalysisSession session;
@@ -448,10 +421,10 @@ TEST_CASE("McpTools.AnalyzeFile.SelfContained", "[mcp][tools]")
     RegisterDudeTools(server, session);
     InitServer(server);
 
-    auto const filePath = std::filesystem::weakly_canonical(dir.root / "dup.cpp").string();
-    auto const resp =
-        CallTool(server, "analyze_file",
-                 {{"file_path", filePath}, {"directory", dir.root.string()}, {"min_tokens", 10}, {"threshold", 0.70}});
+    auto const filePath = std::filesystem::weakly_canonical(dir.Path() / "dup.cpp").string();
+    auto const resp = CallTool(
+        server, "analyze_file",
+        {{"file_path", filePath}, {"directory", dir.Path().string()}, {"min_tokens", 10}, {"threshold", 0.70}});
     auto const data = ParseToolResultText(resp);
     CHECK(data.contains("file_path"));
     CHECK(data.contains("within_file_clones"));
@@ -466,7 +439,7 @@ TEST_CASE("McpTools.AnalyzeFile.SelfContained", "[mcp][tools]")
 
 TEST_CASE("McpTools.AnalyzeFile.CrossFileClones", "[mcp][tools]")
 {
-    TempTestDir dir;
+    test_utils::TempTestDir dir("mcp_tools_test");
     auto constexpr kSourceA = R"(
 void functionA(int x) {
     int result = 0;
@@ -499,17 +472,17 @@ void functionB(int y) {
     RegisterDudeTools(server, session);
     InitServer(server);
 
-    auto const filePath = std::filesystem::weakly_canonical(dir.root / "a.cpp").string();
-    auto const resp =
-        CallTool(server, "analyze_file",
-                 {{"file_path", filePath}, {"directory", dir.root.string()}, {"min_tokens", 10}, {"threshold", 0.70}});
+    auto const filePath = std::filesystem::weakly_canonical(dir.Path() / "a.cpp").string();
+    auto const resp = CallTool(
+        server, "analyze_file",
+        {{"file_path", filePath}, {"directory", dir.Path().string()}, {"min_tokens", 10}, {"threshold", 0.70}});
     auto const data = ParseToolResultText(resp);
     CHECK(!data["cross_file_clones"].empty());
 }
 
 TEST_CASE("McpTools.AnalyzeFile.FileNotFound", "[mcp][tools]")
 {
-    TempTestDir dir;
+    test_utils::TempTestDir dir("mcp_tools_test");
     dir.WriteFile("test.cpp", kDuplicateSource);
 
     AnalysisSession session;
@@ -518,14 +491,14 @@ TEST_CASE("McpTools.AnalyzeFile.FileNotFound", "[mcp][tools]")
     InitServer(server);
 
     auto const resp =
-        CallTool(server, "analyze_file", {{"file_path", "/nonexistent/file.cpp"}, {"directory", dir.root.string()}});
+        CallTool(server, "analyze_file", {{"file_path", "/nonexistent/file.cpp"}, {"directory", dir.Path().string()}});
     REQUIRE(resp.result.has_value());
     CHECK(resp.result.value()["isError"] == true); // NOLINT(bugprone-unchecked-optional-access)
 }
 
 TEST_CASE("McpTools.AnalyzeFile.ReusesExistingSession", "[mcp][tools]")
 {
-    TempTestDir dir;
+    test_utils::TempTestDir dir("mcp_tools_test");
     dir.WriteFile("test.cpp", kDuplicateSource);
 
     AnalysisSession session;
@@ -534,11 +507,12 @@ TEST_CASE("McpTools.AnalyzeFile.ReusesExistingSession", "[mcp][tools]")
     InitServer(server);
 
     // First, run analyze_directory.
-    CallTool(server, "analyze_directory", {{"directory", dir.root.string()}, {"min_tokens", 10}, {"threshold", 0.70}});
+    CallTool(server, "analyze_directory",
+             {{"directory", dir.Path().string()}, {"min_tokens", 10}, {"threshold", 0.70}});
 
     // Now analyze_file should reuse the existing session.
-    auto const filePath = std::filesystem::weakly_canonical(dir.root / "test.cpp").string();
-    auto const resp = CallTool(server, "analyze_file", {{"file_path", filePath}, {"directory", dir.root.string()}});
+    auto const filePath = std::filesystem::weakly_canonical(dir.Path() / "test.cpp").string();
+    auto const resp = CallTool(server, "analyze_file", {{"file_path", filePath}, {"directory", dir.Path().string()}});
     auto const data = ParseToolResultText(resp);
     CHECK(data.contains("file_path"));
     CHECK(data.contains("summary"));
@@ -709,7 +683,7 @@ void functionB(int y) {
 
 TEST_CASE("McpTools.AnalyzeBranchDuplicates.GitError", "[mcp][tools]")
 {
-    TempTestDir dir; // Not a git repo.
+    test_utils::TempTestDir dir("mcp_tools_test"); // Not a git repo.
     dir.WriteFile("test.cpp", kDuplicateSource);
 
     AnalysisSession session;
@@ -718,7 +692,7 @@ TEST_CASE("McpTools.AnalyzeBranchDuplicates.GitError", "[mcp][tools]")
     InitServer(server);
 
     auto const resp =
-        CallTool(server, "analyze_branch_duplicates", {{"directory", dir.root.string()}, {"base_ref", "main"}});
+        CallTool(server, "analyze_branch_duplicates", {{"directory", dir.Path().string()}, {"base_ref", "main"}});
     REQUIRE(resp.result.has_value());
     CHECK(resp.result.value()["isError"] == true); // NOLINT(bugprone-unchecked-optional-access)
 }
@@ -812,7 +786,7 @@ void functionB(int y) {
 
 TEST_CASE("McpTools.FindIntroducedDuplicates.GitError", "[mcp][tools]")
 {
-    TempTestDir dir; // Not a git repo.
+    test_utils::TempTestDir dir("mcp_tools_test"); // Not a git repo.
     dir.WriteFile("test.cpp", kDuplicateSource);
 
     AnalysisSession session;
@@ -821,7 +795,7 @@ TEST_CASE("McpTools.FindIntroducedDuplicates.GitError", "[mcp][tools]")
     InitServer(server);
 
     auto const resp = CallTool(server, "find_introduced_duplicates",
-                               {{"directory", dir.root.string()}, {"commits", nlohmann::json::array({"abc123"})}});
+                               {{"directory", dir.Path().string()}, {"commits", nlohmann::json::array({"abc123"})}});
     REQUIRE(resp.result.has_value());
     CHECK(resp.result.value()["isError"] == true); // NOLINT(bugprone-unchecked-optional-access)
 }
@@ -849,7 +823,7 @@ TEST_CASE("McpTools.FindIntroducedDuplicates.EmptyCommits", "[mcp][tools]")
 
 TEST_CASE("McpTools.AnalyzeDirectory.WithScope", "[mcp][tools]")
 {
-    TempTestDir dir;
+    test_utils::TempTestDir dir("mcp_tools_test");
     dir.WriteFile("test.cpp", kDuplicateSource);
 
     AnalysisSession session;
@@ -858,14 +832,14 @@ TEST_CASE("McpTools.AnalyzeDirectory.WithScope", "[mcp][tools]")
     InitServer(server);
 
     auto const resp = CallTool(server, "analyze_directory",
-                               {{"directory", dir.root.string()}, {"scope", "inter-file"}, {"min_tokens", 10}});
+                               {{"directory", dir.Path().string()}, {"scope", "inter-file"}, {"min_tokens", 10}});
     auto const data = ParseToolResultText(resp);
     CHECK(data.contains("total_files"));
 }
 
 TEST_CASE("McpTools.AnalyzeDirectory.InvalidScope", "[mcp][tools]")
 {
-    TempTestDir dir;
+    test_utils::TempTestDir dir("mcp_tools_test");
     dir.WriteFile("test.cpp", kDuplicateSource);
 
     AnalysisSession session;
@@ -874,14 +848,14 @@ TEST_CASE("McpTools.AnalyzeDirectory.InvalidScope", "[mcp][tools]")
     InitServer(server);
 
     auto const resp =
-        CallTool(server, "analyze_directory", {{"directory", dir.root.string()}, {"scope", "invalid-scope"}});
+        CallTool(server, "analyze_directory", {{"directory", dir.Path().string()}, {"scope", "invalid-scope"}});
     REQUIRE(resp.result.has_value());
     CHECK(resp.result.value()["isError"] == true); // NOLINT(bugprone-unchecked-optional-access)
 }
 
 TEST_CASE("McpTools.AnalyzeDirectory.WithExtensions", "[mcp][tools]")
 {
-    TempTestDir dir;
+    test_utils::TempTestDir dir("mcp_tools_test");
     dir.WriteFile("test.cpp", kDuplicateSource);
 
     AnalysisSession session;
@@ -892,14 +866,14 @@ TEST_CASE("McpTools.AnalyzeDirectory.WithExtensions", "[mcp][tools]")
     // Use extension without leading dot to exercise the s.insert(0, ".") path
     auto const resp = CallTool(
         server, "analyze_directory",
-        {{"directory", dir.root.string()}, {"extensions", nlohmann::json::array({"cpp"})}, {"min_tokens", 10}});
+        {{"directory", dir.Path().string()}, {"extensions", nlohmann::json::array({"cpp"})}, {"min_tokens", 10}});
     auto const data = ParseToolResultText(resp);
     CHECK(data.contains("total_files"));
 }
 
 TEST_CASE("McpTools.AnalyzeDirectory.WithGlobPatterns", "[mcp][tools]")
 {
-    TempTestDir dir;
+    test_utils::TempTestDir dir("mcp_tools_test");
     dir.WriteFile("test.cpp", kDuplicateSource);
 
     AnalysisSession session;
@@ -909,7 +883,7 @@ TEST_CASE("McpTools.AnalyzeDirectory.WithGlobPatterns", "[mcp][tools]")
 
     auto const resp = CallTool(
         server, "analyze_directory",
-        {{"directory", dir.root.string()}, {"glob_patterns", nlohmann::json::array({"*.cpp"})}, {"min_tokens", 10}});
+        {{"directory", dir.Path().string()}, {"glob_patterns", nlohmann::json::array({"*.cpp"})}, {"min_tokens", 10}});
     auto const data = ParseToolResultText(resp);
     CHECK(data.contains("total_files"));
 }
@@ -920,7 +894,7 @@ TEST_CASE("McpTools.AnalyzeDirectory.WithGlobPatterns", "[mcp][tools]")
 
 TEST_CASE("McpTools.GetCloneGroups.WithFiltering", "[mcp][tools]")
 {
-    TempTestDir dir;
+    test_utils::TempTestDir dir("mcp_tools_test");
     dir.WriteFile("test.cpp", kDuplicateSource);
 
     AnalysisSession session;
@@ -929,7 +903,8 @@ TEST_CASE("McpTools.GetCloneGroups.WithFiltering", "[mcp][tools]")
     InitServer(server);
 
     // First analyze
-    CallTool(server, "analyze_directory", {{"directory", dir.root.string()}, {"min_tokens", 10}, {"threshold", 0.70}});
+    CallTool(server, "analyze_directory",
+             {{"directory", dir.Path().string()}, {"min_tokens", 10}, {"threshold", 0.70}});
 
     // Get with min_similarity filter (should filter out groups below threshold)
     auto resp = CallTool(server, "get_clone_groups", {{"min_similarity", 0.99}});
@@ -963,7 +938,7 @@ TEST_CASE("McpTools.GetCloneGroups.WithFiltering", "[mcp][tools]")
 
 TEST_CASE("McpTools.GetCodeBlock.OutOfRange", "[mcp][tools]")
 {
-    TempTestDir dir;
+    test_utils::TempTestDir dir("mcp_tools_test");
     dir.WriteFile("test.cpp", kDuplicateSource);
 
     AnalysisSession session;
@@ -971,7 +946,7 @@ TEST_CASE("McpTools.GetCodeBlock.OutOfRange", "[mcp][tools]")
     RegisterDudeTools(server, session);
     InitServer(server);
 
-    CallTool(server, "analyze_directory", {{"directory", dir.root.string()}, {"min_tokens", 10}});
+    CallTool(server, "analyze_directory", {{"directory", dir.Path().string()}, {"min_tokens", 10}});
 
     auto const resp = CallTool(server, "get_code_block", {{"block_index", 99999}});
     REQUIRE(resp.result.has_value());
@@ -984,7 +959,7 @@ TEST_CASE("McpTools.GetCodeBlock.OutOfRange", "[mcp][tools]")
 
 TEST_CASE("McpTools.QueryFileDuplicates.WithIntraResults", "[mcp][tools]")
 {
-    TempTestDir dir;
+    test_utils::TempTestDir dir("mcp_tools_test");
     // Write a function with internal duplication to trigger intra-function detection
     dir.WriteFile("intra.cpp", R"(
 void bigFunction(int x) {
@@ -1010,7 +985,7 @@ void bigFunction(int x) {
     InitServer(server);
 
     CallTool(server, "analyze_directory",
-             {{"directory", dir.root.string()}, {"min_tokens", 5}, {"threshold", 0.70}, {"scope", "all"}});
+             {{"directory", dir.Path().string()}, {"min_tokens", 5}, {"threshold", 0.70}, {"scope", "all"}});
 
     auto const resp = CallTool(server, "query_file_duplicates", {{"file_path", "intra.cpp"}});
     auto const data = ParseToolResultText(resp);
@@ -1024,7 +999,7 @@ void bigFunction(int x) {
 
 TEST_CASE("McpTools.QueryFileDuplicates.WithLimit", "[mcp][tools]")
 {
-    TempTestDir dir;
+    test_utils::TempTestDir dir("mcp_tools_test");
     dir.WriteFile("test.cpp", kDuplicateSource);
 
     AnalysisSession session;
@@ -1032,7 +1007,8 @@ TEST_CASE("McpTools.QueryFileDuplicates.WithLimit", "[mcp][tools]")
     RegisterDudeTools(server, session);
     InitServer(server);
 
-    CallTool(server, "analyze_directory", {{"directory", dir.root.string()}, {"min_tokens", 10}, {"threshold", 0.70}});
+    CallTool(server, "analyze_directory",
+             {{"directory", dir.Path().string()}, {"min_tokens", 10}, {"threshold", 0.70}});
 
     auto const resp = CallTool(server, "query_file_duplicates", {{"file_path", "test.cpp"}, {"limit", 1}});
     auto const data = ParseToolResultText(resp);
@@ -1045,7 +1021,7 @@ TEST_CASE("McpTools.QueryFileDuplicates.WithLimit", "[mcp][tools]")
 
 TEST_CASE("McpTools.ConfigureAnalysis.WithScope", "[mcp][tools]")
 {
-    TempTestDir dir;
+    test_utils::TempTestDir dir("mcp_tools_test");
     dir.WriteFile("test.cpp", kDuplicateSource);
 
     AnalysisSession session;
@@ -1053,7 +1029,8 @@ TEST_CASE("McpTools.ConfigureAnalysis.WithScope", "[mcp][tools]")
     RegisterDudeTools(server, session);
     InitServer(server);
 
-    CallTool(server, "analyze_directory", {{"directory", dir.root.string()}, {"min_tokens", 10}, {"threshold", 0.70}});
+    CallTool(server, "analyze_directory",
+             {{"directory", dir.Path().string()}, {"min_tokens", 10}, {"threshold", 0.70}});
 
     auto const resp = CallTool(server, "configure_analysis", {{"scope", "intra-file"}});
     auto const data = ParseToolResultText(resp);

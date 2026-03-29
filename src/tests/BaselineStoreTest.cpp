@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
+#include <tests/TempTestDir.hpp>
+
 #include <dude/BaselineStore.hpp>
 #include <dude/SourceLocation.hpp>
 
 #include <catch2/catch_test_macros.hpp>
-
-#include <filesystem>
 
 namespace
 {
@@ -31,26 +31,11 @@ auto MakeBlock(std::string name, BlockParams params) -> dude::CodeBlock
     return block;
 }
 
-// NOLINTBEGIN(cppcoreguidelines-special-member-functions)
-struct TempBaselineDir
-{
-    std::filesystem::path dir;
-
-    TempBaselineDir() : dir(std::filesystem::temp_directory_path() / "dude-test-baselines") {}
-
-    ~TempBaselineDir()
-    {
-        std::error_code ec;
-        std::filesystem::remove_all(dir, ec);
-    }
-};
-// NOLINTEND(cppcoreguidelines-special-member-functions)
-
 } // namespace
 
 TEST_CASE("BaselineStore.SaveLoadRoundTrip", "[BaselineStore]")
 {
-    TempBaselineDir tmp;
+    test_utils::TempTestDir tmp("dude_baseline_test");
 
     auto const projectRoot = std::filesystem::path("/project");
     auto const files = std::vector<std::filesystem::path>{"/project/src/foo.cpp", "/project/src/bar.cpp"};
@@ -64,7 +49,7 @@ TEST_CASE("BaselineStore.SaveLoadRoundTrip", "[BaselineStore]")
         {.blockIndices = {0, 1}, .avgSimilarity = 0.95},
     };
 
-    dude::BaselineStore store(tmp.dir);
+    dude::BaselineStore store(tmp.Path());
     auto const saveResult = store.Save("v1", groups, {}, blocks, files, projectRoot);
     REQUIRE(saveResult.has_value());
     CHECK(store.Exists("v1"));
@@ -185,8 +170,8 @@ TEST_CASE("BaselineStore.FindNewCloneGroupsNoneNew", "[BaselineStore]")
 
 TEST_CASE("BaselineStore.NonexistentBaseline", "[BaselineStore]")
 {
-    TempBaselineDir tmp;
-    dude::BaselineStore store(tmp.dir);
+    test_utils::TempTestDir tmp("dude_baseline_test");
+    dude::BaselineStore store(tmp.Path());
     CHECK_FALSE(store.Exists("nonexistent"));
     auto const result = store.Load("nonexistent");
     CHECK_FALSE(result.has_value());
@@ -194,12 +179,12 @@ TEST_CASE("BaselineStore.NonexistentBaseline", "[BaselineStore]")
 
 TEST_CASE("BaselineStore.List", "[BaselineStore]")
 {
-    TempBaselineDir tmp;
+    test_utils::TempTestDir tmp("dude_baseline_test");
     auto const projectRoot = std::filesystem::path("/project");
     auto const files = std::vector<std::filesystem::path>{"/project/a.cpp"};
     auto const blocks = std::vector{MakeBlock("func", {.fileIndex = 0, .startLine = 1, .endLine = 10})};
 
-    dude::BaselineStore store(tmp.dir);
+    dude::BaselineStore store(tmp.Path());
     REQUIRE(store.Save("beta", {}, {}, blocks, files, projectRoot).has_value());
     REQUIRE(store.Save("alpha", {}, {}, blocks, files, projectRoot).has_value());
 
