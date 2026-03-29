@@ -87,7 +87,7 @@ class DUDE_API BaselineStore
 {
 public:
     /// @brief Constructs a BaselineStore rooted at the given directory.
-    /// @param baselineDir The directory to store baselines in (e.g., .dude-cache/baselines/).
+    /// @param baselineDir The directory to store baselines in (e.g., .cache/dude/baselines/).
     explicit BaselineStore(std::filesystem::path baselineDir);
 
     /// @brief Saves a baseline from the current analysis results.

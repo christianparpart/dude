@@ -39,7 +39,7 @@ public:
     static constexpr auto DefaultMaxAge = std::chrono::hours{24 * 28};
 
     /// @brief Constructs a BlockCache with the given cache file path.
-    /// @param cachePath Path to the cache JSON file (e.g., .dude-cache/blocks.json).
+    /// @param cachePath Path to the cache JSON file (e.g., .cache/dude/blocks.json).
     /// @param maxAge Maximum age for cache entries. Entries older than this are evicted on Load().
     explicit BlockCache(std::filesystem::path cachePath,
                         std::chrono::seconds maxAge = std::chrono::duration_cast<std::chrono::seconds>(DefaultMaxAge));

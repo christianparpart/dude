@@ -19,7 +19,7 @@ namespace mcp
 namespace
 {
 
-constexpr auto DudeCacheDir = ".dude-cache";
+constexpr auto DudeCacheDir = ".cache/dude";
 
 /// @brief Serializes a single code block to JSON with standard fields.
 /// @param bi Block index.

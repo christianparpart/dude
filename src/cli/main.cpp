@@ -100,7 +100,7 @@ auto CheckInterrupted() -> std::optional<int>
 }
 
 /// @brief Name of the cache directory created under the project root.
-constexpr auto DudeCacheDir = ".dude-cache";
+constexpr auto DudeCacheDir = ".cache/dude";
 
 constexpr auto versionString = DUDE_VERSION;
 
