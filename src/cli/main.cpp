@@ -1144,9 +1144,10 @@ int main(int argc, char* argv[])
     }
 
     // Steps 2+3: Streaming tokenize + normalize + extract blocks (per file)
-    auto processBar = opts.showProgress ? std::make_optional<dude::ProgressBar>("Processing", files.size(), stderr,
-                                                                                false, ++currentStage, totalStages)
-                                        : std::nullopt;
+    auto processBar = opts.showProgress
+                          ? std::make_optional<dude::ProgressBar>("Extracting blocks", files.size(), stderr, false,
+                                                                  ++currentStage, totalStages)
+                          : std::nullopt;
     if (processBar)
         processBar->Start();
     auto [allBlocks, blockToFileIndex, fileLanguages] = TokenizeAndExtractBlocks(
@@ -1188,15 +1189,16 @@ int main(int argc, char* argv[])
             fingerprintBar->Start();
 
         auto candidateBar = opts.showProgress
-                                ? std::make_optional<dude::ProgressBar>("Gather Candidates", size_t{0}, stderr, false,
+                                ? std::make_optional<dude::ProgressBar>("Finding candidates", size_t{0}, stderr, false,
                                                                         ++currentStage, totalStages)
                                 : std::nullopt;
 
-        auto collectBar = opts.showProgress ? std::make_optional<dude::ProgressBar>("Collecting", size_t{0}, stderr,
-                                                                                    false, ++currentStage, totalStages)
-                                            : std::nullopt;
+        auto collectBar = opts.showProgress
+                              ? std::make_optional<dude::ProgressBar>("Grouping clones", size_t{0}, stderr, false,
+                                                                      ++currentStage, totalStages)
+                              : std::nullopt;
 
-        auto detectBar = opts.showProgress ? std::make_optional<dude::ProgressBar>("Detecting", size_t{0}, stderr,
+        auto detectBar = opts.showProgress ? std::make_optional<dude::ProgressBar>("Scoring clones", size_t{0}, stderr,
                                                                                    false, ++currentStage, totalStages)
                                            : std::nullopt;
 
@@ -1290,8 +1292,8 @@ int main(int argc, char* argv[])
         });
 
         auto intraBar = opts.showProgress
-                            ? std::make_optional<dude::ProgressBar>("Intra-detect", allBlocks.size(), stderr, false,
-                                                                    ++currentStage, totalStages)
+                            ? std::make_optional<dude::ProgressBar>("Intra-function clones", allBlocks.size(), stderr,
+                                                                    false, ++currentStage, totalStages)
                             : std::nullopt;
         if (intraBar)
             intraBar->Start();
