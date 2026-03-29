@@ -2,6 +2,9 @@ find_package(Threads REQUIRED)
 
 add_library(dude-lib STATIC
     AnalysisScope.cpp
+    BaselineStore.cpp
+    BlockCache.cpp
+    ContentHash.cpp
     DiffFilter.cpp
     Encoding.cpp
     Token.cpp

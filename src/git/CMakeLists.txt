@@ -1,4 +1,5 @@
 add_library(git STATIC
+    GitCommand.cpp
     GitDiffParser.cpp
     GitFileFilter.cpp
 )

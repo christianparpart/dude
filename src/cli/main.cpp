@@ -7,8 +7,11 @@
 #include <mcpprotocol/McpServer.hpp>
 
 #include <dude/AnalysisScope.hpp>
+#include <dude/BaselineStore.hpp>
+#include <dude/BlockCache.hpp>
 #include <dude/CloneDetector.hpp>
 #include <dude/CodeBlock.hpp>
+#include <dude/ContentHash.hpp>
 #include <dude/DiffFilter.hpp>
 #include <dude/Encoding.hpp>
 #include <dude/FileScanner.hpp>
@@ -17,6 +20,7 @@
 #include <dude/IntraFunctionDetector.hpp>
 #include <dude/Language.hpp>
 #include <dude/LanguageRegistry.hpp>
+#include <dude/MappedFile.hpp>
 #include <dude/ProgressBar.hpp>
 #include <dude/Reporter.hpp>
 #include <dude/ReporterFactory.hpp>
@@ -95,6 +99,9 @@ auto CheckInterrupted() -> std::optional<int>
     return std::nullopt;
 }
 
+/// @brief Name of the cache directory created under the project root.
+constexpr auto DudeCacheDir = ".cache/dude";
+
 constexpr auto versionString = DUDE_VERSION;
 
 /// @brief Parsed command-line arguments.
@@ -122,7 +129,10 @@ struct CliOptions
     bool mcpMode = false;                                     ///< Run as MCP server.
     std::string diffBase;                                     ///< Git ref to diff against (enables diff mode).
     std::vector<std::string> diffCommits;                     ///< Commit SHAs to diff (enables commit-diff mode).
-    std::string reporterSpec; ///< Reporter spec (e.g. "console", "json", "json:file=out.json").
+    std::string reporterSpec;    ///< Reporter spec (e.g. "console", "json", "json:file=out.json").
+    bool enableCache = true;     ///< Enable block extraction cache.
+    std::string saveBaseline;    ///< Save results as this baseline name (empty = disabled).
+    std::string compareBaseline; ///< Compare against this baseline (empty = disabled).
 };
 
 void PrintUsage(FILE* out, bool useColor, dude::ColorTheme theme)
@@ -153,6 +163,10 @@ void PrintUsage(FILE* out, bool useColor, dude::ColorTheme theme)
         "  -p, --progress              Show progress bars during analysis\n"
         "  -v, --verbose               Show verbose diagnostics during scanning\n"
         "  --mcp                       Run as MCP server (JSON-RPC over stdio)\n"
+        "  --cache                     Enable block extraction cache (default)\n"
+        "  --no-cache                  Disable block extraction cache\n"
+        "  --save-baseline <name>      Save analysis results as a named baseline\n"
+        "  --baseline <name>           Compare against a saved baseline, show only new clones\n"
         "  -h, --help                  Show help\n"
         "  --version                   Show version\n"
         "  --show-examples             Show usage examples\n"
@@ -251,6 +265,20 @@ void PrintExamples(bool useColor, dude::ColorTheme theme)
                                          "  # inter-file scope only\n"
                                          "  dude --diff-base origin/main -t 0.90 --no-color \\\n"
                                          "      --no-source -s inter-file /path/to/project\n"
+                                         "\n"
+                                         "Caching & Baselines\n"
+                                         "-------------------\n"
+                                         "  # Run with block cache (default, speeds up repeat runs)\n"
+                                         "  dude /path/to/project\n"
+                                         "\n"
+                                         "  # Disable caching for a fresh analysis\n"
+                                         "  dude --no-cache /path/to/project\n"
+                                         "\n"
+                                         "  # Save current results as a named baseline\n"
+                                         "  dude --save-baseline v1.0 /path/to/project\n"
+                                         "\n"
+                                         "  # Show only new clones compared to a baseline\n"
+                                         "  dude --baseline v1.0 /path/to/project\n"
                                          "\n"
                                          "MCP Server Mode\n"
                                          "---------------\n"
@@ -581,6 +609,32 @@ auto ProcessArg(int argc, char* argv[], int& i, CliOptions& opts)
         opts.mcpMode = true;
         return opts;
     }
+    if (arg == "--cache")
+    {
+        opts.enableCache = true;
+        return std::nullopt;
+    }
+    if (arg == "--no-cache")
+    {
+        opts.enableCache = false;
+        return std::nullopt;
+    }
+    if (arg == "--save-baseline")
+        return ParseStringOption(argc, argv, i, "--save-baseline")
+            .transform(
+                [&](std::string v) -> CliOptions
+                {
+                    opts.saveBaseline = std::move(v);
+                    return opts;
+                });
+    if (arg == "--baseline")
+        return ParseStringOption(argc, argv, i, "--baseline")
+            .transform(
+                [&](std::string v) -> CliOptions
+                {
+                    opts.compareBaseline = std::move(v);
+                    return opts;
+                });
     if (arg == "-p" || arg == "--progress")
     {
         opts.showProgress = true;
@@ -803,19 +857,46 @@ auto ScanFiles(CliOptions const& opts, dude::PerformanceTiming& timing)
     return *filesResult;
 }
 
+/// @brief Tries to load cached blocks for a file, patching fileIndex values.
+/// @param contentHash Pre-computed SHA-256 hex digest of the file content.
+/// @return true if blocks were loaded from cache, false otherwise.
+auto TryLoadCachedBlocks(dude::BlockCache& cache, std::string const& contentHash, dude::Language const& language,
+                         CliOptions const& opts, uint32_t fileIndex, std::vector<dude::CodeBlock>& allBlocks,
+                         std::vector<size_t>& blockToFileIndex) -> bool
+{
+    auto const cached = cache.Lookup(contentHash, language.Name(), opts.minTokens, opts.textSensitivity);
+    if (!cached)
+        return false;
+
+    auto const fi = static_cast<size_t>(fileIndex);
+    for (auto const& src : *cached)
+    {
+        auto block = src;
+        block.sourceRange.start.fileIndex = fileIndex;
+        block.sourceRange.end.fileIndex = fileIndex;
+        blockToFileIndex.push_back(fi);
+        allBlocks.push_back(std::move(block));
+    }
+    return true;
+}
+
 /// @brief Tokenizes all source files and extracts code blocks in a streaming per-file pipeline (steps 2+3).
 ///
 /// Each file is tokenized, normalized, and block-extracted in a single pass.
 /// Tokens are released after each file, keeping peak memory proportional to
 /// the largest single file rather than the entire codebase.
 ///
+/// When a block cache is provided, unchanged files (by content hash) are loaded
+/// from cache instead of being re-tokenized, significantly speeding up repeat runs.
+///
 /// @param files The source file paths to process.
 /// @param opts The parsed CLI options (for encoding, minTokens, textSensitivity, verbosity).
 /// @param timing Performance timing struct to record tokenization and normalization duration.
 /// @param progressBar Optional progress bar to report per-file progress.
+/// @param cache Optional block cache for skipping tokenization of unchanged files.
 /// @return A tuple of (all extracted code blocks, block-to-file-index mapping, language pointers per file).
 auto TokenizeAndExtractBlocks(std::vector<std::filesystem::path> const& files, CliOptions const& opts,
-                              dude::PerformanceTiming& timing, dude::ProgressBar* progressBar)
+                              dude::PerformanceTiming& timing, dude::ProgressBar* progressBar, dude::BlockCache* cache)
     -> std::tuple<std::vector<dude::CodeBlock>, std::vector<size_t>, std::vector<dude::Language const*>>
 {
     using Clock = std::chrono::steady_clock;
@@ -834,6 +915,7 @@ auto TokenizeAndExtractBlocks(std::vector<std::filesystem::path> const& files, C
 
     std::vector<dude::CodeBlock> allBlocks;
     std::vector<size_t> blockToFileIndex;
+    size_t cacheHits = 0;
 
     auto const logVerbose = [&](std::string const& msg)
     {
@@ -856,8 +938,26 @@ auto TokenizeAndExtractBlocks(std::vector<std::filesystem::path> const& files, C
             continue;
         }
 
-        // Tokenize this single file
         auto const fileIndex = static_cast<uint32_t>(fi);
+
+        std::string contentHash;
+        if (cache)
+        {
+            auto const mappedFile = dude::MappedFile::Open(files[fi]);
+            if (mappedFile)
+                contentHash = dude::ComputeContentHash(mappedFile->View());
+        }
+
+        if (cache && !contentHash.empty() &&
+            TryLoadCachedBlocks(*cache, contentHash, *language, opts, fileIndex, allBlocks, blockToFileIndex))
+        {
+            ++cacheHits;
+            logVerbose(std::format("Cache hit ({}): {}", language->Name(), files[fi].string()));
+            if (progressBar)
+                progressBar->Tick();
+            continue;
+        }
+
         auto tokensResult = language->TokenizeFile(files[fi], fileIndex, opts.encoding);
         if (!tokensResult || tokensResult->empty())
         {
@@ -879,6 +979,9 @@ auto TokenizeAndExtractBlocks(std::vector<std::filesystem::path> const& files, C
         if (!blocks.empty())
             logVerbose(std::format("  {} blocks from {}", blocks.size(), files[fi].string()));
 
+        if (cache && !contentHash.empty())
+            cache->Store(contentHash, language->Name(), opts.minTokens, opts.textSensitivity, blocks);
+
         for (auto& block : blocks)
         {
             blockToFileIndex.push_back(fi);
@@ -892,7 +995,7 @@ auto TokenizeAndExtractBlocks(std::vector<std::filesystem::path> const& files, C
     }
 
     timing.tokenizing = Clock::now() - startTime;
-    logVerbose(std::format("Extracted {} code blocks total", allBlocks.size()));
+    logVerbose(std::format("Extracted {} code blocks total ({} from cache)", allBlocks.size(), cacheHits));
 
     return {std::move(allBlocks), std::move(blockToFileIndex), std::move(fileLanguages)};
 }
@@ -1026,16 +1129,41 @@ int main(int argc, char* argv[])
         totalStages += 1; // Intra-detect
     size_t currentStage = 0;
 
+    // Set up block cache if enabled.
+    auto const projectRoot = std::filesystem::weakly_canonical(opts.directory);
+    auto const cachePath = projectRoot / DudeCacheDir / "blocks.json";
+    std::optional<dude::BlockCache> blockCache;
+    if (opts.enableCache)
+    {
+        blockCache.emplace(cachePath);
+        auto const loadResult = blockCache->Load();
+        if (!loadResult && opts.verbose)
+            std::println(stderr, "Warning: {}", loadResult.error().message);
+        else if (opts.verbose)
+            std::println(stderr, "Loaded block cache ({} entries)", blockCache->Size());
+    }
+
     // Steps 2+3: Streaming tokenize + normalize + extract blocks (per file)
-    auto processBar = opts.showProgress ? std::make_optional<dude::ProgressBar>("Processing", files.size(), stderr,
-                                                                                false, ++currentStage, totalStages)
-                                        : std::nullopt;
+    auto processBar = opts.showProgress
+                          ? std::make_optional<dude::ProgressBar>("Extracting blocks", files.size(), stderr, false,
+                                                                  ++currentStage, totalStages)
+                          : std::nullopt;
     if (processBar)
         processBar->Start();
-    auto [allBlocks, blockToFileIndex, fileLanguages] =
-        TokenizeAndExtractBlocks(files, opts, timing, processBar ? &*processBar : nullptr);
+    auto [allBlocks, blockToFileIndex, fileLanguages] = TokenizeAndExtractBlocks(
+        files, opts, timing, processBar ? &*processBar : nullptr, blockCache ? &*blockCache : nullptr);
     if (processBar)
         processBar->Finish(false);
+
+    // Save updated block cache.
+    if (blockCache)
+    {
+        auto const saveResult = blockCache->Save();
+        if (!saveResult && opts.verbose)
+            std::println(stderr, "Warning: Failed to save block cache: {}", saveResult.error().message);
+        else if (opts.verbose)
+            std::println(stderr, "Saved block cache ({} entries)", blockCache->Size());
+    }
 
     if (auto const interrupted = CheckInterrupted())
         return *interrupted;
@@ -1061,15 +1189,16 @@ int main(int argc, char* argv[])
             fingerprintBar->Start();
 
         auto candidateBar = opts.showProgress
-                                ? std::make_optional<dude::ProgressBar>("Gather Candidates", size_t{0}, stderr, false,
+                                ? std::make_optional<dude::ProgressBar>("Finding candidates", size_t{0}, stderr, false,
                                                                         ++currentStage, totalStages)
                                 : std::nullopt;
 
-        auto collectBar = opts.showProgress ? std::make_optional<dude::ProgressBar>("Collecting", size_t{0}, stderr,
-                                                                                    false, ++currentStage, totalStages)
-                                            : std::nullopt;
+        auto collectBar = opts.showProgress
+                              ? std::make_optional<dude::ProgressBar>("Grouping clones", size_t{0}, stderr, false,
+                                                                      ++currentStage, totalStages)
+                              : std::nullopt;
 
-        auto detectBar = opts.showProgress ? std::make_optional<dude::ProgressBar>("Detecting", size_t{0}, stderr,
+        auto detectBar = opts.showProgress ? std::make_optional<dude::ProgressBar>("Scoring clones", size_t{0}, stderr,
                                                                                    false, ++currentStage, totalStages)
                                            : std::nullopt;
 
@@ -1163,8 +1292,8 @@ int main(int argc, char* argv[])
         });
 
         auto intraBar = opts.showProgress
-                            ? std::make_optional<dude::ProgressBar>("Intra-detect", allBlocks.size(), stderr, false,
-                                                                    ++currentStage, totalStages)
+                            ? std::make_optional<dude::ProgressBar>("Intra-function clones", allBlocks.size(), stderr,
+                                                                    false, ++currentStage, totalStages)
                             : std::nullopt;
         if (intraBar)
             intraBar->Start();
@@ -1201,7 +1330,6 @@ int main(int argc, char* argv[])
     // Step 4c: Filter results if in diff mode.
     if (diffMode)
     {
-        auto const projectRoot = std::filesystem::weakly_canonical(opts.directory);
         auto const changedBlocks = dude::DiffFilter::FindChangedBlocks(allBlocks, diffResult, projectRoot, files);
 
         if (opts.verbose)
@@ -1211,7 +1339,51 @@ int main(int argc, char* argv[])
         intraResults = dude::DiffFilter::FilterIntraResults(intraResults, changedBlocks);
     }
 
-    // Step 4d: Apply --limit to truncate results to top N per category.
+    // Step 4d/4e: Save and/or compare baselines.
+    if (!opts.saveBaseline.empty() || !opts.compareBaseline.empty())
+    {
+        dude::BaselineStore store(projectRoot / DudeCacheDir / "baselines");
+
+        if (!opts.saveBaseline.empty())
+        {
+            auto baselineName = opts.saveBaseline;
+            if (baselineName == "auto")
+            {
+                auto const headSha = git::GitDiffParser::GetHeadSha(projectRoot);
+                baselineName = headSha.value_or("unknown");
+            }
+
+            auto const saveResult = store.Save(baselineName, groups, intraResults, allBlocks, files, projectRoot);
+            if (saveResult)
+                std::println(stderr, "Saved baseline '{}'", baselineName);
+            else
+                std::println(stderr, "Warning: Failed to save baseline: {}", saveResult.error().message);
+        }
+
+        if (!opts.compareBaseline.empty())
+        {
+            auto const baseline = store.Load(opts.compareBaseline);
+            if (baseline)
+            {
+                groups = dude::BaselineStore::FindNewCloneGroups(groups, *baseline, allBlocks, files, projectRoot);
+                intraResults =
+                    dude::BaselineStore::FindNewIntraClones(intraResults, *baseline, allBlocks, files, projectRoot);
+
+                if (opts.verbose)
+                {
+                    std::println(stderr,
+                                 "Filtered against baseline '{}': {} new clone groups, {} new intra-clone results",
+                                 opts.compareBaseline, groups.size(), intraResults.size());
+                }
+            }
+            else
+            {
+                std::println(stderr, "Warning: Baseline '{}' not found, showing all results", opts.compareBaseline);
+            }
+        }
+    }
+
+    // Step 4f: Apply --limit to truncate results to top N per category.
     if (opts.limit > 0)
     {
         if (groups.size() > opts.limit)
