@@ -7,6 +7,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <fstream>
+
 namespace
 {
 
@@ -192,4 +194,144 @@ TEST_CASE("BaselineStore.List", "[BaselineStore]")
     REQUIRE(names.size() == 2);
     CHECK(names[0] == "alpha");
     CHECK(names[1] == "beta");
+}
+
+TEST_CASE("BaselineStore.ListEmptyDir", "[BaselineStore]")
+{
+    test_utils::TempTestDir tmp("dude_baseline_test");
+    dude::BaselineStore store(tmp.Path() / "empty_subdir");
+    CHECK(store.List().empty());
+}
+
+TEST_CASE("BaselineStore.IntraCloneRoundTrip", "[BaselineStore]")
+{
+    test_utils::TempTestDir tmp("dude_baseline_test");
+    auto const projectRoot = std::filesystem::path("/project");
+    auto const files = std::vector<std::filesystem::path>{"/project/src/big.cpp"};
+    auto const blocks = std::vector{MakeBlock("bigFunc", {.fileIndex = 0, .startLine = 1, .endLine = 100})};
+
+    std::vector<dude::IntraCloneResult> intraResults = {{
+        .blockIndex = 0,
+        .pairs = {{
+            .blockIndex = 0,
+            .regionA = {.start = 10, .length = 20},
+            .regionB = {.start = 50, .length = 20},
+            .similarity = 0.85,
+        }},
+    }};
+
+    dude::BaselineStore store(tmp.Path());
+    REQUIRE(store.Save("v1", {}, intraResults, blocks, files, projectRoot).has_value());
+
+    auto const loaded = store.Load("v1");
+    REQUIRE(loaded.has_value());
+    REQUIRE(loaded->intraClones.size() == 1);
+    CHECK(loaded->intraClones[0].filePath == "src/big.cpp");
+    CHECK(loaded->intraClones[0].functionName == "bigFunc");
+    CHECK(loaded->intraClones[0].regionAStart == 10);
+    CHECK(loaded->intraClones[0].regionALength == 20);
+    CHECK(loaded->intraClones[0].regionBStart == 50);
+    CHECK(loaded->intraClones[0].regionBLength == 20);
+    CHECK(loaded->intraClones[0].similarity == 0.85);
+}
+
+TEST_CASE("BaselineStore.BuildIntraCloneIdentities", "[BaselineStore]")
+{
+    auto const projectRoot = std::filesystem::path("/project");
+    auto const files = std::vector<std::filesystem::path>{"/project/a.cpp"};
+    auto const blocks = std::vector{MakeBlock("func", {.fileIndex = 0, .startLine = 1, .endLine = 50})};
+
+    std::vector<dude::IntraCloneResult> results = {{
+        .blockIndex = 0,
+        .pairs =
+            {
+                {.blockIndex = 0,
+                 .regionA = {.start = 5, .length = 10},
+                 .regionB = {.start = 30, .length = 10},
+                 .similarity = 0.9},
+                {.blockIndex = 0,
+                 .regionA = {.start = 15, .length = 8},
+                 .regionB = {.start = 40, .length = 8},
+                 .similarity = 0.8},
+            },
+    }};
+
+    auto const ids = dude::BaselineStore::BuildIntraCloneIdentities(results, blocks, files, projectRoot);
+    REQUIRE(ids.size() == 2);
+    CHECK(ids[0].filePath == "a.cpp");
+    CHECK(ids[0].regionAStart == 5);
+    CHECK(ids[1].regionAStart == 15);
+}
+
+TEST_CASE("BaselineStore.FindNewIntraClones", "[BaselineStore]")
+{
+    auto const projectRoot = std::filesystem::path("/project");
+    auto const files = std::vector<std::filesystem::path>{"/project/a.cpp"};
+    auto const blocks = std::vector{MakeBlock("func", {.fileIndex = 0, .startLine = 1, .endLine = 50})};
+
+    // Baseline has one intra pair
+    dude::Baseline baseline;
+    baseline.intraClones.push_back(dude::IntraCloneIdentity{
+        .filePath = "a.cpp",
+        .functionName = "func",
+        .startLine = 1,
+        .endLine = 50,
+        .regionAStart = 5,
+        .regionALength = 10,
+        .regionBStart = 30,
+        .regionBLength = 10,
+        .similarity = 0.9,
+    });
+
+    // Current has two pairs — one existing, one new
+    std::vector<dude::IntraCloneResult> current = {{
+        .blockIndex = 0,
+        .pairs =
+            {
+                {.blockIndex = 0,
+                 .regionA = {.start = 5, .length = 10},
+                 .regionB = {.start = 30, .length = 10},
+                 .similarity = 0.9},
+                {.blockIndex = 0,
+                 .regionA = {.start = 15, .length = 8},
+                 .regionB = {.start = 40, .length = 8},
+                 .similarity = 0.8},
+            },
+    }};
+
+    auto const newResults = dude::BaselineStore::FindNewIntraClones(current, baseline, blocks, files, projectRoot);
+    REQUIRE(newResults.size() == 1);
+    REQUIRE(newResults[0].pairs.size() == 1);
+    CHECK(newResults[0].pairs[0].regionA.start == 15);
+}
+
+TEST_CASE("BaselineStore.CorruptBaselineFile", "[BaselineStore]")
+{
+    test_utils::TempTestDir tmp("dude_baseline_test");
+    auto const& dir = tmp.Path();
+    std::filesystem::create_directories(dir);
+
+    {
+        std::ofstream out(dir / "bad.json");
+        out << "not valid json{{{";
+    }
+
+    dude::BaselineStore store(dir);
+    auto const result = store.Load("bad");
+    CHECK_FALSE(result.has_value());
+}
+
+TEST_CASE("BaselineStore.VersionMismatch", "[BaselineStore]")
+{
+    test_utils::TempTestDir tmp("dude_baseline_test");
+    auto const& dir = tmp.Path();
+
+    {
+        std::ofstream out(dir / "old.json");
+        out << R"({"version": 999, "cloneGroups": []})";
+    }
+
+    dude::BaselineStore store(dir);
+    auto const result = store.Load("old");
+    CHECK_FALSE(result.has_value());
 }

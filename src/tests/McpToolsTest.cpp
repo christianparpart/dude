@@ -1036,3 +1036,95 @@ TEST_CASE("McpTools.ConfigureAnalysis.WithScope", "[mcp][tools]")
     auto const data = ParseToolResultText(resp);
     CHECK(data.contains("total_files"));
 }
+
+// ---------------------------------------------------------------------------
+// save_baseline tool tests
+// ---------------------------------------------------------------------------
+
+TEST_CASE("McpTools.SaveBaseline.RequiresAnalysis", "[mcp][tools]")
+{
+    AnalysisSession session;
+    McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
+    RegisterDudeTools(server, session);
+    InitServer(server);
+
+    auto const resp = CallTool(server, "save_baseline", {{"name", "v1"}});
+    REQUIRE(resp.result.has_value());
+    CHECK(resp.result.value()["isError"] == true); // NOLINT(bugprone-unchecked-optional-access)
+}
+
+TEST_CASE("McpTools.SaveBaseline.Success", "[mcp][tools]")
+{
+    test_utils::TempTestDir dir("mcp_tools_test");
+    dir.WriteFile("test.cpp", kDuplicateSource);
+
+    AnalysisSession session;
+    McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
+    RegisterDudeTools(server, session);
+    InitServer(server);
+
+    CallTool(server, "analyze_directory",
+             {{"directory", dir.Path().string()}, {"min_tokens", 10}, {"threshold", 0.70}});
+
+    auto const resp = CallTool(server, "save_baseline", {{"name", "test_baseline"}});
+    auto const data = ParseToolResultText(resp);
+    CHECK(data["status"] == "saved");
+    CHECK(data["baseline_name"] == "test_baseline");
+    CHECK(data["clone_groups"].get<int>() >= 0);
+}
+
+// ---------------------------------------------------------------------------
+// compare_baseline tool tests
+// ---------------------------------------------------------------------------
+
+TEST_CASE("McpTools.CompareBaseline.RequiresAnalysis", "[mcp][tools]")
+{
+    AnalysisSession session;
+    McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
+    RegisterDudeTools(server, session);
+    InitServer(server);
+
+    auto const resp = CallTool(server, "compare_baseline", {{"name", "v1"}});
+    REQUIRE(resp.result.has_value());
+    CHECK(resp.result.value()["isError"] == true); // NOLINT(bugprone-unchecked-optional-access)
+}
+
+TEST_CASE("McpTools.CompareBaseline.BaselineNotFound", "[mcp][tools]")
+{
+    test_utils::TempTestDir dir("mcp_tools_test");
+    dir.WriteFile("test.cpp", kDuplicateSource);
+
+    AnalysisSession session;
+    McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
+    RegisterDudeTools(server, session);
+    InitServer(server);
+
+    CallTool(server, "analyze_directory",
+             {{"directory", dir.Path().string()}, {"min_tokens", 10}, {"threshold", 0.70}});
+
+    auto const resp = CallTool(server, "compare_baseline", {{"name", "nonexistent"}});
+    REQUIRE(resp.result.has_value());
+    CHECK(resp.result.value()["isError"] == true); // NOLINT(bugprone-unchecked-optional-access)
+}
+
+TEST_CASE("McpTools.CompareBaseline.Success", "[mcp][tools]")
+{
+    test_utils::TempTestDir dir("mcp_tools_test");
+    dir.WriteFile("test.cpp", kDuplicateSource);
+
+    AnalysisSession session;
+    McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
+    RegisterDudeTools(server, session);
+    InitServer(server);
+
+    CallTool(server, "analyze_directory",
+             {{"directory", dir.Path().string()}, {"min_tokens", 10}, {"threshold", 0.70}});
+
+    // Save a baseline, then compare against it — all clones should be existing, none new.
+    CallTool(server, "save_baseline", {{"name", "base"}});
+    auto const resp = CallTool(server, "compare_baseline", {{"name", "base"}});
+    auto const data = ParseToolResultText(resp);
+    CHECK(data["baseline_name"] == "base");
+    CHECK(data["new_clone_groups"].get<int>() == 0);
+    CHECK(data["total_clone_groups"].get<int>() >= 1);
+}

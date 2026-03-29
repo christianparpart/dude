@@ -228,3 +228,80 @@ TEST_CASE("BlockCache.NoEvictionWithLargeMaxAge", "[BlockCache]")
         CHECK(cache.Size() == 1);
     }
 }
+
+TEST_CASE("BlockCache.TextPreservingIdsRoundTrip", "[BlockCache]")
+{
+    test_utils::TempTestDir tmp("dude_cache_test");
+    auto const cachePath = tmp.Path() / "blocks.json";
+
+    auto block = MakeTestBlock("func", 1, 20, {1000, 42, 1000});
+    block.textPreservingIds = {2001, 2002, 2003};
+
+    {
+        dude::BlockCache cache(cachePath);
+        cache.Store("hash", "C++", 300, 0.3, {block});
+        REQUIRE(cache.Save().has_value());
+    }
+
+    {
+        dude::BlockCache cache(cachePath);
+        REQUIRE(cache.Load().has_value());
+        auto result = cache.Lookup("hash", "C++", 300, 0.3);
+        REQUIRE(result.has_value());
+        auto const loaded = result.value_or(std::span<dude::CodeBlock const>{});
+        REQUIRE(loaded.size() == 1);
+        CHECK(loaded[0].textPreservingIds == std::vector<dude::NormalizedTokenId>{2001, 2002, 2003});
+    }
+}
+
+TEST_CASE("BlockCache.SaveSkipsWhenNotDirty", "[BlockCache]")
+{
+    test_utils::TempTestDir tmp("dude_cache_test");
+    auto const cachePath = tmp.Path() / "blocks.json";
+
+    {
+        dude::BlockCache cache(cachePath);
+        cache.Store("hash", "C++", 300, 0.3, {MakeTestBlock("f", 1, 10, {42})});
+        REQUIRE(cache.Save().has_value());
+    }
+
+    // Load and save again without any Store — should succeed immediately (no-op).
+    {
+        dude::BlockCache cache(cachePath);
+        REQUIRE(cache.Load().has_value());
+        // Lookup within the same epoch-day does NOT mark dirty.
+        auto const hit = cache.Lookup("hash", "C++", 300, 0.3);
+        CHECK(hit.has_value());
+        REQUIRE(cache.Save().has_value()); // Should be a no-op since epoch-day didn't change
+    }
+}
+
+TEST_CASE("BlockCache.MultipleBlocksPerEntry", "[BlockCache]")
+{
+    test_utils::TempTestDir tmp("dude_cache_test");
+    auto const cachePath = tmp.Path() / "blocks.json";
+
+    auto blocks = std::vector{
+        MakeTestBlock("funcA", 1, 10, {1000, 42}),
+        MakeTestBlock("funcB", 20, 30, {1001, 43}),
+        MakeTestBlock("funcC", 40, 50, {1002, 44}),
+    };
+
+    {
+        dude::BlockCache cache(cachePath);
+        cache.Store("hash", "C++", 300, 0.3, blocks);
+        REQUIRE(cache.Save().has_value());
+    }
+
+    {
+        dude::BlockCache cache(cachePath);
+        REQUIRE(cache.Load().has_value());
+        auto result = cache.Lookup("hash", "C++", 300, 0.3);
+        REQUIRE(result.has_value());
+        auto const loaded = result.value_or(std::span<dude::CodeBlock const>{});
+        REQUIRE(loaded.size() == 3);
+        CHECK(loaded[0].name == "funcA");
+        CHECK(loaded[1].name == "funcB");
+        CHECK(loaded[2].name == "funcC");
+    }
+}

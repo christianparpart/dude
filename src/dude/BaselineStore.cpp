@@ -21,7 +21,7 @@ namespace
 
 auto RelativePath(std::filesystem::path const& filePath, std::filesystem::path const& projectRoot) -> std::string
 {
-    return std::filesystem::relative(filePath, projectRoot).string();
+    return std::filesystem::relative(filePath, projectRoot).generic_string();
 }
 
 auto CurrentTimestamp() -> std::string
