@@ -1,11 +1,22 @@
 name: Release
 
 on:
+  push:
+    tags: ['v*']
   release:
-    types: [created, published]
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to build (e.g. v0.3.0)'
+        required: true
+        type: string
 
 permissions:
   contents: write
+
+env:
+  RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag || github.ref_name }}
 
 jobs:
   linux:
@@ -20,6 +31,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Install Clang 21
         run: wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- 21
@@ -56,8 +69,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp build/clang-release-static/src/cli/dude dude-linux-x86_64
-          gh release upload ${{ github.event.release.tag_name }} dude-linux-x86_64 --clobber
+          VERSION=${RELEASE_TAG#v}
+          cp build/clang-release-static/src/cli/dude dude-${VERSION}-linux-x86_64
+          gh release upload ${{ env.RELEASE_TAG }} dude-${VERSION}-linux-x86_64 --clobber
 
   windows:
     runs-on: windows-latest
@@ -69,6 +83,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - uses: ilammy/msvc-dev-cmd@v1
 
@@ -103,5 +119,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          Copy-Item build/clangcl-release/src/cli/dude.exe dude-windows-x86_64.exe
-          gh release upload ${{ github.event.release.tag_name }} dude-windows-x86_64.exe --clobber
+          $version = "${{ env.RELEASE_TAG }}" -replace '^v', ''
+          Copy-Item build/clangcl-release/src/cli/dude.exe "dude-${version}-windows-x86_64.exe"
+          gh release upload ${{ env.RELEASE_TAG }} "dude-${version}-windows-x86_64.exe" --clobber
