@@ -33,7 +33,8 @@ public:
     /// @param extensions List of file extensions to include (e.g., ".cpp", ".hpp").
     /// @param filter Optional predicate to further filter files. If provided, only files for which
     ///               the predicate returns true are included.
-    /// @return A sorted vector of matching file paths, or a FileScanError.
+    /// @return A sorted vector of matching file paths in generic form (forward slashes),
+    ///         or a FileScanError.
     [[nodiscard]] static auto Scan(std::filesystem::path const& directory,
                                    std::vector<std::string> const& extensions = DefaultExtensions(),
                                    std::optional<FileFilter> const& filter = std::nullopt)

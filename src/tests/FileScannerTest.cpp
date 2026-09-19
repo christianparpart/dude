@@ -231,3 +231,19 @@ TEST_CASE("FileScanner.ScanRegularFile", "[scanner]")
     auto result = FileScanner::Scan(filePath, {});
     CHECK_FALSE(result.has_value());
 }
+
+// ---------------------------------------------------------------------------
+// Reported paths use generic (forward slash) separators on every platform
+// ---------------------------------------------------------------------------
+
+TEST_CASE("FileScanner.GenericPathSeparators", "[scanner]")
+{
+    TempTestDir dir("dude_scanner_test");
+    dir.WriteFile("sub/deep/a.cpp");
+
+    // Spelling the scan root with forward slashes must not yield mixed separators.
+    auto const result = FileScanner::Scan(std::filesystem::path(dir.Path().generic_string()));
+    REQUIRE(result.has_value());
+    REQUIRE(result->size() == 1);
+    CHECK(result->front().string().find('\\') == std::string::npos);
+}
