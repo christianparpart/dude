@@ -112,6 +112,16 @@ cp build/clang-release-static/src/cli/dude /usr/local/bin/
 Pre-built static binaries for Linux and Windows are available as
 [CI build artifacts](https://github.com/christianparpart/dude/actions).
 
+## Upgrading
+
+### After 0.3.0 — path format on Windows
+
+Reported file paths now use forward slashes throughout instead of mixing them with backslashes,
+which changes console, JSON and MCP output. Block cache and baseline entries are keyed by path
+string, so the first run after upgrading re-extracts every block, and a baseline saved by an older
+Windows build no longer matches by path — save it again with `--save-baseline`. Output on POSIX
+systems is unchanged.
+
 ## Usage
 
 ```
