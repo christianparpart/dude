@@ -102,7 +102,9 @@ if(NOT stdexec_FOUND)
     CPMAddPackage(
         NAME stdexec
         GITHUB_REPOSITORY NVIDIA/stdexec
-        GIT_TAG main
+        # Pinned: stdexec has no versioned releases, and its main branch regularly breaks
+        # compilers it does not test against, which silently rots CI on unrelated changes.
+        GIT_TAG nvhpc-26.05
         EXCLUDE_FROM_ALL YES
         OPTIONS "STDEXEC_BUILD_TESTS OFF" "STDEXEC_BUILD_EXAMPLES OFF"
     )
