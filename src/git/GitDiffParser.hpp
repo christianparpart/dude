@@ -58,6 +58,18 @@ public:
     [[nodiscard]] static auto ParseDiffOutput(std::string const& diffOutput,
                                               std::vector<std::string> const& extensions = {}) -> dude::DiffResult;
 
+    /// @brief Rewrites relative diff paths into absolute paths anchored at the repository root.
+    ///
+    /// Git reports diff paths relative to the repository root, not relative to the directory passed
+    /// via `git -C`. Anchoring them explicitly keeps path matching intact when only a subdirectory
+    /// of the repository is analyzed, where resolving against the analyzed directory would yield
+    /// paths that match no scanned file.
+    ///
+    /// @param diff The parsed diff whose relative paths are rewritten in place.
+    /// @param directory A directory inside the repository (typically the analyzed directory).
+    /// @return True if the repository root was found and the paths were anchored.
+    static auto AnchorPathsAtRepositoryRoot(dude::DiffResult& diff, std::filesystem::path const& directory) -> bool;
+
     /// @brief Returns the current HEAD commit SHA.
     /// @param projectRoot The directory in which to run git rev-parse.
     /// @return The trimmed HEAD commit SHA, or an error if git fails.

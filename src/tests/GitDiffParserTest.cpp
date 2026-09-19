@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <git/GitDiffParser.hpp>
+#include <tests/TempGitRepo.hpp>
+#include <tests/TempTestDir.hpp>
 
 #include <dude/DiffRange.hpp>
 
 #include <catch2/catch_test_macros.hpp>
+
+#include <filesystem>
 
 using namespace git;
 using namespace dude;
@@ -330,4 +334,40 @@ TEST_CASE("GitDiffParser.RunGitShow.EmptyCommits", "[gitdiff]")
     auto const result = GitDiffParser::RunGitShow("/tmp", {});
     REQUIRE(!result.has_value());
     CHECK(result.error().message.find("empty") != std::string::npos);
+}
+
+TEST_CASE("GitDiffParser.AnchorPathsAtRepositoryRoot.SubdirectoryOfRepository", "[gitdiff]")
+{
+    test_utils::TempGitRepo repo("gitdiff_anchor_test");
+    repo.WriteFile("src/foo.cpp", "void foo() {}\n");
+    repo.Commit("initial");
+
+    DiffResult diff{FileChanges{.filePath = "src/foo.cpp", .changedRanges = {LineRange{1, 1}}}};
+
+    // Anchoring resolves against the repository root, not against the directory being analyzed.
+    REQUIRE(GitDiffParser::AnchorPathsAtRepositoryRoot(diff, repo.Root() / "src"));
+    CHECK(diff[0].filePath == std::filesystem::weakly_canonical(repo.Root() / "src" / "foo.cpp"));
+}
+
+TEST_CASE("GitDiffParser.AnchorPathsAtRepositoryRoot.KeepsAbsolutePaths", "[gitdiff]")
+{
+    test_utils::TempGitRepo repo("gitdiff_anchor_test");
+    repo.WriteFile("foo.cpp", "void foo() {}\n");
+    repo.Commit("initial");
+
+    auto const absolutePath = repo.Root() / "foo.cpp";
+    DiffResult diff{FileChanges{.filePath = absolutePath, .changedRanges = {LineRange{1, 1}}}};
+
+    REQUIRE(GitDiffParser::AnchorPathsAtRepositoryRoot(diff, repo.Root()));
+    CHECK(diff[0].filePath == absolutePath);
+}
+
+TEST_CASE("GitDiffParser.AnchorPathsAtRepositoryRoot.OutsideRepository", "[gitdiff]")
+{
+    test_utils::TempTestDir dir("gitdiff_anchor_test"); // Not a git repository.
+
+    DiffResult diff{FileChanges{.filePath = "src/foo.cpp", .changedRanges = {LineRange{1, 1}}}};
+
+    CHECK(!GitDiffParser::AnchorPathsAtRepositoryRoot(diff, dir.Path()));
+    CHECK(diff[0].filePath == "src/foo.cpp");
 }

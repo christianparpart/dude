@@ -3,12 +3,12 @@
 #include <mcp/AnalysisSession.hpp>
 #include <mcp/McpTooling.hpp>
 #include <mcpprotocol/McpServer.hpp>
+#include <tests/TempGitRepo.hpp>
 #include <tests/TempTestDir.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
-#include <cstdlib>
 #include <sstream>
 
 using namespace mcp;
@@ -522,81 +522,9 @@ TEST_CASE("McpTools.AnalyzeFile.ReusesExistingSession", "[mcp][tools]")
 // analyze_branch_duplicates tool tests
 // ---------------------------------------------------------------------------
 
-namespace
-{
-
-/// @brief Helper struct that creates a temporary git repository for testing.
-struct TempGitRepo
-{
-    std::filesystem::path root;
-
-    TempGitRepo()
-    {
-        static auto const seed = std::random_device{}();
-        static std::atomic<unsigned> counter{0};
-        root = std::filesystem::temp_directory_path() / std::format("mcp_git_test_{}_{}", seed, counter.fetch_add(1));
-        std::filesystem::create_directories(root);
-
-        // Initialize git repo with an initial commit.
-        RunGit("init");
-        RunGit("config user.email test@test.com");
-        RunGit("config user.name Test");
-    }
-
-    TempGitRepo(TempGitRepo const&) = delete;
-    TempGitRepo(TempGitRepo&&) = delete;
-    auto operator=(TempGitRepo const&) -> TempGitRepo& = delete;
-    auto operator=(TempGitRepo&&) -> TempGitRepo& = delete;
-
-    void WriteFile(std::string const& name, std::string const& content) const
-    {
-        auto const dir = (root / name).parent_path();
-        std::filesystem::create_directories(dir);
-        std::ofstream out(root / name);
-        out << content;
-    }
-
-    void RunGit(std::string const& gitArgs) const
-    {
-        auto const cmd = std::format("git -C {} {}", root.string(), gitArgs);
-        // NOLINTNEXTLINE(cert-env33-c) -- std::system is intentional for test setup
-        auto const status = std::system(cmd.c_str());
-        REQUIRE(status == 0);
-    }
-
-    void Commit(std::string const& message) const
-    {
-        RunGit("add -A");
-        RunGit(std::format("commit -m \"{}\"", message));
-    }
-
-    /// @brief Returns the current HEAD commit SHA.
-    [[nodiscard]] auto GetHeadSha() const -> std::string
-    {
-        auto const shaFile = root / "head_sha.tmp";
-        auto const cmd = std::format("git -C {} rev-parse HEAD > \"{}\"", root.string(), shaFile.string());
-        // NOLINTNEXTLINE(cert-env33-c) -- std::system is intentional for test setup
-        auto const status = std::system(cmd.c_str());
-        REQUIRE(status == 0);
-        std::string sha;
-        {
-            std::ifstream in(shaFile);
-            std::getline(in, sha);
-        } // Close file handle before removing (required on Windows)
-        std::filesystem::remove(shaFile);
-        while (!sha.empty() && (sha.back() == '\n' || sha.back() == '\r'))
-            sha.pop_back();
-        return sha;
-    }
-
-    ~TempGitRepo() { std::filesystem::remove_all(root); }
-};
-
-} // namespace
-
 TEST_CASE("McpTools.AnalyzeBranchDuplicates.NoDiff", "[mcp][tools]")
 {
-    TempGitRepo repo;
+    test_utils::TempGitRepo repo("mcp_git_test");
 
     auto constexpr kBaseSource = R"(
 void uniqueFunction(int x) {
@@ -618,7 +546,7 @@ void uniqueFunction(int x) {
 
     auto const resp = CallTool(
         server, "analyze_branch_duplicates",
-        {{"directory", repo.root.string()}, {"base_ref", "master"}, {"source_ref", "feature"}, {"min_tokens", 10}});
+        {{"directory", repo.Root().string()}, {"base_ref", "master"}, {"source_ref", "feature"}, {"min_tokens", 10}});
     auto const data = ParseToolResultText(resp);
     CHECK(data.contains("summary"));
     CHECK(data["changed_blocks_count"].get<int>() == 0);
@@ -628,7 +556,7 @@ void uniqueFunction(int x) {
 
 TEST_CASE("McpTools.AnalyzeBranchDuplicates.DuplicatesExisting", "[mcp][tools]")
 {
-    TempGitRepo repo;
+    test_utils::TempGitRepo repo("mcp_git_test");
 
     auto constexpr kBaseSource = R"(
 void functionA(int x) {
@@ -669,7 +597,7 @@ void functionB(int y) {
     InitServer(server);
 
     auto const resp = CallTool(server, "analyze_branch_duplicates",
-                               {{"directory", repo.root.string()},
+                               {{"directory", repo.Root().string()},
                                 {"base_ref", "master"},
                                 {"source_ref", "feature"},
                                 {"min_tokens", 10},
@@ -679,6 +607,69 @@ void functionB(int y) {
     CHECK(data["changed_blocks_count"].get<int>() > 0);
     // The new code should duplicate existing base code.
     CHECK(!data["duplicates_existing"].empty());
+}
+
+TEST_CASE("McpTools.AnalyzeBranchDuplicates.SubdirectoryOfRepository", "[mcp][tools]")
+{
+    test_utils::TempGitRepo repo("mcp_git_test");
+
+    auto constexpr kUnrelatedSource = R"(
+void uniqueFunction(int x) {
+    int result = x * 2 + 1;
+    return;
+}
+)";
+    auto constexpr kAlphaSource = R"(
+void functionA(int x) {
+    int result = 0;
+    for (int i = 0; i < x; ++i) {
+        result += i * 2;
+        if (result > 100) {
+            result = 100;
+        }
+    }
+    return;
+}
+)";
+    auto constexpr kBetaSource = R"(
+void functionB(int y) {
+    int result = 0;
+    for (int i = 0; i < y; ++i) {
+        result += i * 2;
+        if (result > 100) {
+            result = 100;
+        }
+    }
+    return;
+}
+)";
+
+    repo.WriteFile("unrelated.cpp", kUnrelatedSource);
+    repo.Commit("initial");
+    auto const baseSha = repo.GetHeadSha();
+
+    // Both clones live entirely in files that are new on this commit.
+    repo.WriteFile("src/alpha.cpp", kAlphaSource);
+    repo.WriteFile("src/beta.cpp", kBetaSource);
+    repo.Commit("add duplicated helpers");
+
+    AnalysisSession session;
+    McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
+    RegisterDudeTools(server, session);
+    InitServer(server);
+
+    // Git reports diff paths relative to the repository root, so analyzing a subdirectory must still
+    // match them against the scanned files.
+    auto const resp = CallTool(server, "analyze_branch_duplicates",
+                               {{"directory", (repo.Root() / "src").string()},
+                                {"base_ref", baseSha},
+                                {"min_tokens", 10},
+                                {"threshold", 0.70}});
+    auto const data = ParseToolResultText(resp);
+    CHECK(data["changed_blocks_count"].get<int>() == 2);
+    CHECK(data["duplicates_existing"].empty());
+    REQUIRE(data["duplicates_new"].size() == 1);
+    CHECK(data["duplicates_new"][0]["block_count"].get<int>() == 2);
 }
 
 TEST_CASE("McpTools.AnalyzeBranchDuplicates.GitError", "[mcp][tools]")
@@ -703,7 +694,7 @@ TEST_CASE("McpTools.AnalyzeBranchDuplicates.GitError", "[mcp][tools]")
 
 TEST_CASE("McpTools.FindIntroducedDuplicates.NoDuplicates", "[mcp][tools]")
 {
-    TempGitRepo repo;
+    test_utils::TempGitRepo repo("mcp_git_test");
 
     auto constexpr kBaseSource = R"(
 void uniqueFunction(int x) {
@@ -723,7 +714,7 @@ void uniqueFunction(int x) {
 
     auto const resp =
         CallTool(server, "find_introduced_duplicates",
-                 {{"directory", repo.root.string()}, {"commits", nlohmann::json::array({sha})}, {"min_tokens", 10}});
+                 {{"directory", repo.Root().string()}, {"commits", nlohmann::json::array({sha})}, {"min_tokens", 10}});
     auto const data = ParseToolResultText(resp);
     CHECK(data.contains("summary"));
     CHECK(data.contains("commits"));
@@ -733,7 +724,7 @@ void uniqueFunction(int x) {
 
 TEST_CASE("McpTools.FindIntroducedDuplicates.DuplicatesExisting", "[mcp][tools]")
 {
-    TempGitRepo repo;
+    test_utils::TempGitRepo repo("mcp_git_test");
 
     auto constexpr kBaseSource = R"(
 void functionA(int x) {
@@ -773,7 +764,7 @@ void functionB(int y) {
     InitServer(server);
 
     auto const resp = CallTool(server, "find_introduced_duplicates",
-                               {{"directory", repo.root.string()},
+                               {{"directory", repo.Root().string()},
                                 {"commits", nlohmann::json::array({dupSha})},
                                 {"min_tokens", 10},
                                 {"threshold", 0.70}});
@@ -802,7 +793,7 @@ TEST_CASE("McpTools.FindIntroducedDuplicates.GitError", "[mcp][tools]")
 
 TEST_CASE("McpTools.FindIntroducedDuplicates.EmptyCommits", "[mcp][tools]")
 {
-    TempGitRepo repo;
+    test_utils::TempGitRepo repo("mcp_git_test");
     repo.WriteFile("base.cpp", "void f() { return; }\n");
     repo.Commit("initial");
 
@@ -812,7 +803,7 @@ TEST_CASE("McpTools.FindIntroducedDuplicates.EmptyCommits", "[mcp][tools]")
     InitServer(server);
 
     auto const resp = CallTool(server, "find_introduced_duplicates",
-                               {{"directory", repo.root.string()}, {"commits", nlohmann::json::array()}});
+                               {{"directory", repo.Root().string()}, {"commits", nlohmann::json::array()}});
     REQUIRE(resp.result.has_value());
     CHECK(resp.result.value()["isError"] == true); // NOLINT(bugprone-unchecked-optional-access)
 }
