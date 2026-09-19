@@ -25,7 +25,7 @@ endfunction()
 # Locate the llvm-profdata and llvm-cov tools, preferring the version matching the compiler.
 macro(_find_llvm_coverage_tools)
     if(NOT LLVM_PROFDATA OR NOT LLVM_COV)
-        # Extract compiler version major (e.g. "21" from clang++-21).
+        # Extract the compiler version major, so the tools match the compiler that profiled.
         string(REGEX MATCH "[0-9]+" _clang_major "${CMAKE_CXX_COMPILER_VERSION}")
 
         find_program(LLVM_PROFDATA NAMES llvm-profdata-${_clang_major} llvm-profdata)
