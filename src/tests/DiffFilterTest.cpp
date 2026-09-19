@@ -132,6 +132,21 @@ TEST_CASE("DiffFilter.FilterCloneGroups.KeepGroupWithChangedBlock", "[difffilter
     CHECK(filtered[0].blockIndices == std::vector<size_t>{0, 1, 2});
 }
 
+TEST_CASE("DiffFilter.FilterCloneGroups.KeepGroupWhereEveryBlockChanged", "[difffilter]")
+{
+    // A clone whose blocks all live in added or changed code -- nothing outside the diff anchors it,
+    // and it must still be reported.
+    std::vector<CloneGroup> groups = {
+        {.blockIndices = {0, 1}, .avgSimilarity = 0.95},
+    };
+
+    std::unordered_set<size_t> changedBlocks = {0, 1};
+
+    auto const filtered = DiffFilter::FilterCloneGroups(groups, changedBlocks);
+    REQUIRE(filtered.size() == 1);
+    CHECK(filtered[0].blockIndices == std::vector<size_t>{0, 1});
+}
+
 TEST_CASE("DiffFilter.FilterCloneGroups.RemoveGroupWithNoChangedBlocks", "[difffilter]")
 {
     std::vector<CloneGroup> groups = {
