@@ -983,7 +983,10 @@ auto HandleAnalyzeBranchDuplicates(AnalysisSession& session, nlohmann::json cons
     if (!diffOutput)
         return std::unexpected(diffOutput.error().message);
 
-    auto const diffResult = git::GitDiffParser::ParseDiffOutput(*diffOutput, extensions);
+    auto diffResult = git::GitDiffParser::ParseDiffOutput(*diffOutput, extensions);
+
+    // Diff paths are relative to the repository root, which may sit above the analyzed directory.
+    git::GitDiffParser::AnchorPathsAtRepositoryRoot(diffResult, projectRoot);
 
     // Build categorized duplicates.
     auto result = BuildDuplicatesResult(session, args, diffResult);
@@ -1075,7 +1078,10 @@ auto HandleFindIntroducedDuplicates(AnalysisSession& session, nlohmann::json con
     if (!diffOutput)
         return std::unexpected(diffOutput.error().message);
 
-    auto const diffResult = git::GitDiffParser::ParseDiffOutput(*diffOutput, extensions);
+    auto diffResult = git::GitDiffParser::ParseDiffOutput(*diffOutput, extensions);
+
+    // Diff paths are relative to the repository root, which may sit above the analyzed directory.
+    git::GitDiffParser::AnchorPathsAtRepositoryRoot(diffResult, projectRoot);
 
     // Build categorized duplicates.
     auto result = BuildDuplicatesResult(session, args, diffResult);

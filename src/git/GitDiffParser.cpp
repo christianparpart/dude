@@ -3,6 +3,7 @@
 #include "GitDiffParser.hpp"
 
 #include "GitCommand.hpp"
+#include "GitFileFilter.hpp"
 
 #include <algorithm>
 #include <charconv>
@@ -195,6 +196,26 @@ auto GitDiffParser::ParseDiffOutput(std::string const& diffOutput, std::vector<s
     }
 
     return result;
+}
+
+auto GitDiffParser::AnchorPathsAtRepositoryRoot(dude::DiffResult& diff, std::filesystem::path const& directory) -> bool
+{
+    auto const repositoryRoot = GitFileFilter::FindGitRoot(directory);
+    if (!repositoryRoot)
+        return false;
+
+    for (auto& fileChanges : diff)
+    {
+        if (!fileChanges.filePath.is_relative())
+            continue;
+
+        std::error_code ec;
+        auto const absolutePath = std::filesystem::weakly_canonical(*repositoryRoot / fileChanges.filePath, ec);
+        if (!ec)
+            fileChanges.filePath = absolutePath;
+    }
+
+    return true;
 }
 
 auto GitDiffParser::GetHeadSha(std::filesystem::path const& projectRoot) -> std::expected<std::string, GitDiffError>

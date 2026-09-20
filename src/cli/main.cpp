@@ -775,6 +775,9 @@ auto RunDiffSetup(CliOptions const& opts) -> std::expected<dude::DiffResult, int
             std::println(stderr, "  Changed: {} ({} hunks)", fc.filePath.string(), fc.changedRanges.size());
     }
 
+    // Diff paths are relative to the repository root, which may sit above the analyzed directory.
+    git::GitDiffParser::AnchorPathsAtRepositoryRoot(diffResult, projectRoot);
+
     return diffResult;
 }
 

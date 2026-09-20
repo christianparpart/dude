@@ -112,6 +112,16 @@ cp build/clang-release-static/src/cli/dude /usr/local/bin/
 Pre-built static binaries for Linux and Windows are available as
 [CI build artifacts](https://github.com/christianparpart/dude/actions).
 
+## Upgrading
+
+### After 0.3.0 — path format on Windows
+
+Reported file paths now use forward slashes throughout instead of mixing them with backslashes,
+which changes console, JSON and MCP output. Block cache and baseline entries are keyed by path
+string, so the first run after upgrading re-extracts every block, and a baseline saved by an older
+Windows build no longer matches by path — save it again with `--save-baseline`. Output on POSIX
+systems is unchanged.
+
 ## Usage
 
 ```
@@ -160,6 +170,12 @@ Valid scopes: `inter-file`, `intra-file`, `inter-function`, `intra-function`, `a
 |--------|-------------|
 | `--diff-base <ref>` | Git ref to diff against (enables diff mode) |
 | `--diff-commits <sha,...>` | Comma-separated commit SHAs (enables commit-diff mode) |
+
+Diff mode reports a clone group as soon as **one** of its blocks overlaps the diff. That covers both
+clones living entirely in code the diff adds and code the diff adds that duplicates something
+already in the tree — the whole group is printed, so it is visible what the new code duplicates.
+Clones that the diff does not touch at all are not reported. The directory to analyze may be the
+repository root or any subdirectory of it.
 
 ### Miscellaneous
 

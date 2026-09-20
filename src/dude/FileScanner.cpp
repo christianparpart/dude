@@ -55,7 +55,9 @@ auto FileScanner::Scan(std::filesystem::path const& directory, std::vector<std::
         if (filter.has_value() && !(*filter)(entry.path()))
             continue;
 
-        result.push_back(entry.path());
+        // Generic form keeps reported paths free of mixed separators: the scan root is spelled the
+        // way the user typed it, while the iterator appends the platform's preferred separator.
+        result.emplace_back(entry.path().generic_string());
     }
 
     if (ec)

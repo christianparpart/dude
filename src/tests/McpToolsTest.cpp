@@ -3,13 +3,16 @@
 #include <mcp/AnalysisSession.hpp>
 #include <mcp/McpTooling.hpp>
 #include <mcpprotocol/McpServer.hpp>
+#include <tests/TempGitRepo.hpp>
 #include <tests/TempTestDir.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
-#include <cstdlib>
+#include <filesystem>
 #include <sstream>
+#include <string>
+#include <vector>
 
 using namespace mcp;
 using namespace mcpprotocol;
@@ -522,81 +525,9 @@ TEST_CASE("McpTools.AnalyzeFile.ReusesExistingSession", "[mcp][tools]")
 // analyze_branch_duplicates tool tests
 // ---------------------------------------------------------------------------
 
-namespace
-{
-
-/// @brief Helper struct that creates a temporary git repository for testing.
-struct TempGitRepo
-{
-    std::filesystem::path root;
-
-    TempGitRepo()
-    {
-        static auto const seed = std::random_device{}();
-        static std::atomic<unsigned> counter{0};
-        root = std::filesystem::temp_directory_path() / std::format("mcp_git_test_{}_{}", seed, counter.fetch_add(1));
-        std::filesystem::create_directories(root);
-
-        // Initialize git repo with an initial commit.
-        RunGit("init");
-        RunGit("config user.email test@test.com");
-        RunGit("config user.name Test");
-    }
-
-    TempGitRepo(TempGitRepo const&) = delete;
-    TempGitRepo(TempGitRepo&&) = delete;
-    auto operator=(TempGitRepo const&) -> TempGitRepo& = delete;
-    auto operator=(TempGitRepo&&) -> TempGitRepo& = delete;
-
-    void WriteFile(std::string const& name, std::string const& content) const
-    {
-        auto const dir = (root / name).parent_path();
-        std::filesystem::create_directories(dir);
-        std::ofstream out(root / name);
-        out << content;
-    }
-
-    void RunGit(std::string const& gitArgs) const
-    {
-        auto const cmd = std::format("git -C {} {}", root.string(), gitArgs);
-        // NOLINTNEXTLINE(cert-env33-c) -- std::system is intentional for test setup
-        auto const status = std::system(cmd.c_str());
-        REQUIRE(status == 0);
-    }
-
-    void Commit(std::string const& message) const
-    {
-        RunGit("add -A");
-        RunGit(std::format("commit -m \"{}\"", message));
-    }
-
-    /// @brief Returns the current HEAD commit SHA.
-    [[nodiscard]] auto GetHeadSha() const -> std::string
-    {
-        auto const shaFile = root / "head_sha.tmp";
-        auto const cmd = std::format("git -C {} rev-parse HEAD > \"{}\"", root.string(), shaFile.string());
-        // NOLINTNEXTLINE(cert-env33-c) -- std::system is intentional for test setup
-        auto const status = std::system(cmd.c_str());
-        REQUIRE(status == 0);
-        std::string sha;
-        {
-            std::ifstream in(shaFile);
-            std::getline(in, sha);
-        } // Close file handle before removing (required on Windows)
-        std::filesystem::remove(shaFile);
-        while (!sha.empty() && (sha.back() == '\n' || sha.back() == '\r'))
-            sha.pop_back();
-        return sha;
-    }
-
-    ~TempGitRepo() { std::filesystem::remove_all(root); }
-};
-
-} // namespace
-
 TEST_CASE("McpTools.AnalyzeBranchDuplicates.NoDiff", "[mcp][tools]")
 {
-    TempGitRepo repo;
+    test_utils::TempGitRepo repo("mcp_git_test");
 
     auto constexpr kBaseSource = R"(
 void uniqueFunction(int x) {
@@ -618,7 +549,7 @@ void uniqueFunction(int x) {
 
     auto const resp = CallTool(
         server, "analyze_branch_duplicates",
-        {{"directory", repo.root.string()}, {"base_ref", "master"}, {"source_ref", "feature"}, {"min_tokens", 10}});
+        {{"directory", repo.Root().string()}, {"base_ref", "master"}, {"source_ref", "feature"}, {"min_tokens", 10}});
     auto const data = ParseToolResultText(resp);
     CHECK(data.contains("summary"));
     CHECK(data["changed_blocks_count"].get<int>() == 0);
@@ -628,7 +559,7 @@ void uniqueFunction(int x) {
 
 TEST_CASE("McpTools.AnalyzeBranchDuplicates.DuplicatesExisting", "[mcp][tools]")
 {
-    TempGitRepo repo;
+    test_utils::TempGitRepo repo("mcp_git_test");
 
     auto constexpr kBaseSource = R"(
 void functionA(int x) {
@@ -669,7 +600,7 @@ void functionB(int y) {
     InitServer(server);
 
     auto const resp = CallTool(server, "analyze_branch_duplicates",
-                               {{"directory", repo.root.string()},
+                               {{"directory", repo.Root().string()},
                                 {"base_ref", "master"},
                                 {"source_ref", "feature"},
                                 {"min_tokens", 10},
@@ -679,6 +610,228 @@ void functionB(int y) {
     CHECK(data["changed_blocks_count"].get<int>() > 0);
     // The new code should duplicate existing base code.
     CHECK(!data["duplicates_existing"].empty());
+}
+
+// ---------------------------------------------------------------------------
+// Diff mode categorization: clones within new code, clones against pre-existing
+// code, and clones that the diff does not touch at all.
+// ---------------------------------------------------------------------------
+
+namespace
+{
+
+auto constexpr kFeatureAlphaSource = R"(
+int LookupAlphaDepth(std::map<std::string, int> const& table, std::string const& key, int fallback)
+{
+    auto iterator = table.find(key);
+    if (iterator == table.end())
+        return fallback;
+    int depth = iterator->second;
+    while (depth > 0 && depth % 2 == 0)
+        depth /= 2;
+    if (depth > 99)
+        depth = 99;
+    std::string trace = key + ":" + std::to_string(depth);
+    if (trace.size() > 40)
+        trace.resize(40);
+    return depth + static_cast<int>(trace.size());
+}
+)";
+
+auto constexpr kFeatureBetaSource = R"(
+int LookupBetaDepth(std::map<std::string, int> const& registry, std::string const& name, int otherwise)
+{
+    auto cursor = registry.find(name);
+    if (cursor == registry.end())
+        return otherwise;
+    int level = cursor->second;
+    while (level > 0 && level % 2 == 0)
+        level /= 2;
+    if (level > 99)
+        level = 99;
+    std::string journal = name + ":" + std::to_string(level);
+    if (journal.size() > 40)
+        journal.resize(40);
+    return level + static_cast<int>(journal.size());
+}
+)";
+
+auto constexpr kPreExistingSource = R"(
+int ComputeExistingScore(std::vector<int> const& values, int weight)
+{
+    int total = 0;
+    int count = 0;
+    for (int value : values)
+    {
+        if (value < 0)
+            continue;
+        total += value * weight;
+        count += 1;
+        if (total > 1000)
+            total = 1000;
+    }
+    int average = count > 0 ? total / count : 0;
+    return average * 2 + weight;
+}
+)";
+
+auto constexpr kFeatureGammaSource = R"(
+int ComputeGammaScore(std::vector<int> const& numbers, int factor)
+{
+    int sum = 0;
+    int items = 0;
+    for (int number : numbers)
+    {
+        if (number < 0)
+            continue;
+        sum += number * factor;
+        items += 1;
+        if (sum > 1000)
+            sum = 1000;
+    }
+    int mean = items > 0 ? sum / items : 0;
+    return mean * 2 + factor;
+}
+)";
+
+auto constexpr kUntouchedLeftSource = R"(
+std::string RenderUntouchedLabelLeft(std::string const& prefix, int identifier, bool upper)
+{
+    std::string label = prefix;
+    label += "-";
+    label += std::to_string(identifier);
+    if (upper)
+    {
+        for (char& character : label)
+            character = static_cast<char>(std::toupper(character));
+    }
+    while (label.size() < 32)
+        label += ".";
+    return label;
+}
+)";
+
+auto constexpr kUntouchedRightSource = R"(
+std::string RenderUntouchedLabelRight(std::string const& head, int number, bool capitals)
+{
+    std::string caption = head;
+    caption += "-";
+    caption += std::to_string(number);
+    if (capitals)
+    {
+        for (char& letter : caption)
+            letter = static_cast<char>(std::toupper(letter));
+    }
+    while (caption.size() < 32)
+        caption += ".";
+    return caption;
+}
+)";
+
+/// @brief Populates a repository with the three diff-mode situations under a common src/ directory.
+///
+/// The initial commit holds pre-existing code (src/core) plus a clone pair nothing ever touches
+/// (src/legacy). The second commit adds a clone pair of its own and a duplicate of the pre-existing
+/// code (src/feature).
+///
+/// @param repo The repository to populate.
+/// @return The commit SHA of the initial commit, to be used as the diff base.
+auto BuildDiffModeFixture(test_utils::TempGitRepo const& repo) -> std::string
+{
+    repo.WriteFile("src/core/existing.cpp", kPreExistingSource);
+    repo.WriteFile("src/legacy/untouchedLeft.cpp", kUntouchedLeftSource);
+    repo.WriteFile("src/legacy/untouchedRight.cpp", kUntouchedRightSource);
+    repo.Commit("initial");
+    auto const baseSha = repo.GetHeadSha();
+
+    repo.WriteFile("src/feature/alpha.cpp", kFeatureAlphaSource);
+    repo.WriteFile("src/feature/beta.cpp", kFeatureBetaSource);
+    repo.WriteFile("src/feature/gamma.cpp", kFeatureGammaSource);
+    repo.Commit("add feature code");
+
+    return baseSha;
+}
+
+/// @brief Runs analyze_branch_duplicates on a directory and returns the parsed tool result.
+/// @param directory The directory to analyze (repository root or any subdirectory of it).
+/// @param baseRef The git ref to diff against.
+auto AnalyzeBranchDuplicates(std::filesystem::path const& directory, std::string const& baseRef) -> nlohmann::json
+{
+    AnalysisSession session;
+    McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
+    RegisterDudeTools(server, session);
+    InitServer(server);
+
+    auto const resp =
+        CallTool(server, "analyze_branch_duplicates",
+                 {{"directory", directory.string()}, {"base_ref", baseRef}, {"min_tokens", 10}, {"threshold", 0.70}});
+    return ParseToolResultText(resp);
+}
+
+/// @brief Returns the sorted function names of every block in a categorized clone group array.
+auto BlockNamesOf(nlohmann::json const& groups) -> std::vector<std::string>
+{
+    std::vector<std::string> names;
+    for (auto const& group : groups)
+        for (auto const& block : group["blocks"])
+            names.push_back(block["name"].get<std::string>());
+    std::ranges::sort(names);
+    return names;
+}
+
+} // namespace
+
+TEST_CASE("McpTools.AnalyzeBranchDuplicates.ClonesWithinNewCodeAreReported", "[mcp][tools]")
+{
+    test_utils::TempGitRepo repo("mcp_git_test");
+    auto const baseSha = BuildDiffModeFixture(repo);
+
+    auto const data = AnalyzeBranchDuplicates(repo.Root(), baseSha);
+
+    // Both blocks of this clone live in files the diff adds, so nothing outside the diff anchors it.
+    CHECK(BlockNamesOf(data["duplicates_new"]) == std::vector<std::string>{"LookupAlphaDepth", "LookupBetaDepth"});
+}
+
+TEST_CASE("McpTools.AnalyzeBranchDuplicates.ClonesAgainstPreExistingCodeAreReported", "[mcp][tools]")
+{
+    test_utils::TempGitRepo repo("mcp_git_test");
+    auto const baseSha = BuildDiffModeFixture(repo);
+
+    auto const data = AnalyzeBranchDuplicates(repo.Root(), baseSha);
+
+    CHECK(BlockNamesOf(data["duplicates_existing"]) ==
+          std::vector<std::string>{"ComputeExistingScore", "ComputeGammaScore"});
+}
+
+TEST_CASE("McpTools.AnalyzeBranchDuplicates.ClonesInUntouchedCodeAreNotReported", "[mcp][tools]")
+{
+    test_utils::TempGitRepo repo("mcp_git_test");
+    auto const baseSha = BuildDiffModeFixture(repo);
+
+    auto const data = AnalyzeBranchDuplicates(repo.Root(), baseSha);
+
+    CHECK(data["changed_blocks_count"].get<int>() == 3);
+    auto reported = BlockNamesOf(data["duplicates_new"]);
+    auto const existing = BlockNamesOf(data["duplicates_existing"]);
+    reported.insert(reported.end(), existing.begin(), existing.end());
+    CHECK(!std::ranges::contains(reported, "RenderUntouchedLabelLeft"));
+    CHECK(!std::ranges::contains(reported, "RenderUntouchedLabelRight"));
+}
+
+TEST_CASE("McpTools.AnalyzeBranchDuplicates.SubdirectoryOfRepository", "[mcp][tools]")
+{
+    test_utils::TempGitRepo repo("mcp_git_test");
+    auto const baseSha = BuildDiffModeFixture(repo);
+
+    // Git reports diff paths relative to the repository root, so analyzing a subdirectory must still
+    // match them against the scanned files -- otherwise no block counts as changed and every clone
+    // group is filtered away.
+    auto const data = AnalyzeBranchDuplicates(repo.Root() / "src", baseSha);
+
+    CHECK(data["changed_blocks_count"].get<int>() == 3);
+    CHECK(BlockNamesOf(data["duplicates_new"]) == std::vector<std::string>{"LookupAlphaDepth", "LookupBetaDepth"});
+    CHECK(BlockNamesOf(data["duplicates_existing"]) ==
+          std::vector<std::string>{"ComputeExistingScore", "ComputeGammaScore"});
 }
 
 TEST_CASE("McpTools.AnalyzeBranchDuplicates.GitError", "[mcp][tools]")
@@ -703,7 +856,7 @@ TEST_CASE("McpTools.AnalyzeBranchDuplicates.GitError", "[mcp][tools]")
 
 TEST_CASE("McpTools.FindIntroducedDuplicates.NoDuplicates", "[mcp][tools]")
 {
-    TempGitRepo repo;
+    test_utils::TempGitRepo repo("mcp_git_test");
 
     auto constexpr kBaseSource = R"(
 void uniqueFunction(int x) {
@@ -723,7 +876,7 @@ void uniqueFunction(int x) {
 
     auto const resp =
         CallTool(server, "find_introduced_duplicates",
-                 {{"directory", repo.root.string()}, {"commits", nlohmann::json::array({sha})}, {"min_tokens", 10}});
+                 {{"directory", repo.Root().string()}, {"commits", nlohmann::json::array({sha})}, {"min_tokens", 10}});
     auto const data = ParseToolResultText(resp);
     CHECK(data.contains("summary"));
     CHECK(data.contains("commits"));
@@ -733,7 +886,7 @@ void uniqueFunction(int x) {
 
 TEST_CASE("McpTools.FindIntroducedDuplicates.DuplicatesExisting", "[mcp][tools]")
 {
-    TempGitRepo repo;
+    test_utils::TempGitRepo repo("mcp_git_test");
 
     auto constexpr kBaseSource = R"(
 void functionA(int x) {
@@ -773,7 +926,7 @@ void functionB(int y) {
     InitServer(server);
 
     auto const resp = CallTool(server, "find_introduced_duplicates",
-                               {{"directory", repo.root.string()},
+                               {{"directory", repo.Root().string()},
                                 {"commits", nlohmann::json::array({dupSha})},
                                 {"min_tokens", 10},
                                 {"threshold", 0.70}});
@@ -802,7 +955,7 @@ TEST_CASE("McpTools.FindIntroducedDuplicates.GitError", "[mcp][tools]")
 
 TEST_CASE("McpTools.FindIntroducedDuplicates.EmptyCommits", "[mcp][tools]")
 {
-    TempGitRepo repo;
+    test_utils::TempGitRepo repo("mcp_git_test");
     repo.WriteFile("base.cpp", "void f() { return; }\n");
     repo.Commit("initial");
 
@@ -812,7 +965,7 @@ TEST_CASE("McpTools.FindIntroducedDuplicates.EmptyCommits", "[mcp][tools]")
     InitServer(server);
 
     auto const resp = CallTool(server, "find_introduced_duplicates",
-                               {{"directory", repo.root.string()}, {"commits", nlohmann::json::array()}});
+                               {{"directory", repo.Root().string()}, {"commits", nlohmann::json::array()}});
     REQUIRE(resp.result.has_value());
     CHECK(resp.result.value()["isError"] == true); // NOLINT(bugprone-unchecked-optional-access)
 }
