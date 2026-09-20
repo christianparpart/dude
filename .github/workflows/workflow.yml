@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [master]
 
+# The LLVM major every clang leg installs, stated once. Bumping to the next major is this line
+# plus the required-status-check contexts in the repository ruleset, nothing else.
+env:
+  CLANG_TOOLS_VERSION: "22"
+
 jobs:
   formatting:
     runs-on: ubuntu-24.04
@@ -14,36 +19,41 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install clang-format-21
+      - name: Install clang-format ${{ env.CLANG_TOOLS_VERSION }}
         run: |
-          wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- 21
-          sudo apt-get install -y clang-format-21
+          wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- ${{ env.CLANG_TOOLS_VERSION }}
+          sudo apt-get install -y clang-format-${{ env.CLANG_TOOLS_VERSION }}
+          sudo ln -sf /usr/bin/clang-format-${{ env.CLANG_TOOLS_VERSION }} /usr/local/bin/clang-format
 
       - name: Check clang-format
-        run: find src -name '*.cpp' -o -name '*.hpp' -o -name '*.h' | xargs clang-format-21 --dry-run --Werror
+        run: find src -name '*.cpp' -o -name '*.hpp' -o -name '*.h' | xargs clang-format --dry-run --Werror
 
   linux:
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
+        # `matrix` cannot read the `env` context, so no entry here names a compiler version:
+        # the preset selects clang/clang++ and the install step below decides which major
+        # those resolve to. GCC keeps its version in the name because that name is a required
+        # status check in the repository ruleset.
         include:
           - preset: clang-debug
-            compiler: Clang 21 (Debug)
+            compiler: Clang (Debug)
             install: clang
-            extra_cmake_args: -DCMAKE_C_COMPILER=clang-21 -DCMAKE_CXX_COMPILER=clang++-21 -DENABLE_CLANG_TIDY=OFF
+            extra_cmake_args: -DENABLE_CLANG_TIDY=OFF
           - preset: clang-release
-            compiler: Clang 21 (Release)
+            compiler: Clang (Release)
             install: clang
-            extra_cmake_args: -DCMAKE_C_COMPILER=clang-21 -DCMAKE_CXX_COMPILER=clang++-21
+            extra_cmake_args:
           - preset: clang-release-static
-            compiler: Clang 21 (Release, static)
+            compiler: Clang (Release, static)
             install: clang
-            extra_cmake_args: -DCMAKE_C_COMPILER=clang-21 -DCMAKE_CXX_COMPILER=clang++-21
+            extra_cmake_args:
           - preset: clang-tsan
-            compiler: Clang 21 (ThreadSanitizer)
+            compiler: Clang (ThreadSanitizer)
             install: clang
-            extra_cmake_args: -DCMAKE_C_COMPILER=clang-21 -DCMAKE_CXX_COMPILER=clang++-21
+            extra_cmake_args:
           - preset: gcc-debug
             compiler: GCC 14
             install: gcc
@@ -60,10 +70,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Clang 21
+      - name: Install Clang ${{ env.CLANG_TOOLS_VERSION }}
         if: matrix.install == 'clang'
         run: |
-          wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- 21
+          wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- ${{ env.CLANG_TOOLS_VERSION }}
+          sudo ln -sf /usr/bin/clang-${{ env.CLANG_TOOLS_VERSION }} /usr/local/bin/clang
+          sudo ln -sf /usr/bin/clang++-${{ env.CLANG_TOOLS_VERSION }} /usr/local/bin/clang++
+
+      # Without a symbolizer from the same major, a sanitizer report is a column of addresses.
+      - name: Install LLVM ${{ env.CLANG_TOOLS_VERSION }} tools
+        if: matrix.preset == 'clang-tsan'
+        run: |
+          sudo apt-get install -y llvm-${{ env.CLANG_TOOLS_VERSION }}
+          sudo ln -sf /usr/bin/llvm-symbolizer-${{ env.CLANG_TOOLS_VERSION }} /usr/local/bin/llvm-symbolizer
 
       - name: Install GCC 14
         if: matrix.install == 'gcc'
@@ -120,9 +139,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Clang 21
+      - name: Install Clang ${{ env.CLANG_TOOLS_VERSION }} and its LLVM tools
         run: |
-          wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- 21
+          wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- ${{ env.CLANG_TOOLS_VERSION }}
+          sudo apt-get install -y llvm-${{ env.CLANG_TOOLS_VERSION }}
+          sudo ln -sf /usr/bin/clang-${{ env.CLANG_TOOLS_VERSION }} /usr/local/bin/clang
+          sudo ln -sf /usr/bin/clang++-${{ env.CLANG_TOOLS_VERSION }} /usr/local/bin/clang++
+          sudo ln -sf /usr/bin/llvm-symbolizer-${{ env.CLANG_TOOLS_VERSION }} /usr/local/bin/llvm-symbolizer
 
       - name: Install dependencies
         run: sudo apt-get install -y ninja-build catch2 ccache
@@ -142,7 +165,7 @@ jobs:
           restore-keys: ccache-clang-coverage-
 
       - name: Configure
-        run: cmake --preset clang-coverage -DCMAKE_C_COMPILER=clang-21 -DCMAKE_CXX_COMPILER=clang++-21
+        run: cmake --preset clang-coverage
           -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Build
@@ -154,7 +177,7 @@ jobs:
       - name: Enforce minimum coverage (95%)
         run: |
           COVERAGE_JSON="build/clang-coverage/coverage-summary.json"
-          llvm-cov-21 export build/clang-coverage/src/tests/dude_test \
+          llvm-cov-${{ env.CLANG_TOOLS_VERSION }} export build/clang-coverage/src/tests/dude_test \
             -instr-profile=build/clang-coverage/coverage.profdata \
             -summary-only \
             -ignore-filename-regex=_deps/ \

@@ -62,6 +62,16 @@ target_compile_definitions(dude_test PRIVATE
 )
 
 set_pedantic_compiler_warnings(dude_test)
+
+# Catch2's TEST_CASE expands __COUNTER__, which Clang 22 diagnoses as a C2y extension under
+# -Wpedantic. The extension is the framework's, and treating its headers as SYSTEM does not
+# silence it: the diagnostic is reported at the expansion site, in our own test file.
+include(CheckCXXCompilerFlag)
+check_cxx_compiler_flag(-Wno-c2y-extensions HAVE_WNO_C2Y_EXTENSIONS)
+if(HAVE_WNO_C2Y_EXTENSIONS)
+    target_compile_options(dude_test PRIVATE -Wno-c2y-extensions)
+endif()
+
 enable_sanitizers(dude_test)
 enable_coverage(dude_test)
 enable_clang_tidy(dude_test)
