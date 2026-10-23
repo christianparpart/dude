@@ -1183,6 +1183,75 @@ auto HandleReviewFile(nlohmann::json const& args) -> std::expected<nlohmann::jso
 }
 
 // ---------------------------------------------------------------------------
+// Prompt: review_branch
+// ---------------------------------------------------------------------------
+
+/// @brief Builds the descriptor for the `review_branch` prompt.
+///
+/// The prompt takes the project root (`directory`, required) and an optional `base_ref` to diff
+/// the current branch against.
+/// @return The prompt descriptor.
+auto MakeReviewBranchDescriptor() -> mcpprotocol::PromptDescriptor
+{
+    return {
+        .name = "review_branch",
+        .title = "Review Branch",
+        .description = "Review the duplication the current branch adds compared to its base branch before merging.",
+        .arguments = nlohmann::json::array({
+            {{"name", "directory"}, {"description", "Path to the git project root directory"}, {"required", true}},
+            {{"name", "base_ref"},
+             {"description", "Git ref of the base branch (default: the repository's default branch)"},
+             {"required", false}},
+        }),
+    };
+}
+
+/// @brief Builds the user message for the `review_branch` prompt.
+/// @param args Prompt arguments; `directory` is required, `base_ref` is optional.
+/// @return The prompt result with a single user message, or an error if `directory` is missing.
+auto HandleReviewBranch(nlohmann::json const& args) -> std::expected<nlohmann::json, std::string>
+{
+    auto const directory = args.value("directory", std::string{});
+    if (directory.empty())
+        return std::unexpected(std::string("Missing required argument: directory"));
+
+    auto const baseRef = args.value("base_ref", std::string{});
+    auto const baseRefStep =
+        baseRef.empty()
+            ? std::string("1. Determine the repository's default branch (use `origin/HEAD` if set, otherwise "
+                          "`origin/main` or `origin/master`), then call the `analyze_branch_duplicates` tool with "
+                          "the directory and that ref as `base_ref`.")
+            : std::format("1. Call the `analyze_branch_duplicates` tool with the directory and `base_ref` set to "
+                          "'{}'.",
+                          baseRef);
+
+    auto const message = std::format(
+        "Please review the duplication the current branch in '{}' adds before it is merged.\n\n"
+        "Note: the tool diffs `base...HEAD` (against the merge base), so only committed changes count as branch "
+        "changes; uncommitted working-tree edits are not included.\n\n"
+        "Steps:\n"
+        "{}\n"
+        "2. Use `get_code_block` to read the source code of each reported clone.\n"
+        "3. Report the findings in two groups, highest similarity first:\n"
+        "   a. Duplicated within the branch (from `duplicates_new`): new code duplicating other new code (every "
+        "block has `is_changed: true`). Suggest extracting a shared helper before merging.\n"
+        "   b. Duplicates existing code (from `duplicates_existing`): new code copying code already in the tree. "
+        "Each block carries an `is_changed` flag: the pre-existing original is the block with `is_changed: false`, "
+        "the branch's copy has `is_changed: true`. Name the original by file and function and suggest reusing it.\n"
+        "4. List `intra_function_clones` (repetition inside a single changed function) separately.\n"
+        "5. End with a short summary of how much duplication the branch adds and what is worth fixing before "
+        "merge.\n\n"
+        "Only suggest changes; do not edit any code.",
+        directory, baseRefStep);
+
+    return nlohmann::json{
+        {"messages", nlohmann::json::array({
+                         {{"role", "user"}, {"content", {{"type", "text"}, {"text", message}}}},
+                     })},
+    };
+}
+
+// ---------------------------------------------------------------------------
 // Tool: save_baseline
 // ---------------------------------------------------------------------------
 
@@ -1361,6 +1430,8 @@ void RegisterDudeTools(mcpprotocol::McpServer& server, AnalysisSession& session)
                           [](auto const& args) { return HandleAnalyzeAndReport(args); });
 
     server.RegisterPrompt(MakeReviewFileDescriptor(), [](auto const& args) { return HandleReviewFile(args); });
+
+    server.RegisterPrompt(MakeReviewBranchDescriptor(), [](auto const& args) { return HandleReviewBranch(args); });
 }
 
 } // namespace mcp

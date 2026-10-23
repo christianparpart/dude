@@ -270,6 +270,7 @@ blocks, and generating reports.
 |--------|-------------|
 | `analyze_and_report` | Multi-step analysis and report generation with refactoring suggestions |
 | `review_file` | File-focused review with duplication context and recommendations |
+| `review_branch` | Pre-merge review of the duplication the current branch adds against its base (`base_ref`, default: the repository's default branch) |
 
 ### Claude Code Integration
 
