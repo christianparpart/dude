@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -137,7 +138,8 @@ TEST_CASE("McpTools.PromptsAreRegistered", "[mcp][tools]")
     REQUIRE(resp.has_value());
     REQUIRE(resp->result.has_value());                     // NOLINT(bugprone-unchecked-optional-access)
     auto const& prompts = resp->result.value()["prompts"]; // NOLINT(bugprone-unchecked-optional-access)
-    CHECK(prompts.size() == 2);
+    CHECK(prompts.size() == 3);
+    CHECK(std::ranges::any_of(prompts, [](auto const& prompt) { return prompt["name"] == "review_branch"; }));
 }
 
 // ---------------------------------------------------------------------------
@@ -408,6 +410,73 @@ TEST_CASE("McpTools.ReviewFilePrompt.MissingArg", "[mcp][tools]")
     auto resp = server.HandleMessage(JsonRpcMessage{req});
     REQUIRE(resp.has_value());
     CHECK(resp->error.has_value()); // NOLINT(bugprone-unchecked-optional-access)
+}
+
+namespace
+{
+
+/// @brief Sends a `prompts/get` request for the `review_branch` prompt.
+/// @param arguments The prompt arguments to pass.
+/// @return The server's response, if any.
+auto GetReviewBranchPrompt(nlohmann::json const& arguments) -> std::optional<JsonRpcResponse>
+{
+    AnalysisSession session;
+    McpServer server({.name = "test", .version = "1.0", .title = {}, .description = {}, .websiteUrl = {}});
+    RegisterDudeTools(server, session);
+    InitServer(server);
+
+    JsonRpcRequest req;
+    req.id = 13;
+    req.method = "prompts/get";
+    req.params = {{"name", "review_branch"}, {"arguments", arguments}};
+    return server.HandleMessage(JsonRpcMessage{req});
+}
+
+/// @brief Extracts the text of the single user message of a prompt response.
+/// @param resp The `prompts/get` response.
+/// @return The message text, or an empty string if the response carries no single message.
+auto PromptMessageText(std::optional<JsonRpcResponse> const& resp) -> std::string
+{
+    if (!resp.has_value() || !resp->result.has_value())
+        return {};
+    auto const& messages = (*resp->result)["messages"];
+    if (messages.size() != 1)
+        return {};
+    return messages[0]["content"]["text"].get<std::string>();
+}
+
+} // namespace
+
+TEST_CASE("McpTools.ReviewBranchPrompt.WithBaseRef", "[mcp][tools]")
+{
+    auto const text = PromptMessageText(GetReviewBranchPrompt({{"directory", "/tmp/repo"}, {"base_ref", "develop"}}));
+    CHECK(text.contains("/tmp/repo"));
+    CHECK(text.contains("'develop'"));
+    CHECK(text.contains("analyze_branch_duplicates"));
+    CHECK(text.contains("get_code_block"));
+    CHECK(text.contains("duplicates_new"));
+    CHECK(text.contains("duplicates_existing"));
+    CHECK(text.contains("intra_function_clones"));
+    CHECK(text.contains("uncommitted"));
+    CHECK(text.contains("do not edit"));
+    CHECK_FALSE(text.contains("default branch"));
+}
+
+TEST_CASE("McpTools.ReviewBranchPrompt.WithoutBaseRef", "[mcp][tools]")
+{
+    auto const text = PromptMessageText(GetReviewBranchPrompt({{"directory", "/tmp/repo"}}));
+    CHECK(text.contains("analyze_branch_duplicates"));
+    CHECK(text.contains("default branch"));
+    CHECK(text.contains("origin/HEAD"));
+    CHECK(text.contains("origin/main"));
+    CHECK(text.contains("origin/master"));
+}
+
+TEST_CASE("McpTools.ReviewBranchPrompt.MissingDirectory", "[mcp][tools]")
+{
+    auto const resp = GetReviewBranchPrompt({{"base_ref", "main"}});
+    CHECK((resp.has_value() && resp->error.has_value()));
+    CHECK(PromptMessageText(resp).empty());
 }
 
 // ---------------------------------------------------------------------------
