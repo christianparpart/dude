@@ -456,6 +456,8 @@ TEST_CASE("McpTools.ReviewBranchPrompt.WithBaseRef", "[mcp][tools]")
     CHECK(text.contains("get_code_block"));
     CHECK(text.contains("duplicates_new"));
     CHECK(text.contains("duplicates_existing"));
+    CHECK(text.contains("`is_changed: false`"));
+    CHECK(text.contains("`is_changed: true`"));
     CHECK(text.contains("intra_function_clones"));
     CHECK(text.contains("uncommitted"));
     CHECK(text.contains("do not edit"));
@@ -475,7 +477,8 @@ TEST_CASE("McpTools.ReviewBranchPrompt.WithoutBaseRef", "[mcp][tools]")
 TEST_CASE("McpTools.ReviewBranchPrompt.MissingDirectory", "[mcp][tools]")
 {
     auto const resp = GetReviewBranchPrompt({{"base_ref", "main"}});
-    CHECK((resp.has_value() && resp->error.has_value()));
+    REQUIRE((resp.has_value() && resp->error.has_value()));
+    CHECK(resp->error->message.contains("Missing required argument: directory"));
     CHECK(PromptMessageText(resp).empty());
 }
 
